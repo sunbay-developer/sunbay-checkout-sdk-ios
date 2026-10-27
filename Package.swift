@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "SunbayCheckout",
+    defaultLocalization: "en",
     platforms: [
         .iOS(.v15),
     ],
@@ -28,7 +29,8 @@ let package = Package(
     targets: [
         .target(
             name: "SunbayCheckout",
-            path: "Sources/SunbayCheckout"
+            path: "Sources/SunbayCheckout",
+            resources: [.process("Resources/Localizations")]
         ),
         .testTarget(
             name: "SunbayCheckoutTests",
