@@ -54,8 +54,8 @@ let package = Package(
             dependencies: ["SunbayCheckout", "SunbayCheckoutMocks"],
             path: "Tests/SunbayCheckoutE2ETests"
         ),
-        // 示例 demo 目标已迁移为独立的 Tuist 生成的 Xcode app(见 Example/SunbayCheckoutDemo/Project.swift),
-        // 不再是 SwiftPM 可执行目标。
+        // The SunbayCheckoutDemo executable target has been migrated to a standalone Tuist-generated
+        // Xcode app (see Example/SunbayCheckoutDemo/Project.swift); it is no longer a SwiftPM target.
         // Apple Pay 真机探针目标:**无 dependencies**(直连 PassKit,独立于 SunbayCheckout),
         // 源码在 Example/ApplePayProbe 下。iOS-only 代码用 `#if canImport(UIKit)` 包裹,
         // 另有 macOS-host `#else main` 回退,保证在 host 上也能编译链接。
