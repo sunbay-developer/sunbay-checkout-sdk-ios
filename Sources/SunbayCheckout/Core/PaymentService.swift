@@ -1,64 +1,64 @@
 import Foundation
 
-/// 保存卡时附带的用户同意信息(COF)。
+/// User consent information attached when saving a card (COF).
 ///
-/// 对应 product-spec §7.3 请求体中的 `consent` 字段。`save` 新卡时必填。
+/// Corresponds to the `consent` field in the product-spec §7.3 request body. Required when saving (`save`) a new card.
 ///
-/// - Note: 自 Task 11.5 起**公开**：随 `SubmitRequest` 作为 host `PaymentService` 须满足的契约。
+/// - Note: **Public** since Task 11.5: part of the contract a host `PaymentService` must satisfy, carried with `SubmitRequest`.
 public struct Consent: Codable, Sendable {
-    /// 同意条款版本。
+    /// Consent terms version.
     public let version: String
-    /// 未来使用方式;当前固定为 `"ON_SESSION"`。
+    /// Future usage; currently fixed to `"ON_SESSION"`.
     public let futureUsage: String
 
-    /// 创建一个同意信息。
+    /// Creates a consent record.
     ///
     /// - Parameters:
-    ///   - version: 同意条款版本。
-    ///   - futureUsage: 未来使用方式,默认 `"ON_SESSION"`。
+    ///   - version: Consent terms version.
+    ///   - futureUsage: Future usage, defaults to `"ON_SESSION"`.
     public init(version: String, futureUsage: String = "ON_SESSION") {
         self.version = version
         self.futureUsage = futureUsage
     }
 }
 
-/// 一次支付提交请求(Core 内部表示)。
+/// A single payment submission request (Core internal representation).
 ///
-/// 对应 product-spec §7.3 的提交契约与 COF 扩展。承载三条支付路径所需的字段:
-/// 新卡(`cardEncryptedData`)、钱包(`walletToken`)、已保存卡(`paymentMethodId`)。
+/// Corresponds to the submission contract in product-spec §7.3 and the COF extension. Carries the fields
+/// required by the three payment paths: new card (`cardEncryptedData`), wallet (`walletToken`), saved card (`paymentMethodId`).
 ///
-/// - Note: 敏感字段(`cardEncryptedData` / `walletToken`)绝不进入日志或公开回调(见 §5)。
-///   自 Task 11.5 起**公开**：host 的 `PaymentService.submit` 接收本类型并转发给后端适配器
-///   （host service 本身即后端适配器，合法持有这些待转发字段）。
+/// - Note: Sensitive fields (`cardEncryptedData` / `walletToken`) never enter logs or public callbacks (see §5).
+///   **Public** since Task 11.5: the host's `PaymentService.submit` receives this type and forwards it to the backend adapter
+///   (the host service is itself the backend adapter and legitimately holds these fields to forward).
 public struct SubmitRequest: Sendable {
-    /// 会话标识。
+    /// Session identifier.
     public let sessionId: String
-    /// 支付方式标识(如 `"VISA"` / `"APPLE_PAY"`)。
+    /// Payment method identifier (such as `"VISA"` / `"APPLE_PAY"`).
     public let paymentMethod: String
-    /// 本次确认的尝试标识;每次 confirm 生成一个,用于幂等与去重。
+    /// The attempt identifier for this confirmation; one is generated per confirm, used for idempotency and deduplication.
     public let attemptId: UUID
-    /// 卡密文(§7.2);新卡路径使用,其他路径为 nil。
+    /// Card ciphertext (§7.2); used by the new-card path, nil for other paths.
     public let cardEncryptedData: String?
-    /// 钱包 token(Apple Pay);其他路径为 nil。
+    /// Wallet token (Apple Pay); nil for other paths.
     public let walletToken: Data?
-    /// 已保存卡标识(COF);其他路径为 nil。与 `savePaymentMethod` 互斥。
+    /// Saved card identifier (COF); nil for other paths. Mutually exclusive with `savePaymentMethod`.
     public let paymentMethodId: String?
-    /// 用新卡时是否请求保存(COF)。
+    /// Whether to request saving when using a new card (COF).
     public let savePaymentMethod: Bool?
-    /// 保存卡时的用户同意;`savePaymentMethod == true` 时应提供。
+    /// The user consent when saving a card; should be provided when `savePaymentMethod == true`.
     public let consent: Consent?
 
-    /// 创建一次支付提交请求。
+    /// Creates a payment submission request.
     ///
     /// - Parameters:
-    ///   - sessionId: 会话标识。
-    ///   - paymentMethod: 支付方式标识。
-    ///   - attemptId: 本次确认的尝试标识。
-    ///   - cardEncryptedData: 卡密文,默认 nil。
-    ///   - walletToken: 钱包 token,默认 nil。
-    ///   - paymentMethodId: 已保存卡标识,默认 nil。
-    ///   - savePaymentMethod: 是否请求保存新卡,默认 nil。
-    ///   - consent: 保存卡同意信息,默认 nil。
+    ///   - sessionId: Session identifier.
+    ///   - paymentMethod: Payment method identifier.
+    ///   - attemptId: The attempt identifier for this confirmation.
+    ///   - cardEncryptedData: Card ciphertext, defaults to nil.
+    ///   - walletToken: Wallet token, defaults to nil.
+    ///   - paymentMethodId: Saved card identifier, defaults to nil.
+    ///   - savePaymentMethod: Whether to request saving a new card, defaults to nil.
+    ///   - consent: Card-saving consent information, defaults to nil.
     public init(
         sessionId: String,
         paymentMethod: String,
@@ -80,19 +80,19 @@ public struct SubmitRequest: Sendable {
     }
 }
 
-/// 支付后端能力契约(UI 无关)。
+/// Backend payment capability contract (UI-agnostic).
 ///
-/// 对应 product-spec §7.1(加载会话)、§7.3(提交)、§7.4(查询结果)。首版用 mock 实现,
-/// 真实接口 ready 后只替换适配器,不动 Core/UI。
+/// Corresponds to product-spec §7.1 (load session), §7.3 (submit), §7.4 (query result). The first version
+/// uses a mock implementation; once the real interface is ready, only the adapter is replaced, leaving Core/UI untouched.
 ///
-/// - Note: 自 Task 11.5 起**公开**：host（及示例 app）通过
-///   `SunbayCheckout(configuration:paymentService:cofService:)` 注入自实现（mock 或真实后端适配器），
-///   驱动端到端支付流。SDK 本身不提供真实 HTTP 适配器（后端契约未定，§7/§8）。
+/// - Note: **Public** since Task 11.5: the host (and the example app) inject their own implementation (mock or a real
+///   backend adapter) via `SunbayCheckout(configuration:paymentService:cofService:)` to drive the end-to-end payment flow.
+///   The SDK itself does not provide a real HTTP adapter (the backend contract is undefined, §7/§8).
 public protocol PaymentService: Sendable {
-    /// 加载指定会话。
+    /// Loads the specified session.
     func loadSession(_ id: String) async throws -> CheckoutSession
-    /// 提交一次支付。
+    /// Submits a payment.
     func submit(_ req: SubmitRequest) async throws -> PaymentSnapshot
-    /// 查询支付结果。
+    /// Queries the payment result.
     func getResult(sessionId: String) async throws -> PaymentSnapshot
 }

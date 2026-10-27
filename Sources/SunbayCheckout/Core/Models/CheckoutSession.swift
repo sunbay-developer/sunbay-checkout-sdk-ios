@@ -1,39 +1,42 @@
 import Foundation
 
-/// 单笔结账会话的 Core 领域模型。
+/// Core domain model for a single checkout session.
 ///
-/// UI 无关的领域模型，由后端会话 JSON 解码得到，承载渲染可用支付方式与确认支付所需的
-/// 全部信息。
+/// A UI-agnostic domain model, decoded from the backend session JSON, carrying
+/// all the information needed to render the available payment methods and to
+/// confirm a payment.
 ///
-/// - Note: 自 Task 11.5 起**公开**（`public`）：host 自实现的 `PaymentService.loadSession`
-///   必须返回本类型，因此它是公共服务契约的一部分。所携带字段（金额/商户/方式/过期/公钥/COF 开关）
-///   均非机密；`rsaPublicKey` 是**公钥**（非密钥），以普通 `public let` 暴露。
+/// - Note: Public (`public`) since Task 11.5: a host-provided `PaymentService.loadSession`
+///   implementation must return this type, so it is part of the public service contract.
+///   The fields it carries (amount / merchant / methods / expiry / public key / COF switch)
+///   are all non-secret; `rsaPublicKey` is a **public key** (not a private key) and is
+///   exposed as a plain `public let`.
 public struct CheckoutSession: Sendable, Equatable {
-    /// 会话标识。
+    /// Session identifier.
     public let id: String
-    /// 本次支付金额。
+    /// The amount of this payment.
     public let amount: Amount
-    /// 商户展示名称。
+    /// Merchant display name.
     public let merchantName: String
-    /// 本会话可用的支付方式集合。
+    /// The set of payment methods available for this session.
     public let methods: Set<PaymentMethodKind>
-    /// 会话过期时间。
+    /// Session expiry time.
     public let expiresAt: Date
-    /// 用于本地加密卡数据的 RSA **公钥**（base64）；不可用时为 nil。公钥非机密。
+    /// RSA **public key** (base64) used to locally encrypt card data; nil when unavailable. The public key is non-secret.
     public let rsaPublicKey: String?
-    /// 是否启用 COF（已保存卡 / one-tap）。
+    /// Whether COF (saved card / one-tap) is enabled.
     public let cofEnabled: Bool
 
-    /// 创建一个结账会话（host 的 `PaymentService.loadSession` 构造并返回）。
+    /// Creates a checkout session (constructed and returned by the host's `PaymentService.loadSession`).
     ///
     /// - Parameters:
-    ///   - id: 会话标识。
-    ///   - amount: 本次支付金额。
-    ///   - merchantName: 商户展示名称。
-    ///   - methods: 本会话可用的支付方式集合。
-    ///   - expiresAt: 会话过期时间。
-    ///   - rsaPublicKey: 本地加密卡数据用的 RSA 公钥（base64），默认 nil。
-    ///   - cofEnabled: 是否启用 COF，默认 false。
+    ///   - id: Session identifier.
+    ///   - amount: The amount of this payment.
+    ///   - merchantName: Merchant display name.
+    ///   - methods: The set of payment methods available for this session.
+    ///   - expiresAt: Session expiry time.
+    ///   - rsaPublicKey: RSA public key (base64) used to locally encrypt card data, defaults to nil.
+    ///   - cofEnabled: Whether COF is enabled, defaults to false.
     public init(
         id: String,
         amount: Amount,
@@ -53,14 +56,14 @@ public struct CheckoutSession: Sendable, Equatable {
     }
 }
 
-/// 支付方式类型。
+/// Payment method type.
 ///
-/// 自 Task 11.5 起**公开**：随 `CheckoutSession.methods` 跨公共边界。
+/// Public since Task 11.5: crosses the public boundary via `CheckoutSession.methods`.
 public enum PaymentMethodKind: String, Sendable {
-    /// 新卡。
+    /// New card.
     case card
-    /// Apple Pay 钱包。
+    /// Apple Pay wallet.
     case applePay
-    /// 已保存卡（COF）。
+    /// Saved card (COF).
     case savedCard
 }

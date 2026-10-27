@@ -2,10 +2,10 @@ import Foundation
 
 @testable import SunbayCheckout
 
-/// 可脚本化的 `ActionHandling` 测试替身(Task 8 的真实实现尚未落地)。
+/// Scriptable test double for `ActionHandling` (the real Task 8 implementation has not landed yet).
 ///
-/// 返回脚本化的 `ActionResult`,并记录是否被调用及收到的 `action` / `sessionId`。
-/// 默认返回 `.pending`(对应首版 redirect → pending 的行为)。
+/// Returns a scripted `ActionResult` and records whether it was called and the `action` / `sessionId`
+/// it received. Defaults to returning `.pending` (matching the first-version redirect → pending behavior).
 final class StubActionHandler: ActionHandling, @unchecked Sendable {
     private let lock = NSLock()
 

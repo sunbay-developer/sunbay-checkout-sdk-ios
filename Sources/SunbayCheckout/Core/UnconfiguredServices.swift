@@ -1,21 +1,23 @@
 import Foundation
 
-/// 「未配置」的 fail-closed 默认服务（internal，共享）。
+/// The "unconfigured" fail-closed default services (internal, shared).
 ///
-/// ## 为什么存在
-/// 公共 `SunbayCheckout(configuration:)`（朴素 init）不接收任何后端服务；但 UI 外壳
-/// 与内部缝仍需要一对 `PaymentService` / `CofService` 才能组装 `CheckoutController`。
-/// 真实后端适配器尚未落地（后端契约未定，product-spec §7/§8），SDK 也**不**自带 HTTP 适配器。
+/// ## Why this exists
+/// The public `SunbayCheckout(configuration:)` (plain init) does not accept any backend service;
+/// but the UI shell and internal seams still need a pair of `PaymentService` / `CofService` to
+/// assemble `CheckoutController`. The real backend adapter has not yet landed (the backend contract
+/// is undefined, product-spec §7/§8), and the SDK does **not** ship its own HTTP adapter.
 ///
-/// 因此当 host 未经 `SunbayCheckout(configuration:paymentService:cofService:)` 注入服务时，
-/// 默认使用这对占位实现：对所有调用**fail-closed**，抛 `NETWORK_UNAVAILABLE`（绝不静默成功，
-/// 不用空结果掩盖未配置）。其存在只为让公共 API 形态成立并可编译，不改变任何对外符号。
+/// Therefore, when the host has not injected services via `SunbayCheckout(configuration:paymentService:cofService:)`,
+/// this pair of placeholder implementations is used by default: every call **fails closed**, throwing
+/// `NETWORK_UNAVAILABLE` (never silently succeeds, and never masks the unconfigured state with an empty result).
+/// They exist only to make the public API shape valid and compilable, and change no external symbols.
 ///
-/// 这两个类型从 ApplePayButton 迁出到此共享位置（Task 11.5），使「朴素 init 的默认」与
-/// 「ApplePayButton 的回退」用同一份 fail-closed 实现。它们不 import 任何 UIKit/PassKit，
-/// 因此在 macOS host 上也可用（Core 约束，AGENTS.md §2.6）。
+/// These two types were moved out of ApplePayButton into this shared location (Task 11.5), so that
+/// the "plain-init default" and the "ApplePayButton fallback" use the same fail-closed implementation.
+/// They import no UIKit/PassKit, so they are also usable on a macOS host (Core constraint, AGENTS.md §2.6).
 
-/// 未配置时抛出的统一错误（`NETWORK_UNAVAILABLE`，不含任何敏感信息）。
+/// The unified error thrown when unconfigured (`NETWORK_UNAVAILABLE`, carrying no sensitive information).
 private func unconfiguredServiceError() -> CheckoutError {
     CheckoutError(
         code: "NETWORK_UNAVAILABLE",
@@ -25,7 +27,7 @@ private func unconfiguredServiceError() -> CheckoutError {
     )
 }
 
-/// 「未配置」的 `PaymentService` 占位实现（internal，fail-closed）。
+/// The "unconfigured" `PaymentService` placeholder implementation (internal, fail-closed).
 struct UnconfiguredPaymentService: PaymentService {
     init() {}
     func loadSession(_ id: String) async throws -> CheckoutSession { throw unconfiguredServiceError() }
@@ -33,7 +35,7 @@ struct UnconfiguredPaymentService: PaymentService {
     func getResult(sessionId: String) async throws -> PaymentSnapshot { throw unconfiguredServiceError() }
 }
 
-/// 「未配置」的 `CofService` 占位实现（internal，fail-closed）。
+/// The "unconfigured" `CofService` placeholder implementation (internal, fail-closed).
 struct UnconfiguredCofService: CofService {
     init() {}
     func listPaymentMethods(

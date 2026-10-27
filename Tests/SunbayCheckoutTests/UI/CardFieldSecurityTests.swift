@@ -4,11 +4,11 @@
 
     @testable import SunbayCheckout
 
-    /// CardField 安全规格单测(security-and-pci.md §3 item 2 / §3.1,product-spec §5.3.1)。
+    /// CardField security spec unit test (security-and-pci.md §3 item 2 / §3.1, product-spec §5.3.1).
     ///
-    /// UIKit 仅 iOS 可用。`swift test` 在 macOS 宿主上构建时本文件整体被
-    /// `#if canImport(UIKit)` 排除,既不编译也不运行;真正的 RED/GREEN 需对
-    /// iOS Simulator SDK 构建(见任务报告)。真机验证由示例 App(Task 13)覆盖。
+    /// UIKit is iOS-only. When built on the macOS host for `swift test`, this entire file is excluded by
+    /// `#if canImport(UIKit)` — it neither compiles nor runs; the real RED/GREEN requires building against
+    /// the iOS Simulator SDK (see the task report). On-device verification is covered by the example App (Task 13).
     final class CardFieldSecurityTests: XCTestCase {
         func test_cardFieldSecurity_disablesKeyboardLearning_andCVVHasNoContentType() {
             let pan = UITextField()
@@ -21,7 +21,7 @@
                 XCTAssertEqual(f.smartDashesType, .no)
             }
             XCTAssertEqual(pan.textContentType, .creditCardNumber)
-            XCTAssertNil(cvv.textContentType)  // CVV 绝不进自动填充
+            XCTAssertNil(cvv.textContentType)  // CVV must never go into autofill
             XCTAssertEqual(pan.keyboardType, .asciiCapableNumberPad)
         }
     }

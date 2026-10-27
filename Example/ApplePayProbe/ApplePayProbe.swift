@@ -1,16 +1,18 @@
 import Foundation
 
-// MARK: - Apple Pay 真机探针（Task 14）
+// MARK: - Apple Pay on-device probe (Task 14)
 //
-// 独立探针（standalone probe）：**直连 PassKit**，不依赖 SunbayCheckout SDK 目标，
-// 也不是 SDK 消费者（不 import SunbayCheckout）。
+// Standalone probe: **talks directly to PassKit**, does not depend on the SunbayCheckout SDK target,
+// and is not an SDK consumer (does not import SunbayCheckout).
 //
-// 目的：验证 Apple Pay **客户端钱包调用链**——能力检测 → 系统 sheet → 读取加密 token，
-// 只做脱敏诊断（token 字节长度、是否存在），**绝不**打印/记录原始 token 字节、绝不发往任何后端、
-// 绝不发起真实交易（见 AGENTS.md §2.3、product-spec §3.2 / §6.2）。
+// Purpose: validate the Apple Pay **client wallet call chain** — capability detection → system sheet → read
+// the encrypted token, producing only redacted diagnostics (token byte length, presence). It **never** prints/logs
+// raw token bytes, never sends them to any backend, and never initiates a real transaction (see AGENTS.md §2.3,
+// product-spec §3.2 / §6.2).
 //
-// 商户/网关参数全部为**占位值**（placeholder），TEST/占位环境。真实 merchantIdentifier、
-// Apple Pay entitlement、沙箱测试账号 + Wallet 测试卡由开发者在真机上配置（见 README.md）。
+// All merchant/gateway parameters are **placeholder** values, a TEST/placeholder environment. The real
+// merchantIdentifier, Apple Pay entitlement, sandbox test account + Wallet test card are configured by the
+// developer on a real device (see README.md).
 
 #if canImport(UIKit)
 
@@ -18,37 +20,38 @@ import Foundation
     import SwiftUI
     import UIKit
 
-    // MARK: - 占位配置（非机密，可提交）
+    // MARK: - Placeholder configuration (not confidential, committable)
 
-    /// 探针使用的占位商户/网关参数。**不是**真实凭证——真机运行需开发者替换 merchantIdentifier
-    /// 并在 app target 打开 Apple Pay capability（见 README.md）。
+    /// Placeholder merchant/gateway parameters used by the probe. **Not** real credentials — running on a real
+    /// device requires the developer to replace merchantIdentifier and enable the Apple Pay capability on the app
+    /// target (see README.md).
     enum ProbeConfig {
-        /// 占位 merchant id（真机需换成已在 Apple Developer 注册的真实 id）。
+        /// Placeholder merchant id (on a real device, replace with a real id registered in Apple Developer).
         static let merchantIdentifier = "merchant.com.sunbay.probe"
-        /// 占位国家/地区（TEST）。
+        /// Placeholder country/region (TEST).
         static let countryCode = "US"
-        /// 占位币种（TEST）。
+        /// Placeholder currency (TEST).
         static let currencyCode = "USD"
-        /// 占位汇总行：1.00（最小货币单位的直观值，仅用于驱动 sheet，不产生真实扣款）。
+        /// Placeholder summary line: 1.00 (an intuitive value in the smallest currency unit, only to drive the sheet, no real charge).
         static let summaryLabel = "Sunbay Apple Pay Probe"
         static let summaryAmount = NSDecimalNumber(string: "1.00")
-        /// 受支持的卡网络（占位）。
+        /// Supported card networks (placeholder).
         static let supportedNetworks: [PKPaymentNetwork] = [.visa, .masterCard, .amex]
-        /// 商户能力：3DS（PassKit 标准最小集）。
+        /// Merchant capability: 3DS (the minimal PassKit standard set).
         static let merchantCapabilities: PKMerchantCapability = .threeDSecure
     }
 
-    // MARK: - 探针结果模型（仅脱敏诊断）
+    // MARK: - Probe result model (redacted diagnostics only)
 
-    /// 一次探针运行的可读结果。**不含**任何原始 token 字节或敏感数据。
+    /// A readable result of a single probe run. Contains **no** raw token bytes or sensitive data.
     struct ProbeResult: Equatable {
-        /// `PKPaymentAuthorizationController.canMakePayments()` 的结果。
+        /// The result of `PKPaymentAuthorizationController.canMakePayments()`.
         var canMakePayments: Bool
-        /// `canMakePayments(usingNetworks:)`（带受支持网络）的结果。
+        /// The result of `canMakePayments(usingNetworks:)` (with supported networks).
         var canMakePaymentsUsingNetworks: Bool
-        /// 系统授权 sheet 是否成功 present。
+        /// Whether the system authorization sheet was successfully presented.
         var sheetPresented: Bool
-        /// 终态分支的可读描述（授权成功的脱敏 token 诊断 / 用户取消 / 错误）。
+        /// A readable description of the terminal branch (redacted token diagnostics on authorization success / user cancel / error).
         var branch: String
 
         static let initial = ProbeResult(
@@ -59,39 +62,39 @@ import Foundation
         )
     }
 
-    // MARK: - 探针核心（PassKit 调用链）
+    // MARK: - Probe core (PassKit call chain)
 
-    /// 直连 PassKit 的 Apple Pay 探针。
+    /// An Apple Pay probe talking directly to PassKit.
     ///
-    /// 调用链：能力检测 → 构造 `PKPaymentRequest`（占位参数）→ present
-    /// `PKPaymentAuthorizationController` → 在 delegate 读取 `payment.token.paymentData`
-    /// → 仅产出脱敏诊断（长度 / 是否存在）。
+    /// Call chain: capability detection → build `PKPaymentRequest` (placeholder parameters) → present
+    /// `PKPaymentAuthorizationController` → in the delegate read `payment.token.paymentData`
+    /// → produce only redacted diagnostics (length / presence).
     @MainActor
     final class ApplePayProbe: NSObject, PKPaymentAuthorizationControllerDelegate {
         private var controller: PKPaymentAuthorizationController?
         private var completion: ((ProbeResult) -> Void)?
         private var result = ProbeResult.initial
-        /// 标记 delegate 是否已读到授权回调（用于区分「用户取消」与「授权成功」）。
+        /// Marks whether the delegate has received the authorization callback (used to distinguish "user cancel" from "authorization success").
         private var didAuthorize = false
 
-        /// 运行一次探针。回调在主线程。
+        /// Run a single probe. The callback is on the main thread.
         ///
-        /// - Parameter completion: 带脱敏诊断的 `ProbeResult`。
+        /// - Parameter completion: a `ProbeResult` with redacted diagnostics.
         func run(completion: @escaping (ProbeResult) -> Void) {
             self.completion = completion
             self.didAuthorize = false
             var r = ProbeResult.initial
 
-            // 1) 能力检测（两种 API）。
+            // 1) Capability detection (two APIs).
             r.canMakePayments = PKPaymentAuthorizationController.canMakePayments()
             r.canMakePaymentsUsingNetworks = PKPaymentAuthorizationController
                 .canMakePayments(usingNetworks: ProbeConfig.supportedNetworks)
             self.result = r
 
-            // 2) 构造占位 PKPaymentRequest。
+            // 2) Build the placeholder PKPaymentRequest.
             let request = Self.makeRequest()
 
-            // 3) present 系统授权 sheet。
+            // 3) Present the system authorization sheet.
             let controller = PKPaymentAuthorizationController(paymentRequest: request)
             controller.delegate = self
             self.controller = controller
@@ -100,7 +103,7 @@ import Foundation
                     guard let self else { return }
                     self.result.sheetPresented = presented
                     if !presented {
-                        // sheet 无法展示（设备无能力 / 无卡等）→ 走 no-card/cancel 分支。
+                        // The sheet cannot present (device has no capability / no card, etc.) → take the no-card/cancel branch.
                         self.result.branch =
                             "sheet did not present (no Apple Pay capability / no card in Wallet)"
                         self.finish()
@@ -109,7 +112,7 @@ import Foundation
             }
         }
 
-        /// 构造占位 `PKPaymentRequest`（1.00 汇总行、占位商户/网关参数）。
+        /// Build a placeholder `PKPaymentRequest` (1.00 summary line, placeholder merchant/gateway parameters).
         private static func makeRequest() -> PKPaymentRequest {
             let request = PKPaymentRequest()
             request.merchantIdentifier = ProbeConfig.merchantIdentifier
@@ -126,7 +129,7 @@ import Foundation
             return request
         }
 
-        /// 把一次性结果回传并清理。
+        /// Pass back the one-off result and clean up.
         private func finish() {
             let out = result
             let cb = completion
@@ -137,10 +140,10 @@ import Foundation
 
         // MARK: PKPaymentAuthorizationControllerDelegate
 
-        /// 用户授权成功回调。读取 `payment.token.paymentData` → **仅**脱敏诊断。
+        /// User authorization success callback. Reads `payment.token.paymentData` → **only** redacted diagnostics.
         ///
-        /// 安全约束（AGENTS.md §2.3、product-spec §3.2 / §5）：
-        /// 绝不打印/记录原始 token 字节、绝不发往任何后端、绝不发起真实交易。
+        /// Security constraints (AGENTS.md §2.3, product-spec §3.2 / §5):
+        /// never print/log raw token bytes, never send them to any backend, never initiate a real transaction.
         func paymentAuthorizationController(
             _ controller: PKPaymentAuthorizationController,
             didAuthorizePayment payment: PKPayment,
@@ -148,22 +151,22 @@ import Foundation
         ) {
             didAuthorize = true
             let tokenData = payment.token.paymentData
-            // 仅脱敏诊断：字节长度 + 是否存在。绝不读出/打印原始字节。
+            // Redacted diagnostics only: byte length + presence. Never read out/print raw bytes.
             let present = !tokenData.isEmpty
             result.branch =
                 "authorized — token present: \(present ? "yes" : "no"), token byte length: \(tokenData.count) (redacted; raw bytes never logged/sent)"
-            // 探针不做真实交易：直接以 success 关闭 sheet（不把 token 发往任何地方）。
+            // The probe does not run a real transaction: close the sheet directly with success (without sending the token anywhere).
             completion(PKPaymentAuthorizationResult(status: .success, errors: nil))
         }
 
-        /// sheet 结束回调（用户取消 或 授权流程完成后系统 dismiss）。
+        /// Sheet-finished callback (user cancel, or system dismiss after the authorization flow completes).
         func paymentAuthorizationControllerDidFinish(
             _ controller: PKPaymentAuthorizationController
         ) {
             controller.dismiss {
                 Task { @MainActor in
                     if !self.didAuthorize {
-                        // 未经授权即结束 → 用户取消 / 无卡分支（模拟器的预期结局）。
+                        // Finished without authorization → user cancel / no-card branch (the expected outcome on the simulator).
                         self.result.branch =
                             "canceled / no-card branch (user dismissed or Wallet has no usable card)"
                     }
@@ -173,9 +176,9 @@ import Foundation
         }
     }
 
-    // MARK: - 最小 SwiftUI UI
+    // MARK: - Minimal SwiftUI UI
 
-    /// 探针主屏：一个按钮运行探针，显示 canMakePayments、是否 present、脱敏 token 诊断 / 取消 / 错误分支。
+    /// Probe main screen: a button runs the probe, showing canMakePayments, whether presented, redacted token diagnostics / cancel / error branch.
     struct ProbeRootView: View {
         @State private var result = ProbeResult.initial
         @State private var running = false
@@ -230,9 +233,9 @@ import Foundation
         }
     }
 
-    // MARK: - App 入口（iOS）
+    // MARK: - App entry (iOS)
 
-    /// 独立探针 App 入口（SwiftUI，iOS 模拟器 / 真机）。不依赖 SunbayCheckout。
+    /// Standalone probe App entry (SwiftUI, iOS Simulator / real device). Does not depend on SunbayCheckout.
     @main
     struct ApplePayProbeApp: App {
         var body: some Scene {
@@ -244,12 +247,12 @@ import Foundation
 
 #else
 
-    // MARK: - 非 iOS 宿主回退（macOS host）
+    // MARK: - Non-iOS host fallback (macOS host)
 
-    /// SwiftPM 可执行产品需要一个 `main`。在没有 UIKit 的宿主（macOS host）上，
-    /// PassKit 的 `PKPaymentAuthorizationController` UI 路径不可用；打印说明即退出，
-    /// 保证该可执行目标在 host 上也能编译链接（`swift build` / `swift test` 绿）。
-    /// 真实运行目标是 iOS 模拟器 / 真机（见 Example/ApplePayProbe/README.md）。
+    /// A SwiftPM executable product needs a `main`. On a host without UIKit (macOS host),
+    /// PassKit's `PKPaymentAuthorizationController` UI path is unavailable; print an explanation and exit,
+    /// so the executable target compiles and links on the host too (`swift build` / `swift test` green).
+    /// The real run target is the iOS Simulator / real device (see Example/ApplePayProbe/README.md).
     @main
     enum ApplePayProbeApp {
         static func main() {

@@ -1,30 +1,30 @@
-/// 内存持有敏感凭证(customerAccessSecret / checkoutClientSecret)的内聚边界。
+/// Cohesive boundary that holds sensitive credentials (customerAccessSecret / checkoutClientSecret) in memory.
 ///
-/// 安全约束(见 `docs/security-and-pci.md` §3 item 3/7、§4):
-/// - **仅内存持有**:单个可选 `String` 属性,绝不写入 UserDefaults / 文件 / Keychain / 剪贴板。
-/// - **零日志泄漏**:绝不 print / os_log / 埋点 / 崩溃上报任何 secret 值。
-/// - **终态即清**:`clear()` 在交易到达终态或 dismiss 时由上层调用,幂等。
+/// Security constraints (see `docs/security-and-pci.md` §3 item 3/7, §4):
+/// - **In-memory only**: a single optional `String` property; never written to UserDefaults / files / Keychain / clipboard.
+/// - **Zero log leakage**: never print / os_log / log analytics / crash-report any secret value.
+/// - **Cleared on terminal state**: `clear()` is called by the upper layer when a transaction reaches a terminal state or on dismiss; idempotent.
 ///
-/// `actor` 隔离保证并发访问下的互斥;内部不可见,不对外暴露(非 `public`)。
+/// `actor` isolation guarantees mutual exclusion under concurrent access; internal and not exposed (non-`public`).
 actor CredentialStore {
-    /// 当前持有的 secret;`nil` 表示未持有或已清除。仅内存。
+    /// The currently held secret; `nil` means not held or already cleared. In-memory only.
     private var secret: String?
 
     init() {}
 
-    /// 持有一个 secret(覆盖已有值)。
-    /// - Parameter customerAccessSecret: 短 TTL 的凭证值;仅内存持有,不落盘不记日志。
+    /// Holds a secret (overwriting any existing value).
+    /// - Parameter customerAccessSecret: A short-TTL credential value; held in memory only, never persisted or logged.
     func hold(customerAccessSecret: String) {
         secret = customerAccessSecret
     }
 
-    /// 读取当前持有的 secret。
-    /// - Returns: 已持有则返回其值,否则 `nil`。
+    /// Reads the currently held secret.
+    /// - Returns: Its value if held, otherwise `nil`.
     func current() -> String? {
         secret
     }
 
-    /// 清除当前持有的 secret。幂等:已为空时重复调用安全无副作用。
+    /// Clears the currently held secret. Idempotent: calling it again when already empty is safe and has no side effects.
     func clear() {
         secret = nil
     }

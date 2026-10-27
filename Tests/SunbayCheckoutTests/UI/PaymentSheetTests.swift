@@ -5,22 +5,24 @@
 
     @testable import SunbayCheckout
 
-    /// `PaymentSheet`（L1，黑盒支付页）的单元测试（仅 iOS；macOS 宿主下 `#if canImport(UIKit)` 整体排除）。
+    /// Unit tests for `PaymentSheet` (L1, black-box payment page) (iOS only; entirely excluded by `#if canImport(UIKit)` on the macOS host).
     ///
-    /// ## 可测逻辑 vs. `present()` 包装的拆分
-    /// 在无 host app 的 headless xctest 里，真正驱动 UIKit 展示（`presenter.present(...)`）既脆弱又
-    /// 不可确定。为此 `PaymentSheet` 把「start → （按 COF 判定）list → 等待用户动作 → confirm → outcome」
-    /// 的控制器驱动逻辑收敛到一个 **internal、可测**的方法 `runCheckout(seam:)` 里；`present(from:)`
-    /// 只是薄薄的 UIKit 包装：构造并展示 `PaymentSheetViewController`，把它的「用户动作」桥接给
-    /// `runCheckout` 的 `seam`，再 await 同一套逻辑得到 `CheckoutOutcome`。
+    /// ## Splitting testable logic vs. the `present()` wrapper
+    /// In a headless xctest without a host app, actually driving UIKit presentation (`presenter.present(...)`) is both
+    /// fragile and non-deterministic. For that reason `PaymentSheet` collapses the controller-driven logic of
+    /// "start → (list, per COF decision) → await user action → confirm → outcome" into one **internal, testable**
+    /// method `runCheckout(seam:)`; `present(from:)` is just a thin UIKit wrapper: it constructs and presents
+    /// `PaymentSheetViewController`, bridges its "user actions" into `runCheckout`'s `seam`, and awaits the same
+    /// logic to get a `CheckoutOutcome`.
     ///
-    /// 这些测试经 **internal 初始化器** 注入由 mock 后端组装的真实 `CheckoutController`，直接调用
-    /// `runCheckout(seam:)` 并以 `seam` 触发目标用户动作（等价于点击新卡确认 / 选卡 / 取消），
-    /// 从而在不触碰真实展示的前提下验证 start/list/confirm/outcome。完整 UI 由示例 app（Task 13）验证。
+    /// These tests inject a real `CheckoutController` assembled from a mock backend via the **internal initializer**,
+    /// call `runCheckout(seam:)` directly, and use the `seam` to trigger the target user action (equivalent to tapping
+    /// confirm on a new card / selecting a card / canceling), thereby verifying start/list/confirm/outcome without
+    /// touching real presentation. The full UI is verified by the example app (Task 13).
     final class PaymentSheetTests: XCTestCase {
-        // MARK: - 组装辅助
+        // MARK: - Assembly helpers
 
-        /// 构造一个会话（可配置 `cofEnabled` 与支付方式）。
+        /// Builds a session (with configurable `cofEnabled` and payment methods).
         private func makeSession(
             id: String,
             cofEnabled: Bool,
@@ -37,7 +39,7 @@
             )
         }
 
-        /// 用 mock 后端 + stub action handler 组装一个真实 `CheckoutController`，并返回用到的 mock。
+        /// Assemble a real `CheckoutController` with a mock backend + stub action handler, returning the mocks used.
         private func makeController(
             session: CheckoutSession,
             cards: [SavedCard] = [],
@@ -57,7 +59,7 @@
             return (controller, payment, cof)
         }
 
-        // MARK: - 1. COF：有 secret + cofEnabled → 列已保存卡
+        // MARK: - 1. COF: with secret + cofEnabled → list saved cards
 
         func test_present_cofEnabledWithSecret_listsSavedCards() async {
             let sessionId = "sess_cof_1"
@@ -73,9 +75,9 @@
                 customerAccessSecret: "secret_abc"
             )
 
-            // 直接驱动可测逻辑；seam 在列卡完成后立即取消（本例只验证列卡路径被走到）。
+            // Drive the testable logic directly; the seam cancels immediately after listing (this case only verifies the listing path is taken).
             let outcome = await sheet.runCheckout { context in
-                // context.savedCards 应包含脚本化卡；并且 CofService 应被调用过一次。
+                // context.savedCards should contain the scripted card; and CofService should have been called once.
                 XCTAssertEqual(context.savedCards.map(\.id), ["pm_1"])
                 return .cancel
             }
@@ -87,7 +89,7 @@
             }
         }
 
-        // MARK: - 2. 无 secret → 不列已保存卡
+        // MARK: - 2. No secret → do not list saved cards
 
         func test_present_noSecret_doesNotListSavedCards() async {
             let sessionId = "sess_cof_2"
@@ -96,7 +98,7 @@
                 SavedCard(id: "pm_x", brand: "visa", last4: "1111", expMonth: 1, expYear: 2031),
             ])
 
-            // 不传 customerAccessSecret。
+            // Do not pass customerAccessSecret.
             let sheet = PaymentSheet(controller: controller, sessionId: sessionId)
 
             let outcome = await sheet.runCheckout { context in
@@ -104,20 +106,20 @@
                 return .cancel
             }
 
-            // 无 secret → CofService 绝不被调用。
+            // No secret → CofService must never be called.
             XCTAssertEqual(cof.listCallCount, 0)
             guard case .canceled = outcome else {
                 return XCTFail("expected .canceled, got \(outcome)")
             }
         }
 
-        // MARK: - 3. present 以控制器 outcome 解析
+        // MARK: - 3. present resolves with the controller outcome
 
         func test_present_resolvesWithControllerOutcome() async throws {
             let sessionId = "sess_resolve_1"
-            // 带 rsaPublicKey 以便新卡路径能加密；脚本化 submit 返回 S。
-            // 运行时生成一对真实 RSA 密钥，用公钥（PKCS#1 DER base64，与 CardEncryptor 导入格式一致）
-            // 喂给会话，确保 CardEncryptor 可加密成功，从而驱动到 submit。
+            // Include rsaPublicKey so the new-card path can encrypt; script submit to return S.
+            // Generate a real RSA key pair at runtime, and feed the session the public key (PKCS#1 DER base64,
+            // matching CardEncryptor's import format) so CardEncryptor can encrypt successfully, thereby driving to submit.
             let publicKeyBase64 = try Self.makeRSAPublicKeyBase64(bits: 2048)
             let session = makeSession(
                 id: sessionId,
@@ -139,7 +141,7 @@
             )
 
             let outcome = await sheet.runCheckout { _ in
-                // 等价于用户填好新卡并点击确认（不勾选保存）。
+                // Equivalent to the user filling in a new card and tapping confirm (without checking save).
                 .confirmNewCard(cardInput, save: false)
             }
 
@@ -150,24 +152,26 @@
             XCTAssertEqual(txnId, "txn_ok")
         }
 
-        // MARK: - 4. EmbeddedPaymentElement 为 internal（编译期）
+        // MARK: - 4. EmbeddedPaymentElement is internal (compile-time)
 
         func test_embeddedPaymentElement_isInternal_notPublic() {
-            // 仅可经 @testable 从测试目标引用；若它被误标 public，这行仍能编译，
-            // 但“非 public”的真正守卫是 Final verification 的 public-API 审计 + 本断言的存在性说明。
-            // 这里通过内部可见性实例化来锚定它是“同模块 internal 符号”。
+            // It can only be referenced from the test target via @testable; if it were mistakenly marked public,
+            // this line would still compile, but the real guard for "not public" is the public-API audit in Final
+            // verification plus the existence note of this assertion.
+            // Here we instantiate via internal visibility to anchor that it is a "same-module internal symbol".
             let stub = EmbeddedPaymentElement()
             XCTAssertNotNil(stub)
         }
     }
 
-    // MARK: - 测试用 RSA 公钥
+    // MARK: - Test RSA public key
 
     extension PaymentSheetTests {
-        /// 运行时生成一个 RSA 公钥（PKCS#1 DER / base64），格式与 `CardEncryptor` 的导入约定一致。
+        /// Generates an RSA public key at runtime (PKCS#1 DER / base64), matching `CardEncryptor`'s import convention.
         ///
-        /// 用于 `test_present_resolvesWithControllerOutcome` 让 `CardEncryptor` 能真实加密新卡数据，
-        /// 从而驱动到 `submit`。该公钥不对应任何真实后端私钥，仅做本地加密形状验证。
+        /// Used by `test_present_resolvesWithControllerOutcome` to let `CardEncryptor` actually encrypt new card data,
+        /// thereby driving to `submit`. This public key does not correspond to any real backend private key; it is only
+        /// for local encryption-shape verification.
         static func makeRSAPublicKeyBase64(bits: Int) throws -> String {
             let attributes: [CFString: Any] = [
                 kSecAttrKeyType: kSecAttrKeyTypeRSA,

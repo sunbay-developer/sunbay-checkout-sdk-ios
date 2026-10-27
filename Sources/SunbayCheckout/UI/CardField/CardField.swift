@@ -1,35 +1,39 @@
 #if canImport(UIKit)
     import UIKit
 
-    /// 收集 PAN / 有效期 / CVV 的原生卡输入控件。
+    /// A native card input control collecting PAN / expiry / CVV.
     ///
-    /// ## 职责边界
-    /// `CardField` 只做两件事:
-    /// 1. 持有三个 `UITextField`,在 `init` 时调用 `CardFieldSecurity.apply(...)`
-    ///    套用统一安全配置(见 `CardFieldSecurity` / security-and-pci.md §3.1)。
-    /// 2. 以 `cardInput` 暴露装配好的 `CardInput`。
+    /// ## Responsibility boundary
+    /// `CardField` does only two things:
+    /// 1. Holds three `UITextField`s and, at `init`, calls `CardFieldSecurity.apply(...)` to
+    ///    apply the unified security configuration (see `CardFieldSecurity` / security-and-pci.md §3.1).
+    /// 2. Exposes the assembled `CardInput` via `cardInput`.
     ///
-    /// 它**不加密、不校验业务规则、不记录 / 持久化**任何卡数据。加密是
-    /// `CardEncryptor` 的唯一职责(AGENTS.md §2、Global Constraints);本控件
-    /// 只在字段与返回的 `CardInput` 中临时承载明文,交给上层(Task 12 PaymentSheet)
-    /// 后应尽快丢弃。明文绝不写日志 / 持久化(§4 敏感数据边界)。
+    /// It does **not encrypt, validate business rules, or log / persist** any card data.
+    /// Encryption is the sole responsibility of `CardEncryptor` (AGENTS.md §2, Global
+    /// Constraints); this control only temporarily carries plaintext within the fields and the
+    /// returned `CardInput`, and should discard it as soon as possible after handing it to the
+    /// upper layer (Task 12 PaymentSheet). Plaintext is never written to logs / persisted
+    /// (§4, sensitive-data boundary).
     ///
-    /// ## 校验范围(最小)
-    /// `cardInput` 仅在四个字段去除首尾空白后**均非空**时返回非 `nil`;
-    /// 更严格的卡号 / 有效期校验留给后续任务 / 后端。有效期以 `MM/YY` 或 `MM/YYYY`
-    /// 形式录入,这里按 `/` 拆分为月 / 年交给 `CardInput`;拆不出时视为无效(返回 `nil`)。
+    /// ## Validation scope (minimal)
+    /// `cardInput` returns non-`nil` only when all four fields are **non-empty** after trimming
+    /// leading/trailing whitespace; stricter card-number / expiry validation is left to later
+    /// tasks / the backend. The expiry is entered in `MM/YY` or `MM/YYYY` form; here it is split
+    /// by `/` into month / year for `CardInput`; if it cannot be split, it is treated as invalid
+    /// (returns `nil`).
     ///
-    /// 仅 iOS 可用:整体以 `#if canImport(UIKit)` 限定,macOS 宿主下不编译。
-    /// 本任务为 internal;是否公开由 Task 12 决定。
+    /// iOS-only: the whole thing is gated by `#if canImport(UIKit)` and does not compile under
+    /// the macOS host. This task is internal; whether to make it public is decided by Task 12.
     final class CardField: UIView {
-        /// 卡号(PAN)输入框。
+        /// Card number (PAN) field.
         let panField = UITextField()
-        /// 有效期输入框(录入形如 `MM/YY`)。
+        /// Expiry field (entered in the form `MM/YY`).
         let expiryField = UITextField()
-        /// 安全码(CVV/CVC)输入框。
+        /// Security code (CVV/CVC) field.
         let cvvField = UITextField()
 
-        /// 竖直排列三个输入框的容器。
+        /// The container that stacks the three input fields vertically.
         private let stack = UIStackView()
 
         override init(frame: CGRect) {
@@ -42,7 +46,7 @@
             configure()
         }
 
-        /// 套用安全配置并做最简布局。
+        /// Applies the security configuration and does a minimal layout.
         private func configure() {
             CardFieldSecurity.apply(toPAN: panField, expiry: expiryField, cvv: cvvField)
 
@@ -66,11 +70,12 @@
             ])
         }
 
-        /// 当前装配出的卡明文输入;字段齐全时返回 `CardInput`,否则 `nil`。
+        /// The currently assembled card plaintext input; returns `CardInput` when the fields are complete, otherwise `nil`.
         ///
-        /// 齐全的定义(最小校验):PAN、有效期月、有效期年、CVV 去空白后均非空。
-        /// 有效期按 `/` 拆分为「月 / 年」;无法拆出两段非空值时返回 `nil`。
-        /// 返回的 `CardInput` 承载明文,调用方用后即弃,不得记录 / 持久化。
+        /// "Complete" is defined (minimal validation) as: PAN, expiry month, expiry year, and CVV
+        /// all non-empty after trimming whitespace. The expiry is split by `/` into "month / year";
+        /// returns `nil` when two non-empty segments cannot be parsed out. The returned `CardInput`
+        /// carries plaintext; the caller must discard it after use and must not log / persist it.
         var cardInput: CardInput? {
             let pan = (panField.text ?? "").trimmingCharacters(in: .whitespaces)
             let cvv = (cvvField.text ?? "").trimmingCharacters(in: .whitespaces)

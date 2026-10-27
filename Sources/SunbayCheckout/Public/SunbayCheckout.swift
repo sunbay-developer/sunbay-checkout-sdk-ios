@@ -1,41 +1,47 @@
 import Foundation
 
-/// SunbayCheckout SDK 的公共入口（product-spec §2.1）。
+/// The public entry point of the SunbayCheckout SDK (product-spec §2.1).
 ///
-/// host 以一份 `CheckoutConfiguration` 构造本对象，再交给 UI 外壳（`PaymentSheet` /
-/// `ApplePayButton`）按 `sessionId` 发起结账。
+/// The host constructs this object from a `CheckoutConfiguration`, then hands it to the UI
+/// shell (`PaymentSheet` / `ApplePayButton`) to start checkout by `sessionId`.
 ///
-/// ## 服务注入（Task 11.5）
-/// 真实支付需要一对后端能力：`PaymentService`（加载会话 / 提交 / 查询结果）与
-/// `CofService`（列已保存卡）。SDK **不**自带真实 HTTP 适配器（后端契约未定，§7/§8）；
-/// 由 host（或示例 app）通过 `init(configuration:paymentService:cofService:)` 注入自实现
-/// （mock 或真实后端适配器），即可用公共 UI 跑通端到端支付。
+/// ## Service injection (Task 11.5)
+/// Real payments require a pair of backend capabilities: `PaymentService` (load session /
+/// submit / query result) and `CofService` (list saved cards). The SDK does **not** ship a
+/// real HTTP adapter (the backend contract is undefined, §7/§8); the host (or the example
+/// app) injects its own implementations (mock or real backend adapters) via
+/// `init(configuration:paymentService:cofService:)`, which is enough to run end-to-end
+/// payments through the public UI.
 ///
-/// 朴素的 `init(configuration:)` 仍保留（源码兼容）：未注入服务时回退到共享的 fail-closed
-/// `Unconfigured*` 默认——任何调用都抛 `NETWORK_UNAVAILABLE`，绝不静默成功。
+/// The plain `init(configuration:)` is still retained (source compatibility): when no
+/// service is injected, it falls back to the shared fail-closed `Unconfigured*` defaults —
+/// any call throws `NETWORK_UNAVAILABLE` and never silently succeeds.
 ///
-/// - Note: 版本常量 `sunbayCheckoutVersion` 位于独立的 `Version.swift`，与本入口**类**
-///   同名不冲突（文件名不同，符号不同）。
+/// - Note: The version constant `sunbayCheckoutVersion` lives in a separate `Version.swift`;
+///   it does not conflict with this entry **class** of the same name (different file name,
+///   different symbol).
 ///
-/// 构造 `CheckoutController` 的工厂（`makeController`）是 **internal** 缝，供同模块内的
-/// UI 外壳按 `sessionId` 组装控制器并注入服务，不对外暴露。
+/// The factory that constructs a `CheckoutController` (`makeController`) is an **internal**
+/// seam, used by the in-module UI shell to assemble the controller by `sessionId` and inject
+/// services; it is not exposed externally.
 public final class SunbayCheckout {
-    /// host 提供的配置（只读）。
+    /// The host-provided configuration (read-only).
     public let configuration: CheckoutConfiguration
 
-    /// host 注入（或默认 fail-closed）的支付后端能力。internal：不对外暴露，供 UI 外壳 / 缝使用。
+    /// The payment backend capability injected by the host (or the fail-closed default). internal: not exposed externally, used by the UI shell / seam.
     let paymentService: any PaymentService
 
-    /// host 注入（或默认 fail-closed）的已保存卡能力。internal。
+    /// The saved-card capability injected by the host (or the fail-closed default). internal.
     let cofService: any CofService
 
-    /// 以配置创建入口（朴素 init，源码兼容）。
+    /// Creates the entry point from a configuration (plain init, source compatible).
     ///
-    /// 未注入后端服务，`makeController` 将使用共享的 fail-closed `Unconfigured*` 默认：
-    /// 任何支付调用都抛 `NETWORK_UNAVAILABLE`（不静默成功）。需要跑通真实/mock 支付时，
-    /// 改用 `init(configuration:paymentService:cofService:)`。
+    /// With no backend service injected, `makeController` uses the shared fail-closed
+    /// `Unconfigured*` defaults: any payment call throws `NETWORK_UNAVAILABLE` (never
+    /// silently succeeds). To run real/mock payments end to end, use
+    /// `init(configuration:paymentService:cofService:)` instead.
     ///
-    /// - Parameter configuration: host 配置。
+    /// - Parameter configuration: Host configuration.
     public convenience init(configuration: CheckoutConfiguration) {
         self.init(
             configuration: configuration,
@@ -44,15 +50,16 @@ public final class SunbayCheckout {
         )
     }
 
-    /// 以配置与 host 提供的后端服务创建入口（服务注入缝，Task 11.5）。
+    /// Creates the entry point from a configuration and host-provided backend services (service injection seam, Task 11.5).
     ///
-    /// host 实现 `PaymentService` / `CofService`（mock 或真实后端适配器）并由此注入；
-    /// 公共 UI（`ApplePayButton` / 后续 `PaymentSheet`）据此驱动端到端支付，无需改动 Core/UI。
+    /// The host implements `PaymentService` / `CofService` (mock or real backend adapters)
+    /// and injects them here; the public UI (`ApplePayButton` / the later `PaymentSheet`)
+    /// drives end-to-end payments through them, with no changes needed to Core/UI.
     ///
     /// - Parameters:
-    ///   - configuration: host 配置。
-    ///   - paymentService: host 提供的支付后端能力。
-    ///   - cofService: host 提供的已保存卡能力。
+    ///   - configuration: Host configuration.
+    ///   - paymentService: The payment backend capability provided by the host.
+    ///   - cofService: The saved-card capability provided by the host.
     public init(
         configuration: CheckoutConfiguration,
         paymentService: any PaymentService,
@@ -63,17 +70,18 @@ public final class SunbayCheckout {
         self.cofService = cofService
     }
 
-    // MARK: - Internal 工厂缝（供 PaymentSheet / ApplePayButton 使用）
+    // MARK: - Internal factory seam (used by PaymentSheet / ApplePayButton)
 
-    /// 用本实例持有的（注入或默认）服务组装一个 `CheckoutController`（internal DI 缝）。
+    /// Assembles a `CheckoutController` using the (injected or default) services held by this instance (internal DI seam).
     ///
-    /// 这是 UI 外壳的首选入口：服务来源对外壳透明——host 注入了就用注入的，否则用 fail-closed
-    /// 默认。本方法不触碰任何 UIKit/PassKit。
+    /// This is the preferred entry point for the UI shell: the service origin is transparent
+    /// to the shell — if the host injected services, those are used; otherwise the
+    /// fail-closed defaults are used. This method touches no UIKit/PassKit.
     ///
     /// - Parameters:
-    ///   - credentials: 内存凭证持有者。
-    ///   - actionHandler: `requiresAction` 分发器。
-    /// - Returns: 组装好的控制器。
+    ///   - credentials: In-memory credential holder.
+    ///   - actionHandler: `requiresAction` dispatcher.
+    /// - Returns: The assembled controller.
     func makeController(
         credentials: CredentialStore,
         actionHandler: any ActionHandling
@@ -86,16 +94,17 @@ public final class SunbayCheckout {
         )
     }
 
-    /// 为给定服务组装一个 `CheckoutController`（internal DI 缝，显式服务）。
+    /// Assembles a `CheckoutController` for the given services (internal DI seam, explicit services).
     ///
-    /// 依赖以协议注入，便于 mock/real 互换（product-spec 全局约束）。
+    /// Dependencies are injected via protocols, making mock/real interchangeable
+    /// (product-spec global constraint).
     ///
     /// - Parameters:
-    ///   - paymentService: 支付后端能力。
-    ///   - cofService: 已保存卡能力。
-    ///   - credentials: 内存凭证持有者。
-    ///   - actionHandler: `requiresAction` 分发器。
-    /// - Returns: 组装好的控制器。
+    ///   - paymentService: The payment backend capability.
+    ///   - cofService: The saved-card capability.
+    ///   - credentials: In-memory credential holder.
+    ///   - actionHandler: `requiresAction` dispatcher.
+    /// - Returns: The assembled controller.
     func makeController(
         paymentService: any PaymentService,
         cofService: any CofService,

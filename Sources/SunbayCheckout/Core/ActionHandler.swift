@@ -1,45 +1,45 @@
 import Foundation
 
-/// 打开 Web 认证会话的注入缝(seam)。
+/// Injection seam for opening a web authentication session.
 ///
-/// 包装系统 `ASWebAuthenticationSession`:真实实现由 Task 11
-/// (`UI/Wallet/WebAuthOpener.swift`)提供,本任务只定义协议,测试注入替身。
+/// Wraps the system `ASWebAuthenticationSession`: the real implementation is provided by Task 11
+/// (`UI/Wallet/WebAuthOpener.swift`); this task only defines the protocol, and tests inject a stand-in.
 ///
-/// 通过协议解耦使 `ActionHandler` 保持 Core 纯净(UI 无关,见 AGENTS.md §2.6):
-/// 本文件**不**导入 AuthenticationServices / UIKit。
+/// Decoupling via a protocol keeps `ActionHandler` Core-pure (UI-agnostic, see AGENTS.md §2.6):
+/// this file does **not** import AuthenticationServices / UIKit.
 protocol WebAuthOpening: Sendable {
-    /// 打开一个用于第三方 APM 跳转的支付网页(带 returnUrl 回跳)。
+    /// Opens a payment web page for a third-party APM redirect (with a returnUrl for the return trip).
     ///
-    /// - Parameter url: 后端在 `redirect` 动作中下发的跳转地址。
+    /// - Parameter url: The redirect address issued by the backend in the `redirect` action.
     func open(_ url: URL) async
 }
 
-/// `ActionHandling` 的首版具体实现:按 `PaymentAction` 类型分发(见 product-spec §4.5)。
+/// The first concrete implementation of `ActionHandling`: dispatches by `PaymentAction` type (see product-spec §4.5).
 ///
-/// 语义:
-/// - `redirect` → 通过注入的 `webAuthOpener` 打开支付页,随后返回 `.pending`
-///   (由控制器继续轮询 / 回跳确认终态)。
-/// - `qrCode` / `showContent` / `unknown` → 返回 `.failed(UNSUPPORTED_CAPABILITY)`,
-///   **不**调用 opener(不静默挂起)。
+/// Semantics:
+/// - `redirect` → opens the payment page via the injected `webAuthOpener`, then returns `.pending`
+///   (the controller continues polling / confirms the terminal state on return).
+/// - `qrCode` / `showContent` / `unknown` → returns `.failed(UNSUPPORTED_CAPABILITY)`,
+///   and does **not** call the opener (no silent hang).
 ///
-/// Core 纯净:仅依赖 `WebAuthOpening` 协议,不接触任何 UI 框架类型。
+/// Core-pure: depends only on the `WebAuthOpening` protocol and touches no UI framework types.
 struct ActionHandler: ActionHandling {
-    /// 打开 Web 认证会话的注入缝;真实实现见 Task 11。
+    /// Injection seam for opening a web authentication session; real implementation in Task 11.
     private let webAuthOpener: any WebAuthOpening
 
-    /// 创建一个动作处理器。
+    /// Creates an action handler.
     ///
-    /// - Parameter webAuthOpener: `redirect` 动作用于打开支付页的注入缝。
+    /// - Parameter webAuthOpener: The injection seam used by the `redirect` action to open the payment page.
     init(webAuthOpener: any WebAuthOpening) {
         self.webAuthOpener = webAuthOpener
     }
 
-    /// 处理一个 `requiresAction` 动作(见 `ActionHandling.handle`)。
+    /// Handles a `requiresAction` action (see `ActionHandling.handle`).
     ///
     /// - Parameters:
-    ///   - action: 后端在 `R` 状态下携带的动作。
-    ///   - sessionId: 当前会话标识(首版 `redirect` 流程不直接使用,预留用于诊断 / 回跳匹配)。
-    /// - Returns: `redirect` → `.pending`;其余 → `.failed(UNSUPPORTED_CAPABILITY)`。
+    ///   - action: The action carried by the backend in the `R` state.
+    ///   - sessionId: The current session identifier (not directly used by the first-version `redirect` flow; reserved for diagnostics / return matching).
+    /// - Returns: `redirect` → `.pending`; everything else → `.failed(UNSUPPORTED_CAPABILITY)`.
     func handle(_ action: PaymentAction, sessionId: String) async -> ActionResult {
         switch action {
         case let .redirect(url):

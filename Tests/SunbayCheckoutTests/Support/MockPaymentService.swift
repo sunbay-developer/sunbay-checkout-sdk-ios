@@ -2,39 +2,40 @@ import Foundation
 
 @testable import SunbayCheckout
 
-/// 可脚本化的 `PaymentService` 测试替身。
+/// Scriptable test double for `PaymentService`.
 ///
-/// 支持为 `loadSession` / `submit` / `getResult` 分别脚本化返回值或抛出的错误,
-/// 并记录调用次数与最近一次 `SubmitRequest`。用 `NSLock` 保护可变状态,满足 `Sendable`
-/// (actor 协调器会在隔离域外读写这些计数,必须线程安全)。
+/// Supports scripting return values or thrown errors separately for `loadSession` / `submit` / `getResult`,
+/// and records call counts and the most recent `SubmitRequest`. Guards mutable state with `NSLock` to
+/// satisfy `Sendable` (the actor coordinator reads/writes these counters outside its isolation domain, so
+/// they must be thread-safe).
 ///
-/// 另外可选地实现 `PaymentActionProviding`:当 `submit` / `getResult` 返回 `R`
-/// (requiresAction)快照时,控制器据此获取要分发给 `ActionHandling` 的 `PaymentAction`
-/// (见 CheckoutController 的 seam 注释)。
+/// Optionally also implements `PaymentActionProviding`: when `submit` / `getResult` returns an `R`
+/// (requiresAction) snapshot, the controller uses this to obtain the `PaymentAction` to dispatch to
+/// `ActionHandling` (see the seam comments in CheckoutController).
 final class MockPaymentService: PaymentService, PaymentActionProviding, @unchecked Sendable {
     private let lock = NSLock()
 
-    // MARK: - 脚本化输入
+    // MARK: - Scripted inputs
 
     private var _session: CheckoutSession?
     private var _loadError: Error?
 
-    /// `submit` 的脚本化快照序列(按调用顺序消费;耗尽后复用最后一个)。
+    /// Scripted snapshot sequence for `submit` (consumed in call order; once exhausted, the last one is reused).
     private var _submitSnapshots: [PaymentSnapshot] = []
-    /// `submit` 抛出的错误(设置后优先于快照)。
+    /// Error thrown by `submit` (when set, takes precedence over snapshots).
     private var _submitError: Error?
-    /// `submit` 返回前的人为延迟(用于并发测试)。
+    /// Artificial delay before `submit` returns (for concurrency tests).
     private var _submitDelay: Duration?
 
-    /// `getResult` 的脚本化快照序列(按调用顺序消费;耗尽后复用最后一个)。
+    /// Scripted snapshot sequence for `getResult` (consumed in call order; once exhausted, the last one is reused).
     private var _getResultSnapshots: [PaymentSnapshot] = []
-    /// `getResult` 抛出的错误。
+    /// Error thrown by `getResult`.
     private var _getResultError: Error?
 
-    /// `R` 快照对应的进一步动作(seam:供控制器查询)。
+    /// The further action corresponding to an `R` snapshot (seam: queried by the controller).
     private var _nextAction: PaymentAction?
 
-    // MARK: - 观测输出
+    // MARK: - Observed outputs
 
     private(set) var submitCallCount = 0
     private(set) var getResultCallCount = 0
@@ -43,7 +44,7 @@ final class MockPaymentService: PaymentService, PaymentActionProviding, @uncheck
 
     init() {}
 
-    // MARK: - 脚本化 API(测试线程调用)
+    // MARK: - Scripting API (called from the test thread)
 
     func stubSession(_ session: CheckoutSession) {
         lock.lock(); defer { lock.unlock() }
@@ -147,7 +148,7 @@ final class MockPaymentService: PaymentService, PaymentActionProviding, @uncheck
         return snapshot
     }
 
-    // MARK: - PaymentActionProviding(seam)
+    // MARK: - PaymentActionProviding (seam)
 
     func actionForLatestRequiresAction() -> PaymentAction? {
         lock.lock(); defer { lock.unlock() }

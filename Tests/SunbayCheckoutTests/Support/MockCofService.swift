@@ -2,10 +2,11 @@ import Foundation
 
 @testable import SunbayCheckout
 
-/// 可脚本化的 `CofService` 测试替身。
+/// Scriptable test double for `CofService`.
 ///
-/// 支持脚本化返回的已保存卡列表或抛出的错误,并记录 `listPaymentMethods` 的调用次数,
-/// 用于断言「COF 关闭时绝不调用列卡」等不变量。用 `NSLock` 保护状态以满足 `Sendable`。
+/// Supports scripting the returned saved-card list or a thrown error, and records the call count of
+/// `listPaymentMethods`, used to assert invariants such as "never list cards when COF is disabled".
+/// Guards state with `NSLock` to satisfy `Sendable`.
 final class MockCofService: CofService, @unchecked Sendable {
     private let lock = NSLock()
 

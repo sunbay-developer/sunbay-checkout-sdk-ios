@@ -1,55 +1,60 @@
 #if canImport(UIKit)
     import UIKit
 
-    /// 独立的 Apple Pay 按钮（L3，product-spec §2.3）。
+    /// A standalone Apple Pay button (L3, product-spec §2.3).
     ///
-    /// ## 定位
-    /// 长期存在的 UIKit 控件：host 把它放进自己的界面，用户点击即发起 Apple Pay。它只用 Core 的
-    /// `WalletAuthorizing` + `CheckoutController` 两个能力，**不碰卡表单、不持有业务规则**
-    /// （业务编排全在 `CheckoutController`）。事件用闭包回调（iOS 惯例、持续事件源，§2.5），
-    /// 而非一次性 async 返回。
+    /// ## Positioning
+    /// A long-lived UIKit control: the host places it in its own UI, and tapping it starts
+    /// Apple Pay. It uses only the two Core capabilities `WalletAuthorizing` +
+    /// `CheckoutController`; it **does not touch the card form and holds no business rules**
+    /// (all business orchestration lives in `CheckoutController`). Events use closure callbacks
+    /// (the iOS convention, a continuous event source, §2.5) rather than a one-shot async
+    /// return.
     ///
-    /// ## 可用性（isAvailable）
-    /// `可用 = 后端允许 ∩ 设备可用 ∩ merchant-id 已配置`：
-    /// - **设备可用**：`WalletAuthorizing.canMakePayments()`（设备相关，构造时即可知）。
-    /// - **merchant-id 已配置**：`resolveMerchantId(configured:sessionProvided:)` 非 nil
-    ///   （host 配置优先于 session 下发；构造时即可知）。
-    /// - **后端允许**：`CheckoutController` 加载 session 后，其 `methods` 是否含 `.applePay`
-    ///   （**异步**，session 加载完成后才可知）。
+    /// ## Availability (isAvailable)
+    /// `available = backend allows ∩ device capable ∩ merchant-id configured`:
+    /// - **Device capable**: `WalletAuthorizing.canMakePayments()` (device-related, known at construction).
+    /// - **merchant-id configured**: `resolveMerchantId(configured:sessionProvided:)` is non-nil
+    ///   (host configuration takes precedence over session delivery; known at construction).
+    /// - **Backend allows**: whether, after `CheckoutController` loads the session, its `methods`
+    ///   contains `.applePay` (**asynchronous**, known only after the session finishes loading).
     ///
-    /// 构造时先以「后端允许=false」给出初值；随后在后台加载 session，加载完成后重算可用性，
-    /// 若发生变化则在主线程触发 `onAvailabilityChange`。
+    /// At construction it first provides an initial value with "backend allows = false"; it then
+    /// loads the session in the background, recomputes availability once loading completes, and,
+    /// if it changed, fires `onAvailabilityChange` on the main thread.
     ///
-    /// ## 结果（onResult）
-    /// 点击 → `WalletAuthorizing.authorize(...)` 取加密钱包 token → `controller.confirmWallet(token:)`
-    /// → 后端确认终态映射为 `CheckoutOutcome` → 在主线程触发 `onResult`。钱包授权成功 ≠ 交易成功
-    /// （§3.2）：真正结论来自 `confirmWallet` 的 outcome。
+    /// ## Result (onResult)
+    /// Tap → `WalletAuthorizing.authorize(...)` to get the encrypted wallet token →
+    /// `controller.confirmWallet(token:)` → the backend-confirmed terminal state is mapped to a
+    /// `CheckoutOutcome` → `onResult` fires on the main thread. Wallet authorization success ≠
+    /// transaction success (§3.2): the real conclusion comes from `confirmWallet`'s outcome.
     ///
-    /// ## 安全（§5）
-    /// 钱包 token `Data` 只经 `authorize → confirmWallet` 这一条路径流动，**绝不**进入
-    /// `onResult`、日志或任何持久化。被取消 / 授权失败时不产生 `onResult`（保持控件可再次点击）。
+    /// ## Security (§5)
+    /// The wallet token `Data` flows only along the single path `authorize → confirmWallet`, and
+    /// **never** enters `onResult`, logs, or any persistence. On cancel / authorization failure,
+    /// no `onResult` is produced (keeping the control tappable again).
     ///
-    /// 仅 iOS 可用：整体 `#if canImport(UIKit)`；macOS 宿主下不编译。
+    /// iOS-only: the whole thing is `#if canImport(UIKit)`; it does not compile under the macOS host.
     public final class ApplePayButton: UIControl {
-        /// 按钮配色风格（跟随浅/深色方案；保持最小）。
+        /// Button color style (follows the light/dark scheme; kept minimal).
         public enum ApplePayButtonStyle: Sendable {
-            /// 跟随当前 trait（浅色→黑底、深色→白底）。
+            /// Follow the current trait (light → black background, dark → white background).
             case automatic
-            /// 固定黑底白字。
+            /// Fixed black background, white text.
             case black
-            /// 固定白底黑字（带描边）。
+            /// Fixed white background, black text (with a stroke).
             case white
         }
 
-        // MARK: - 公共事件（闭包，持续事件源，§2.5）
+        // MARK: - Public events (closures, continuous event source, §2.5)
 
-        /// 可用性发生变化时回调（在主线程）。携带最新的 `isAvailable`。
+        /// Called when availability changes (on the main thread). Carries the latest `isAvailable`.
         public var onAvailabilityChange: ((Bool) -> Void)?
 
-        /// 一次点击的支付结果回调（在主线程）。携带后端确认的 `CheckoutOutcome`。
+        /// The payment-result callback for one tap (on the main thread). Carries the backend-confirmed `CheckoutOutcome`.
         public var onResult: ((CheckoutOutcome) -> Void)?
 
-        /// 当前是否可用（见类型说明的三因素交集）。只读。
+        /// Whether it is currently available (see the three-factor intersection in the type description). Read-only.
         public private(set) var isAvailable: Bool {
             didSet {
                 guard oldValue != isAvailable else { return }
@@ -61,37 +66,40 @@
             }
         }
 
-        // MARK: - 依赖（经 internal init 注入；public init 装配真实实现）
+        // MARK: - Dependencies (injected via the internal init; the public init assembles the real implementations)
 
         private let controller: CheckoutController
         private let walletAuthorizer: any WalletAuthorizing
         private let sessionId: String
-        /// 本次支付金额；session 加载完成后以 session 金额覆盖（构造时可为占位 nil）。
+        /// The amount for this payment; overwritten with the session amount once the session finishes loading (may be a nil placeholder at construction).
         private var amount: Amount?
-        /// 已解析的 Apple Pay merchant id（host 配置优先）；nil 表示未配置 → 不可用。
+        /// The resolved Apple Pay merchant id (host configuration takes precedence); nil means not configured → not available.
         private let resolvedMerchantId: String?
 
-        /// 设备是否可用（构造时固定）。
+        /// Whether the device is capable (fixed at construction).
         private let deviceCapable: Bool
-        /// 后端是否允许 Apple Pay（session 加载后更新）。
+        /// Whether the backend allows Apple Pay (updated after the session loads).
         private var backendAllowed = false
 
-        // MARK: - 公共初始化（装配真实依赖）
+        // MARK: - Public initialization (assembles the real dependencies)
 
-        /// 以 `SunbayCheckout` 入口与会话标识构造按钮（host 使用的公共入口）。
+        /// Constructs the button from a `SunbayCheckout` entry point and a session identifier (the public entry point used by the host).
         ///
-        /// 通过 `SunbayCheckout.makeController` 缝装配真实的 `CheckoutController`
-        /// （注入真实的 `ActionHandler` + `WebAuthOpener`），并以真实的 PassKit
-        /// `WalletAuthorizer` 作为钱包能力。merchant-id 取 host 配置（优先）或 session 下发。
+        /// Assembles a real `CheckoutController` through the `SunbayCheckout.makeController`
+        /// seam (injecting a real `ActionHandler` + `WebAuthOpener`), and uses the real PassKit
+        /// `WalletAuthorizer` as the wallet capability. The merchant-id is taken from the host
+        /// configuration (preferred) or the session delivery.
         ///
         /// - Parameters:
-        ///   - checkout: SDK 公共入口（持 host 配置）。
-        ///   - sessionId: 要结账的会话标识。
-        ///   - style: 按钮配色风格;缺省 `.automatic`。
+        ///   - checkout: The SDK public entry point (holding the host configuration).
+        ///   - sessionId: The session identifier to check out.
+        ///   - style: Button color style; defaults to `.automatic`.
         ///
-        /// - Note: 控制器使用 `checkout` 实例所持有的后端服务：host 若经
-        ///   `SunbayCheckout(configuration:paymentService:cofService:)` 注入了真实/mock 服务，
-        ///   则按钮使用它们；否则回退到共享的 fail-closed `Unconfigured*` 默认（§7/§8 契约未定前）。
+        /// - Note: The controller uses the backend services held by the `checkout` instance: if
+        ///   the host injected real/mock services via
+        ///   `SunbayCheckout(configuration:paymentService:cofService:)`, the button uses them;
+        ///   otherwise it falls back to the shared fail-closed `Unconfigured*` defaults (until
+        ///   the §7/§8 contract is defined).
         public convenience init(
             checkout: SunbayCheckout,
             sessionId: String,
@@ -112,17 +120,17 @@
             )
         }
 
-        // MARK: - Internal 初始化（依赖注入缝，供单测用 mock）
+        // MARK: - Internal initialization (dependency-injection seam, for mocks in unit tests)
 
-        /// 注入依赖的 internal 初始化器（单测经此注入 mock 控制器与 mock 钱包能力）。
+        /// The internal initializer with injected dependencies (unit tests inject a mock controller and a mock wallet capability through it).
         ///
         /// - Parameters:
-        ///   - controller: 支付编排者（可由 mock 后端组装的真实 actor）。
-        ///   - walletAuthorizer: 钱包能力（设备可用性 + 授权取 token）。
-        ///   - sessionId: 会话标识。
-        ///   - configuredMerchantId: host 配置的 merchant id（可空）。
-        ///   - amount: 本次金额；缺省 nil，session 加载后以 session 金额覆盖。
-        ///   - style: 配色风格。
+        ///   - controller: The payment orchestrator (may be a real actor assembled from a mock backend).
+        ///   - walletAuthorizer: The wallet capability (device availability + authorize to get the token).
+        ///   - sessionId: The session identifier.
+        ///   - configuredMerchantId: The host-configured merchant id (may be nil).
+        ///   - amount: The amount for this payment; defaults to nil, overwritten with the session amount after the session loads.
+        ///   - style: Color style.
         init(
             controller: CheckoutController,
             walletAuthorizer: any WalletAuthorizing,
@@ -135,22 +143,22 @@
             self.walletAuthorizer = walletAuthorizer
             self.sessionId = sessionId
             self.amount = amount
-            // session 不下发 merchant id（Core 模型不含该字段）→ sessionProvided 传 nil。
+            // The session does not deliver a merchant id (the Core model has no such field) → pass nil for sessionProvided.
             self.resolvedMerchantId = resolveMerchantId(
                 configured: configuredMerchantId,
                 sessionProvided: nil
             )
             self.deviceCapable = walletAuthorizer.canMakePayments()
-            self.isAvailable = false // 后端允许未知前先不可用。
+            self.isAvailable = false // Not available before "backend allows" is known.
 
             super.init(frame: .zero)
 
             configureAppearance(style)
             addTarget(self, action: #selector(handleTap), for: .touchUpInside)
-            // 初值：后端允许尚未知 → 不可用。
+            // Initial value: "backend allows" not yet known → not available.
             isEnabled = false
 
-            // 后台加载 session,完成后重算可用性。
+            // Load the session in the background, and recompute availability once complete.
             Task { [weak self] in
                 await self?.loadSessionAndRefreshAvailability()
             }
@@ -161,12 +169,13 @@
             fatalError("init(coder:) is not supported; use init(checkout:sessionId:style:)")
         }
 
-        // MARK: - 可用性计算
+        // MARK: - Availability computation
 
-        /// 加载 session 并刷新可用性（后台）。
+        /// Loads the session and refreshes availability (in the background).
         ///
-        /// 加载成功 → `backendAllowed = methods.contains(.applePay)`，并以 session 金额覆盖
-        /// 本次支付金额;加载失败 → 保持后端允许=false（不可用）。随后重算并（变化时）回调。
+        /// On successful load → `backendAllowed = methods.contains(.applePay)`, and overwrite the
+        /// payment amount with the session amount; on failed load → keep backend allows = false
+        /// (not available). Then recompute and (when changed) call back.
         private func loadSessionAndRefreshAvailability() async {
             do {
                 let session = try await controller.start(
@@ -181,14 +190,14 @@
             recomputeAvailability()
         }
 
-        /// 以三因素交集重算 `isAvailable`（其 `didSet` 负责在变化时主线程回调）。
+        /// Recomputes `isAvailable` as the three-factor intersection (its `didSet` is responsible for the main-thread callback when it changes).
         private func recomputeAvailability() {
             isAvailable = deviceCapable && backendAllowed && (resolvedMerchantId != nil)
         }
 
-        // MARK: - 点击 → 授权 → 确认
+        // MARK: - Tap → authorize → confirm
 
-        /// 处理点击：授权取 token → `confirmWallet` → 主线程回调 `onResult`。
+        /// Handles a tap: authorize to get the token → `confirmWallet` → main-thread `onResult` callback.
         @objc private func handleTap() {
             guard isAvailable, let merchantId = resolvedMerchantId, let amount else { return }
             let authorizer = walletAuthorizer
@@ -196,23 +205,23 @@
             Task { [weak self] in
                 let outcome: CheckoutOutcome
                 do {
-                    // 钱包 token:只在 authorize → confirmWallet 间流动,绝不进 onResult/日志(§5)。
+                    // Wallet token: flows only between authorize → confirmWallet, never enters onResult/logs (§5).
                     let token = try await authorizer.authorize(
                         amount: amount,
                         merchantId: merchantId
                     )
                     outcome = await controller.confirmWallet(token: token)
                 } catch {
-                    // 授权被取消 / 失败:不产生交易结论,控件保持可再次点击。
+                    // Authorization canceled / failed: produce no transaction conclusion, the control stays tappable again.
                     return
                 }
                 self?.onMain { self?.onResult?(outcome) }
             }
         }
 
-        // MARK: - 外观
+        // MARK: - Appearance
 
-        /// 套用最小配色（跟随浅/深色方案）。不硬编码业务色;仅本控件自身视觉。
+        /// Applies the minimal color scheme (follows the light/dark scheme). Does not hardcode business colors; only this control's own visuals.
         private func configureAppearance(_ style: ApplePayButtonStyle) {
             layer.cornerRadius = 8
             let (bg, fg): (UIColor, UIColor)
@@ -224,16 +233,16 @@
                 layer.borderWidth = 1
                 layer.borderColor = UIColor.separator.cgColor
             case .automatic:
-                // 跟随 trait:深色→白底黑字,浅色→黑底白字(label/systemBackground 自动适配)。
+                // Follow the trait: dark → white background/black text, light → black background/white text (label/systemBackground adapt automatically).
                 (bg, fg) = (.label, .systemBackground)
             }
             backgroundColor = bg
             tintColor = fg
         }
 
-        // MARK: - 主线程工具
+        // MARK: - Main-thread utility
 
-        /// 在主线程执行闭包（已在主线程则同步执行，避免多余一跳）。
+        /// Executes a closure on the main thread (executes synchronously if already on the main thread, avoiding an extra hop).
         private func onMain(_ work: @escaping () -> Void) {
             if Thread.isMainThread {
                 work()

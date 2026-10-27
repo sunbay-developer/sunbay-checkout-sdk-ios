@@ -30,7 +30,11 @@ Full design: `docs/product-spec.md`. Security/PCI: `docs/security-and-pci.md`.
 
 1. **Swift only.** Follow Apple's official APIs (PassKit, Swift Concurrency, URLSession) and payment
    brand guidelines. Minimum iOS target locked after real-device verification (prototype: iOS 15).
-2. **Small, stable public API.** Internal types must not leak across the public boundary. Semantic
+2. **English only in code and docs.** All source code — comments, doc comments, identifiers,
+   string literals, test names, commit messages — and all repo docs (`README.md`, `AGENTS.md`,
+   `docs/`) are written in **English**. Chinese is allowed only in external spec/brainstorming
+   artifacts and in conversation, never inside this repository. (Technical terms stay in English.)
+3. **Small, stable public API.** Internal types must not leak across the public boundary. Semantic
    versioning; breaking changes bump major.
 3. **Card values, wallet tokens, COF secrets, and the RSA-encrypted payload must never** be written
    to logs, analytics, crash reports, or any public callback/return value.

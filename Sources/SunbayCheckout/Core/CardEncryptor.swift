@@ -1,28 +1,29 @@
 import Foundation
 import Security
 
-/// 银行卡明文输入(PAN / 有效期 / CVV)。
+/// Plaintext bank card input (PAN / expiry / CVV).
 ///
-/// 这是**唯一**承载明文卡数据的值类型,由卡输入控件(后续 UI 任务)装配,
-/// 交给 `CardEncryptor.encrypt` 本地加密。加密完成后调用方应立即丢弃该实例,
-/// 不得记录日志、持久化或回传宿主(见 security-and-pci.md §3/§4)。
+/// This is the **only** value type that carries plaintext card data; it is assembled by the card
+/// input control (a later UI task) and passed to `CardEncryptor.encrypt` for local encryption.
+/// Once encryption completes, the caller should discard this instance immediately, and must not
+/// log, persist, or send it back to the host (see security-and-pci.md §3/§4).
 struct CardInput: Sendable {
-    /// 卡号(PAN)。
+    /// Card number (PAN).
     let cardNumber: String
-    /// 有效期月份(如 `"12"`)。
+    /// Expiry month (such as `"12"`).
     let expiryMonth: String
-    /// 有效期年份(如 `"2029"`)。
+    /// Expiry year (such as `"2029"`).
     let expiryYear: String
-    /// 安全码(CVV/CVC)。
+    /// Security code (CVV/CVC).
     let cvv: String
 
-    /// 创建一份卡明文输入。
+    /// Creates a plaintext card input.
     ///
     /// - Parameters:
-    ///   - cardNumber: 卡号(PAN)。
-    ///   - expiryMonth: 有效期月份。
-    ///   - expiryYear: 有效期年份。
-    ///   - cvv: 安全码。
+    ///   - cardNumber: Card number (PAN).
+    ///   - expiryMonth: Expiry month.
+    ///   - expiryYear: Expiry year.
+    ///   - cvv: Security code.
     init(cardNumber: String, expiryMonth: String, expiryYear: String, cvv: String) {
         self.cardNumber = cardNumber
         self.expiryMonth = expiryMonth
@@ -31,57 +32,58 @@ struct CardInput: Sendable {
     }
 }
 
-/// `CardEncryptor` 的错误类型。
+/// Error type for `CardEncryptor`.
 ///
-/// 所有 case 均不携带任何卡明文或密文,仅用于区分失败原因(见 §5 零日志泄漏)。
+/// None of the cases carry any card plaintext or ciphertext; they only distinguish the failure reason (see §5 zero log leakage).
 enum CardEncryptorError: Error, Equatable {
-    /// 传入的 base64 公钥无法解码为 DER 数据。
+    /// The provided base64 public key cannot be decoded into DER data.
     case invalidBase64Key
-    /// DER 数据无法导入为 RSA 公钥(格式/长度不符)。
+    /// The DER data cannot be imported as an RSA public key (format/length mismatch).
     case invalidPublicKey
-    /// 由 payload 构造 JSON 失败。
+    /// Failed to build JSON from the payload.
     case payloadSerializationFailed
-    /// RSA 分块加密失败(底层 Security 调用返回错误)。
+    /// RSA chunked encryption failed (the underlying Security call returned an error).
     case encryptionFailed
-    /// 密钥块大小不足以容纳 PKCS#1 v1.5 开销(密钥过小)。
+    /// The key block size is too small to accommodate the PKCS#1 v1.5 overhead (key too small).
     case keyTooSmall
 }
 
-/// 银行卡数据的 RSA 本地加密边界。
+/// Local RSA encryption boundary for bank card data.
 ///
-/// 对应 product-spec §7.2:组装 `{cardNumber, expiryMonth, expiryYear, cvv, timeStamp}`
-/// 明文 JSON(`timeStamp` 为毫秒字符串,实时生成、不可缓存复用),用 session 下发的
-/// base64 RSA 公钥加密;**明文超过单个 RSA 块时分块加密,密文按序拼接后整体 base64**
-/// (复刻 web `JSEncryptLong.encryptLong`,后端据此按 blockSize 切分逐块解密)。
+/// Corresponds to product-spec §7.2: assembles the plaintext JSON `{cardNumber, expiryMonth, expiryYear, cvv, timeStamp}`
+/// (`timeStamp` is a millisecond string, generated in real time and never cached/reused), and encrypts it with the
+/// base64 RSA public key issued by the session; **when the plaintext exceeds a single RSA block it is encrypted in chunks,
+/// and the ciphertext chunks are concatenated in order and then base64-encoded as a whole**
+/// (replicating the web `JSEncryptLong.encryptLong`, from which the backend decrypts chunk by chunk per blockSize).
 ///
-/// 安全边界(security-and-pci.md §3/§4):这是全库**唯一**接触明文卡数据的单元;
-/// 明文仅存在于加密前的瞬时局部变量,加密后立即随作用域释放;绝不记录明文或密文。
+/// Security boundary (security-and-pci.md §3/§4): this is the **only** unit in the whole library that touches plaintext card data;
+/// the plaintext exists only in a transient local variable before encryption, and is released with its scope immediately after encryption; plaintext and ciphertext are never logged.
 ///
-/// - Note: 公钥导入格式约定为 **PKCS#1 DER**(`RSAPublicKey`),即 `SecKeyCopyExternalRepresentation`
-///   对 RSA 公钥的原生表示,base64 后传入;本类以同一格式经 `SecKeyCreateWithData`
-///   (`kSecAttrKeyTypeRSA` + `kSecAttrKeyClassPublic`)导入。若后端下发的是 X.509
-///   `SubjectPublicKeyInfo`(PEM `PUBLIC KEY`)包装,需先剥离 SPKI 头部再传入——这是
-///   与后端对齐的点(§8.1)。
+/// - Note: The public key import format is defined as **PKCS#1 DER** (`RSAPublicKey`), i.e. the native representation of
+///   `SecKeyCopyExternalRepresentation` for an RSA public key, base64-encoded and passed in; this type imports it in the same
+///   format via `SecKeyCreateWithData` (`kSecAttrKeyTypeRSA` + `kSecAttrKeyClassPublic`). If the backend issues an X.509
+///   `SubjectPublicKeyInfo` (PEM `PUBLIC KEY`) wrapper, the SPKI header must be stripped before passing it in — this is a
+///   point to align with the backend (§8.1).
 enum CardEncryptor {
-    /// RSA 算法/padding 选择。
+    /// RSA algorithm/padding choice.
     ///
-    /// product-spec §8 D6:padding 必须与后端解密一致。隔离为单一常量,后端确认后改此一行即可。
-    /// web 侧 JSEncrypt 默认 PKCS#1 v1.5,故首版对齐 `.rsaEncryptionPKCS1`。
+    /// product-spec §8 D6: the padding must match the backend decryption. Isolated as a single constant, so once the backend confirms, only this one line changes.
+    /// The web-side JSEncrypt defaults to PKCS#1 v1.5, so the first version aligns with `.rsaEncryptionPKCS1`.
     private static let rsaAlgorithm: SecKeyAlgorithm = .rsaEncryptionPKCS1
 
-    /// PKCS#1 v1.5 加密的固定开销(字节)。
+    /// The fixed overhead (bytes) of PKCS#1 v1.5 encryption.
     ///
-    /// 单块最大明文长度 = 密钥块大小 − 11。超出即分块。
+    /// Max plaintext length per block = key block size − 11. Chunk if it exceeds this.
     private static let pkcs1Overhead = 11
 
-    /// 本地加密一份卡数据,返回可作为 `cardEncryptedData` 提交的 base64 密文。
+    /// Locally encrypts card data and returns the base64 ciphertext submittable as `cardEncryptedData`.
     ///
     /// - Parameters:
-    ///   - card: 卡明文输入。
-    ///   - rsaPublicKeyBase64: session 下发的 base64 RSA 公钥(PKCS#1 DER,见类型注释)。
-    ///   - now: 时间源,用于生成毫秒时间戳;默认 `Date.init`。注入便于测试。
-    /// - Returns: 分块密文按序拼接后整体 base64 的字符串。
-    /// - Throws: `CardEncryptorError`——无效公钥或加密失败时抛出,绝不返回伪造字符串。
+    ///   - card: Plaintext card input.
+    ///   - rsaPublicKeyBase64: The base64 RSA public key issued by the session (PKCS#1 DER, see the type comment).
+    ///   - now: Time source, used to generate the millisecond timestamp; defaults to `Date.init`. Injected for testability.
+    /// - Returns: A string of the chunked ciphertext concatenated in order and base64-encoded as a whole.
+    /// - Throws: `CardEncryptorError` — thrown on an invalid public key or encryption failure; never returns a fabricated string.
     static func encrypt(
         _ card: CardInput,
         rsaPublicKeyBase64: String,
@@ -89,7 +91,7 @@ enum CardEncryptor {
     ) throws -> String {
         let publicKey = try importPublicKey(base64: rsaPublicKeyBase64)
 
-        // 1. 组装明文 JSON(timeStamp 为毫秒字符串,实时生成)。
+        // 1. Assemble the plaintext JSON (timeStamp is a millisecond string, generated in real time).
         let timeStamp = String(Int64(now().timeIntervalSince1970 * 1000))
         let payload: [String: String] = [
             "cardNumber": card.cardNumber,
@@ -104,16 +106,16 @@ enum CardEncryptor {
             throw CardEncryptorError.payloadSerializationFailed
         }
 
-        // 2. 依据密钥块大小分块加密并拼接(复刻 encryptLong)。
+        // 2. Encrypt in chunks per the key block size and concatenate (replicating encryptLong).
         let ciphertext = try encryptChunked(plaintext, with: publicKey)
 
-        // 3. 整体 base64。
+        // 3. Base64-encode as a whole.
         return ciphertext.base64EncodedString()
     }
 
     // MARK: - Private
 
-    /// 导入 base64 PKCS#1 DER 公钥为 `SecKey`。
+    /// Imports a base64 PKCS#1 DER public key as a `SecKey`.
     private static func importPublicKey(base64: String) throws -> SecKey {
         guard let der = Data(base64Encoded: base64) else {
             throw CardEncryptorError.invalidBase64Key
@@ -125,17 +127,17 @@ enum CardEncryptor {
         var error: Unmanaged<CFError>?
         guard let key = SecKeyCreateWithData(der as CFData, attributes as CFDictionary, &error)
         else {
-            // 不透传底层 error 细节,避免潜在敏感信息进入上层日志。
+            // Do not pass through the underlying error details, to avoid potentially sensitive information reaching upper-layer logs.
             error?.release()
             throw CardEncryptorError.invalidPublicKey
         }
         return key
     }
 
-    /// 按密钥块大小对明文分块,逐块 RSA 加密后拼接成单个 `Data`。
+    /// Chunks the plaintext per the key block size, RSA-encrypts each chunk, and concatenates them into a single `Data`.
     ///
-    /// 单块可容纳的最大明文 = `SecKeyGetBlockSize(key) - 11`(PKCS#1 v1.5 开销)。
-    /// 每个密文块长度恒为块大小,拼接结果长度 = 块数 × 块大小,后端可据此精确切分还原。
+    /// The max plaintext a single block can hold = `SecKeyGetBlockSize(key) - 11` (PKCS#1 v1.5 overhead).
+    /// Each ciphertext block is always exactly the block size long, so the concatenated length = number of chunks × block size, from which the backend can split and restore precisely.
     private static func encryptChunked(_ plaintext: Data, with key: SecKey) throws -> Data {
         let blockSize = SecKeyGetBlockSize(key)
         let maxChunk = blockSize - pkcs1Overhead

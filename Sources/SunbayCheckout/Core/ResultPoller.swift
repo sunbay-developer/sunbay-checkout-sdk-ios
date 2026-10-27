@@ -1,69 +1,69 @@
 import Foundation
 
-/// 轮询参数(product-spec §4.4,可配置,后端 ready 后微调)。
+/// Polling parameters (product-spec §4.4, configurable, to be fine-tuned once the backend is ready).
 ///
-/// 时长单位用 `TimeInterval`(秒,`Double`)而非 `Duration`:`Duration` 需 iOS 16+,
-/// 而本 SDK 最低目标为 iOS 15(见 implementation-plan Global Constraints),故统一用秒。
+/// Durations use `TimeInterval` (seconds, `Double`) rather than `Duration`: `Duration` requires iOS 16+,
+/// while this SDK targets a minimum of iOS 15 (see implementation-plan Global Constraints), so seconds are used throughout.
 ///
-/// - `initial`:首个退避间隔(秒)。
-/// - `max`:退避封顶(秒);指数翻倍不超过此值。
-/// - `overallLimit`:累计耗时上限(秒);达上限且仍非终态 → 返回最新非终态快照
-///   (控制器据此映射 `.unknown`,§4.3「达上限 → unknown」)。
+/// - `initial`: The first backoff interval (seconds).
+/// - `max`: The backoff cap (seconds); exponential doubling does not exceed this value.
+/// - `overallLimit`: The cumulative elapsed-time limit (seconds); once reached and still non-terminal → return the latest non-terminal snapshot
+///   (the controller maps this to `.unknown`, §4.3 "reach the limit → unknown").
 ///
-/// 默认 `initial = 1s`、`max = 5s`、`overallLimit = 90s`(§4.4:初始 1s → 退避至最大 5s;总上限 ~90s)。
+/// Defaults: `initial = 1s`, `max = 5s`, `overallLimit = 90s` (§4.4: initial 1s → back off to a max of 5s; overall limit ~90s).
 struct PollConfig: Sendable, Equatable {
-    /// 首个退避间隔(秒)。
+    /// The first backoff interval (seconds).
     var initial: TimeInterval
-    /// 退避封顶(秒)。
+    /// The backoff cap (seconds).
     var max: TimeInterval
-    /// 累计耗时上限(秒)。
+    /// The cumulative elapsed-time limit (seconds).
     var overallLimit: TimeInterval
 
-    /// 创建轮询参数。
+    /// Creates polling parameters.
     ///
     /// - Parameters:
-    ///   - initial: 首个退避间隔(秒)。
-    ///   - max: 退避封顶(秒)。
-    ///   - overallLimit: 累计耗时上限(秒)。
+    ///   - initial: The first backoff interval (seconds).
+    ///   - max: The backoff cap (seconds).
+    ///   - overallLimit: The cumulative elapsed-time limit (seconds).
     init(initial: TimeInterval, max: TimeInterval, overallLimit: TimeInterval) {
         self.initial = initial
         self.max = max
         self.overallLimit = overallLimit
     }
 
-    /// §4.4 默认参数:初始 1s → 封顶 5s;总上限 90s。
+    /// §4.4 default parameters: initial 1s → cap 5s; overall limit 90s.
     static let `default` = PollConfig(initial: 1, max: 5, overallLimit: 90)
 }
 
-/// 结果轮询器(§4.4 / §4.3)。
+/// Result poller (§4.4 / §4.3).
 ///
-/// 反复调用 `service.getResult(sessionId:)`:
-/// - 命中终态(`.succeeded` / `.failed`)→ **立即**返回该快照;
-/// - 非终态(`.initial` / `.requiresAction`)→ 以**指数退避**(自 `initial` 起翻倍,封顶 `max`)等待,
-///   直到累计耗时达到 `overallLimit`,然后返回**最新非终态快照**(控制器据此 → `.unknown`)。
+/// Repeatedly calls `service.getResult(sessionId:)`:
+/// - Hits a terminal state (`.succeeded` / `.failed`) → returns that snapshot **immediately**;
+/// - Non-terminal (`.initial` / `.requiresAction`) → waits with **exponential backoff** (doubling from `initial`, capped at `max`),
+///   until the cumulative elapsed time reaches `overallLimit`, then returns the **latest non-terminal snapshot** (the controller maps this → `.unknown`).
 ///
-/// ## 确定性测试缝(seam)
-/// 等待通过注入的 `sleep` 闭包完成(入参为秒)。生产默认用 `Task.sleep(nanoseconds:)`;测试注入
-/// 「零等待 + 记录时长」的替身,使测试快速、确定,并可断言请求的退避阶梯。
+/// ## Deterministic test seam
+/// The wait is performed via an injected `sleep` closure (argument in seconds). Production defaults to `Task.sleep(nanoseconds:)`;
+/// tests inject a "zero-wait + records duration" stand-in, making tests fast and deterministic and allowing assertions on the requested backoff ladder.
 ///
-/// ## `getResult` 抛错的处理(已决策并记录)
-/// 瞬时 `getResult` 错误**不**中止轮询:按一次非终态步进处理(退避后重试),直到达上限;
-/// 达上限时返回**目前为止观测到的最新非终态快照**。若从未成功拿到任何快照(例如 getResult 一直抛错),
-/// 则兜底返回一个 `.initial` 快照(非终态),由控制器映射为 `.unknown`——**绝不崩溃**,也**绝不**把瞬时
-/// 网络抖动当作支付失败。
+/// ## Handling of `getResult` throwing (decided and recorded)
+/// A transient `getResult` error does **not** abort polling: it is treated as one non-terminal step (retry after backoff), until the limit is reached;
+/// upon reaching the limit it returns the **latest non-terminal snapshot observed so far**. If no snapshot was ever successfully obtained (e.g. getResult keeps throwing),
+/// it falls back to returning an `.initial` snapshot (non-terminal), which the controller maps to `.unknown` — it **never crashes**, and **never** treats a transient
+/// network hiccup as a payment failure.
 ///
-/// `actor` 隔离;不 import 任何 UIKit/PassKit(Core UI 无关)。
+/// `actor`-isolated; imports no UIKit/PassKit (Core is UI-agnostic).
 actor ResultPoller {
     private let service: any PaymentService
     private let config: PollConfig
     private let sleep: @Sendable (TimeInterval) async throws -> Void
 
-    /// 创建结果轮询器。
+    /// Creates a result poller.
     ///
     /// - Parameters:
-    ///   - service: 支付后端能力(用于 `getResult`)。
-    ///   - config: 轮询参数,默认 `.default`。
-    ///   - sleep: 等待实现(注入缝,入参为秒),默认 `Task.sleep(nanoseconds:)`。
+    ///   - service: The backend payment capability (used for `getResult`).
+    ///   - config: Polling parameters, defaults to `.default`.
+    ///   - sleep: The wait implementation (injection seam, argument in seconds), defaults to `Task.sleep(nanoseconds:)`.
     init(
         service: any PaymentService,
         config: PollConfig = .default,
@@ -76,18 +76,18 @@ actor ResultPoller {
         self.sleep = sleep
     }
 
-    /// 轮询至终态或上限。
+    /// Polls until a terminal state or the limit.
     ///
-    /// - Parameter sessionId: 会话标识。
-    /// - Returns: 终态快照(`.succeeded` / `.failed`),或达上限时的最新非终态快照。
+    /// - Parameter sessionId: Session identifier.
+    /// - Returns: A terminal snapshot (`.succeeded` / `.failed`), or the latest non-terminal snapshot when the limit is reached.
     func pollUntilTerminal(sessionId: String) async -> PaymentSnapshot {
-        // 目前为止观测到的最新非终态快照;从未成功查询时兜底为 .initial。
+        // The latest non-terminal snapshot observed so far; falls back to .initial when no query has ever succeeded.
         var latestNonTerminal = PaymentSnapshot(sessionId: sessionId, status: .initial, txnId: nil)
         var elapsed: TimeInterval = 0
         var backoff = config.initial
 
         while true {
-            // 1) 查询一次结果;瞬时错误不中止,按非终态步进处理。
+            // 1) Query the result once; a transient error does not abort, it is treated as one non-terminal step.
             if let snapshot = try? await service.getResult(sessionId: sessionId) {
                 if isTerminal(snapshot.status) {
                     return snapshot
@@ -95,21 +95,21 @@ actor ResultPoller {
                 latestNonTerminal = snapshot
             }
 
-            // 2) 若再退避一次就会越过上限,则停止并返回最新非终态快照。
+            // 2) If one more backoff would exceed the limit, stop and return the latest non-terminal snapshot.
             if elapsed + backoff > config.overallLimit {
                 return latestNonTerminal
             }
 
-            // 3) 退避等待(注入 sleep);等待本身出错不致命,按步进继续。
+            // 3) Backoff wait (injected sleep); an error in the wait itself is not fatal, continue stepping.
             try? await sleep(backoff)
             elapsed += backoff
 
-            // 4) 指数退避:翻倍并封顶 max。
+            // 4) Exponential backoff: double and cap at max.
             backoff = Swift.min(backoff * 2, config.max)
         }
     }
 
-    /// 终态判定:`S` / `F` 为终态;`I` / `R` 非终态。
+    /// Terminal-state check: `S` / `F` are terminal; `I` / `R` are non-terminal.
     private func isTerminal(_ status: TxnStatus) -> Bool {
         switch status {
         case .succeeded, .failed:

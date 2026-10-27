@@ -1,47 +1,52 @@
 #if canImport(UIKit)
     import UIKit
 
-    /// `PaymentSheet` 的内部渲染层（product-spec §2.2）。
+    /// The internal rendering layer of `PaymentSheet` (product-spec §2.2).
     ///
-    /// ## 职责边界
-    /// 一个最小但真实的模态 `UIViewController`，按已加载 session 与（COF 判定后）已列出的 saved cards
-    /// 渲染可用支付方式，并把用户选择经 `onAction` 回报给 `PaymentSheet`：
-    /// - **已保存卡列表**（当 `savedCards` 非空）：每张一行，点击 → `.confirmSavedCard(paymentMethodId:)`。
-    /// - **新卡表单**（`CardField`，Task 10）+ 一个「保存此卡」开关：点击「支付」→
-    ///   `.confirmNewCard(cardInput, save: toggle.isOn)`（开关驱动 save + consent）。
-    /// - **Apple Pay 选项**（当 session `.methods` 含 `.applePay`）：此处仅渲染入口；真实钱包授权
-    ///   由 L3 `ApplePayButton` 承担，本页的 Apple Pay 行回报 `.cancel` 占位（示例 app/Task 13 接线真实授权）。
-    /// - **取消**：导航栏取消按钮 → `.cancel`。
+    /// ## Responsibility boundary
+    /// A minimal but real modal `UIViewController` that renders the available payment methods
+    /// from the loaded session and the (after the COF decision) listed saved cards, and reports
+    /// the user's selection back to `PaymentSheet` via `onAction`:
+    /// - **Saved-card list** (when `savedCards` is non-empty): one row each, tap →
+    ///   `.confirmSavedCard(paymentMethodId:)`.
+    /// - **New-card form** (`CardField`, Task 10) + a "save this card" toggle: tap "Pay" →
+    ///   `.confirmNewCard(cardInput, save: toggle.isOn)` (the toggle drives save + consent).
+    /// - **Apple Pay option** (when the session `.methods` contains `.applePay`): here it only
+    ///   renders the entry point; the real wallet authorization is handled by L3
+    ///   `ApplePayButton`, and this page's Apple Pay row reports `.cancel` as a placeholder (the
+    ///   example app / Task 13 wires up the real authorization).
+    /// - **Cancel**: the navigation-bar cancel button → `.cancel`.
     ///
-    /// 本 VC **不持业务规则、不加密、不记录/持久化**任何卡数据：`CardField.cardInput` 承载的明文只
-    /// 原样转交 `PaymentSheet`（再由 `CheckoutController.confirmNewCard` 内 `CardEncryptor` 加密），
-    /// 用后即弃（§5 / AGENTS.md §2）。
+    /// This VC **holds no business rules, does not encrypt, and does not log/persist** any card
+    /// data: the plaintext carried by `CardField.cardInput` is only forwarded as-is to
+    /// `PaymentSheet` (and then encrypted by `CardEncryptor` inside
+    /// `CheckoutController.confirmNewCard`), and discarded after use (§5 / AGENTS.md §2).
     ///
-    /// internal：不对外暴露；完整 UI 由示例 app（Task 13）验证。仅 iOS 可用（`#if canImport(UIKit)`）。
+    /// internal: not exposed externally; the full UI is verified by the example app (Task 13). iOS-only (`#if canImport(UIKit)`).
     final class PaymentSheetViewController: UIViewController {
-        /// 用户完成一次选择时回调（在主线程）。携带 `PaymentSheet.UserAction`。恰好调用一次。
+        /// Called when the user completes one selection (on the main thread). Carries a `PaymentSheet.UserAction`. Called exactly once.
         var onAction: ((PaymentSheet.UserAction) -> Void)?
 
-        // MARK: - 渲染输入
+        // MARK: - Rendering inputs
 
         private let session: CheckoutSession
         private let savedCards: [SavedCard]
 
-        // MARK: - 子视图
+        // MARK: - Subviews
 
         private let scrollView = UIScrollView()
         private let contentStack = UIStackView()
         private let cardField = CardField()
         private let saveCardSwitch = UISwitch()
 
-        /// 防重入：onAction 只触发一次（终态由 PaymentSheet 收起本页）。
+        /// Reentrancy guard: onAction fires only once (the terminal state dismisses this page from PaymentSheet).
         private var didReportAction = false
 
-        /// 创建支付页 VC。
+        /// Creates the payment page VC.
         ///
         /// - Parameters:
-        ///   - session: 已加载并校验未过期的会话（用于渲染商户/金额/可用方式）。
-        ///   - savedCards: 已列出的已保存卡（COF 不可用时为空）。
+        ///   - session: The loaded session, validated as not expired (used to render merchant/amount/available methods).
+        ///   - savedCards: The listed saved cards (empty when COF is unavailable).
         init(session: CheckoutSession, savedCards: [SavedCard]) {
             self.session = session
             self.savedCards = savedCards
@@ -55,20 +60,20 @@
 
         override func viewDidLoad() {
             super.viewDidLoad()
-            // 语义主题色：跟随浅/深色方案，不硬编码固定色（AGENTS.md §5.4 同理）。
+            // Semantic theme color: follows the light/dark scheme, does not hardcode a fixed color (same principle as AGENTS.md §5.4).
             view.backgroundColor = .systemBackground
             buildLayout()
         }
 
-        // MARK: - 布局
+        // MARK: - Layout
 
         private func buildLayout() {
-            // 取消入口（顶部）。
+            // Cancel entry point (top).
             let cancelButton = UIButton(type: .system)
             cancelButton.setTitle("Cancel", for: .normal)
             cancelButton.addTarget(self, action: #selector(handleCancel), for: .touchUpInside)
 
-            // 商户 / 金额抬头。
+            // Merchant / amount header.
             let title = UILabel()
             title.text = session.merchantName
             title.font = .preferredFont(forTextStyle: .headline)
@@ -96,7 +101,7 @@
             contentStack.addArrangedSubview(cancelButton)
             contentStack.addArrangedSubview(title)
 
-            // 已保存卡列表（COF；仅当有卡）。
+            // Saved-card list (COF; only when there are cards).
             if !savedCards.isEmpty {
                 let header = sectionLabel("Saved cards")
                 contentStack.addArrangedSubview(header)
@@ -106,12 +111,12 @@
                 contentStack.addArrangedSubview(separator())
             }
 
-            // 新卡表单。
+            // New-card form.
             contentStack.addArrangedSubview(sectionLabel("New card"))
             cardField.translatesAutoresizingMaskIntoConstraints = false
             contentStack.addArrangedSubview(cardField)
 
-            // 「保存此卡」开关（驱动 save + consent）。
+            // "Save this card" toggle (drives save + consent).
             let saveRow = UIStackView()
             saveRow.axis = .horizontal
             saveRow.spacing = 8
@@ -122,13 +127,13 @@
             saveRow.addArrangedSubview(saveCardSwitch)
             contentStack.addArrangedSubview(saveRow)
 
-            // 新卡「支付」按钮。
+            // The new-card "Pay" button.
             let payButton = UIButton(type: .system)
             payButton.setTitle("Pay", for: .normal)
             payButton.addTarget(self, action: #selector(handlePayNewCard), for: .touchUpInside)
             contentStack.addArrangedSubview(payButton)
 
-            // Apple Pay 选项（当后端允许）。真实授权由 L3 ApplePayButton 承担（见类型说明）。
+            // Apple Pay option (when the backend allows). Real authorization is handled by L3 ApplePayButton (see the type description).
             if session.methods.contains(.applePay) {
                 contentStack.addArrangedSubview(separator())
                 let applePayButton = UIButton(type: .system)
@@ -153,7 +158,7 @@
             return line
         }
 
-        /// 构造一行已保存卡（点击 → confirmSavedCard）。用 tag 携带下标以定位卡。
+        /// Constructs one saved-card row (tap → confirmSavedCard). Uses the tag to carry the index to locate the card.
         private func savedCardRow(_ card: SavedCard) -> UIButton {
             let button = UIButton(type: .system)
             button.contentHorizontalAlignment = .leading
@@ -165,7 +170,7 @@
             return button
         }
 
-        // MARK: - 动作
+        // MARK: - Actions
 
         @objc private func handleCancel() {
             report(.cancel)
@@ -177,18 +182,18 @@
         }
 
         @objc private func handlePayNewCard() {
-            // 字段不齐全 → 不发起（最小校验由 CardField 承担）；保持页面可继续编辑。
+            // Fields incomplete → do not start (minimal validation is handled by CardField); keep the page editable.
             guard let input = cardField.cardInput else { return }
             report(.confirmNewCard(input, save: saveCardSwitch.isOn))
         }
 
         @objc private func handleApplePay() {
-            // 本页只渲染入口；真实 PassKit 授权由 L3 ApplePayButton 承担。占位回报 cancel，
-            // 示例 app（Task 13）接线真实授权后改为 .confirmWallet(token:)。
+            // This page only renders the entry point; real PassKit authorization is handled by L3 ApplePayButton. Reports cancel as a placeholder,
+            // and the example app (Task 13) changes it to .confirmWallet(token:) after wiring up the real authorization.
             report(.cancel)
         }
 
-        /// 回报一次用户动作（只触发一次）。
+        /// Reports one user action (fires only once).
         private func report(_ action: PaymentSheet.UserAction) {
             guard !didReportAction else { return }
             didReportAction = true

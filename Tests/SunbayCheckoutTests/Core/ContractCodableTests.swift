@@ -31,7 +31,7 @@ final class ContractCodableTests: XCTestCase {
         XCTAssertEqual(session.merchantName, "Acme Store")
         XCTAssertEqual(session.rsaPublicKey, "MIIBIjANBgkqh-base64-key")
         XCTAssertTrue(session.cofEnabled)
-        // VISA/CARD -> .card, APPLE_PAY -> .applePay; GOOGLE_PAY 未知 -> 忽略。
+        // VISA/CARD -> .card, APPLE_PAY -> .applePay; GOOGLE_PAY unknown -> ignored.
         XCTAssertTrue(session.methods.contains(.card))
         XCTAssertTrue(session.methods.contains(.applePay))
         XCTAssertFalse(session.methods.contains(.savedCard))

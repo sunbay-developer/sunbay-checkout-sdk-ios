@@ -1,48 +1,48 @@
 import Foundation
 
-/// 结账 UI 的外观配置。
+/// Appearance configuration for the checkout UI.
 ///
-/// 该类型是公共 API 的一部分。首个版本仅定义并存储这些字段，**不消费**它们
-/// （无任何行为）；全部字段均可选。
+/// This type is part of the public API. The first version only defines and stores these
+/// fields; it does **not** consume them (no behavior). All fields are optional.
 public struct Appearance: Sendable, Equatable {
-    /// 配色模式。
+    /// Color scheme.
     public enum ColorScheme: String, Sendable {
-        /// 浅色。
+        /// Light.
         case light
-        /// 深色。
+        /// Dark.
         case dark
-        /// 跟随系统。
+        /// Follow the system.
         case auto
     }
 
-    /// 主色。
+    /// Primary color.
     public let colorPrimary: String?
-    /// 背景色。
+    /// Background color.
     public let colorBackground: String?
-    /// 文本色。
+    /// Text color.
     public let colorText: String?
-    /// 边框色。
+    /// Border color.
     public let colorBorder: String?
-    /// 危险 / 错误色。
+    /// Danger / error color.
     public let colorDanger: String?
-    /// 圆角半径。
+    /// Border radius.
     public let borderRadius: String?
-    /// 字体族。
+    /// Font family.
     public let fontFamily: String?
-    /// 配色模式。
+    /// Color scheme.
     public let colorScheme: ColorScheme?
 
-    /// 创建一个外观配置；全部参数默认为 nil。
+    /// Creates an appearance configuration; all parameters default to nil.
     ///
     /// - Parameters:
-    ///   - colorPrimary: 主色。
-    ///   - colorBackground: 背景色。
-    ///   - colorText: 文本色。
-    ///   - colorBorder: 边框色。
-    ///   - colorDanger: 危险 / 错误色。
-    ///   - borderRadius: 圆角半径。
-    ///   - fontFamily: 字体族。
-    ///   - colorScheme: 配色模式。
+    ///   - colorPrimary: Primary color.
+    ///   - colorBackground: Background color.
+    ///   - colorText: Text color.
+    ///   - colorBorder: Border color.
+    ///   - colorDanger: Danger / error color.
+    ///   - borderRadius: Border radius.
+    ///   - fontFamily: Font family.
+    ///   - colorScheme: Color scheme.
     public init(
         colorPrimary: String? = nil,
         colorBackground: String? = nil,

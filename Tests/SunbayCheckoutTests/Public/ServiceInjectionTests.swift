@@ -3,13 +3,13 @@ import XCTest
 
 @testable import SunbayCheckout
 
-/// 公共服务注入缝（Task 11.5）的测试（纯逻辑，macOS host 可直接运行，无 UIKit 依赖）。
+/// Tests for the public service injection seam (Task 11.5) (pure logic, runs directly on the macOS host, no UIKit dependency).
 ///
-/// 覆盖两条路径：
-/// 1. `SunbayCheckout(configuration:paymentService:cofService:)` 注入的 host 服务，
-///    确实被 `makeController` 组装进 `CheckoutController` 并驱动到已知结果。
-/// 2. 朴素的 `SunbayCheckout(configuration:)` 仍可构造，其控制器 fail-closed：
-///    confirm 失败且错误码为 `NETWORK_UNAVAILABLE`（Unconfigured 默认服务）。
+/// Covers two paths:
+/// 1. The host services injected via `SunbayCheckout(configuration:paymentService:cofService:)` are
+///    actually assembled into `CheckoutController` by `makeController` and drive to a known result.
+/// 2. The plain `SunbayCheckout(configuration:)` can still be constructed, and its controller fails closed:
+///    confirm fails with error code `NETWORK_UNAVAILABLE` (the Unconfigured default services).
 final class ServiceInjectionTests: XCTestCase {
     private func makeConfig() -> CheckoutConfiguration {
         CheckoutConfiguration(environment: .test)
@@ -30,7 +30,7 @@ final class ServiceInjectionTests: XCTestCase {
         )
     }
 
-    // MARK: - 1. 注入的服务被 makeController 使用并驱动到已知结果
+    // MARK: - 1. The injected services are used by makeController and drive to a known result
 
     func test_injectedServices_areUsedByController_drivingToSucceeded() async throws {
         let payment = MockPaymentService()
@@ -44,7 +44,7 @@ final class ServiceInjectionTests: XCTestCase {
             cofService: cof
         )
 
-        // 经内部缝用「已注入的服务」组装控制器。
+        // Assemble the controller with the "injected services" via the internal seam.
         let controller = checkout.makeController(
             credentials: CredentialStore(),
             actionHandler: StubActionHandler()
@@ -54,14 +54,14 @@ final class ServiceInjectionTests: XCTestCase {
         let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
 
         guard case .succeeded(let txnId) = outcome else {
-            return XCTFail("注入的 MockPaymentService 应驱动到 .succeeded，实际为 \(outcome)")
+            return XCTFail("the injected MockPaymentService should drive to .succeeded, got \(outcome)")
         }
         XCTAssertEqual(txnId, "txn_ok")
-        XCTAssertEqual(payment.submitCallCount, 1, "应经由注入的 payment service 提交一次")
-        XCTAssertEqual(payment.loadSessionCallCount, 1, "应经由注入的 payment service 加载一次会话")
+        XCTAssertEqual(payment.submitCallCount, 1, "should submit once via the injected payment service")
+        XCTAssertEqual(payment.loadSessionCallCount, 1, "should load the session once via the injected payment service")
     }
 
-    // MARK: - 2. 朴素 init 仍构造，其控制器 fail-closed（NETWORK_UNAVAILABLE）
+    // MARK: - 2. The plain init still constructs, and its controller fails closed (NETWORK_UNAVAILABLE)
 
     func test_plainInit_controllerFailsClosed_withNetworkUnavailable() async throws {
         let checkout = SunbayCheckout(configuration: makeConfig())
@@ -71,10 +71,10 @@ final class ServiceInjectionTests: XCTestCase {
             actionHandler: StubActionHandler()
         )
 
-        // 朴素 init 下，loadSession 直接抛 NETWORK_UNAVAILABLE（Unconfigured 默认）。
+        // Under the plain init, loadSession throws NETWORK_UNAVAILABLE directly (the Unconfigured default).
         do {
             _ = try await controller.start(sessionId: "sess_x", customerAccessSecret: nil)
-            XCTFail("未配置默认服务应在加载会话时 fail-closed")
+            XCTFail("unconfigured default services should fail closed when loading the session")
         } catch let error as CheckoutError {
             XCTAssertEqual(error.code, "NETWORK_UNAVAILABLE")
         }

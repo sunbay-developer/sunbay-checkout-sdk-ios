@@ -1,26 +1,26 @@
 import Foundation
 
-/// 查询结果解码产物:快照 + 可选的进一步动作。
+/// The decoding product of a result query: a snapshot plus an optional further action.
 ///
-/// `PaymentSnapshot` 保持 Task 2 定义不变(不加字段);`action` 在 `txnStatus == "R"` 时解析,
-/// 供 Task 6/8 按类型分发(见 §4.5)。
+/// `PaymentSnapshot` keeps the Task 2 definition unchanged (no added fields); `action` is parsed when `txnStatus == "R"`,
+/// for Task 6/8 to dispatch by type (see §4.5).
 struct ResultEnvelope: Sendable, Equatable {
-    /// 结果快照。
+    /// The result snapshot.
     let snapshot: PaymentSnapshot
-    /// 进一步动作;非 `requiresAction` 或无 `action` 时为 nil。
+    /// The further action; nil when not `requiresAction` or when there is no `action`.
     let action: PaymentAction?
 }
 
-/// 后端契约 JSON → Core 模型的解码助手(内部)。
+/// Decoding helper (internal) from backend contract JSON to Core models.
 ///
-/// 把 product-spec §7.1 的会话 JSON 与 §7.4 的结果 JSON 映射为 `CheckoutSession` /
-/// `PaymentSnapshot` / `PaymentAction`。对未知的支付方式与动作类型降级处理,不崩溃。
+/// Maps the session JSON of product-spec §7.1 and the result JSON of §7.4 to `CheckoutSession` /
+/// `PaymentSnapshot` / `PaymentAction`. Downgrades unknown payment methods and action types without crashing.
 ///
-/// - Note: 此处为纯解码逻辑,不触碰网络;真实适配器负责把响应体喂给这些函数。
+/// - Note: This is pure decoding logic and does not touch the network; the real adapter is responsible for feeding the response body to these functions.
 enum ContractDecoding {
-    // MARK: - Session(§7.1)
+    // MARK: - Session (§7.1)
 
-    /// 会话 JSON 的线格式(仅取 Core 需要的字段;其余字段忽略)。
+    /// The wire format of the session JSON (only takes the fields Core needs; other fields are ignored).
     private struct SessionWire: Decodable {
         let sessionId: String
         let currency: String
@@ -32,21 +32,21 @@ enum ContractDecoding {
         let paymentMethods: [PaymentMethodWire]
     }
 
-    /// 单个支付方式条目(§7.1:`method` 例 VISA/APPLE_PAY,`type` 例 CARD/E_WALLET)。
+    /// A single payment method entry (§7.1: `method` e.g. VISA/APPLE_PAY, `type` e.g. CARD/E_WALLET).
     private struct PaymentMethodWire: Decodable {
         let method: String
         let type: String
     }
 
-    /// 解码会话 JSON 为 `CheckoutSession`。
+    /// Decodes the session JSON into a `CheckoutSession`.
     ///
-    /// - `totalAmount` + `currency` → `Amount(minorUnits:currencyCode:)`(整数最小货币单位)。
-    /// - `paymentMethods[].method/type` → `Set<PaymentMethodKind>`;未知方式忽略而非崩溃。
-    /// - `expiresAt` 按 ISO-8601 解析。
+    /// - `totalAmount` + `currency` → `Amount(minorUnits:currencyCode:)` (integer minor currency units).
+    /// - `paymentMethods[].method/type` → `Set<PaymentMethodKind>`; unknown methods are ignored rather than crashing.
+    /// - `expiresAt` is parsed as ISO-8601.
     ///
-    /// - Parameter data: 会话 JSON 数据。
-    /// - Returns: 解码后的会话模型。
-    /// - Throws: JSON 结构不符或 `expiresAt` 非法 ISO-8601 时抛出 `DecodingError`。
+    /// - Parameter data: The session JSON data.
+    /// - Returns: The decoded session model.
+    /// - Throws: Throws `DecodingError` when the JSON structure does not match or `expiresAt` is not valid ISO-8601.
     static func decodeSession(from data: Data) throws -> CheckoutSession {
         let wire = try JSONDecoder().decode(SessionWire.self, from: data)
 
@@ -54,7 +54,7 @@ enum ContractDecoding {
             throw DecodingError.dataCorrupted(
                 DecodingError.Context(
                     codingPath: [],
-                    debugDescription: "expiresAt 不是合法的 ISO-8601: \(wire.expiresAt)"
+                    debugDescription: "expiresAt is not a valid ISO-8601: \(wire.expiresAt)"
                 )
             )
         }
@@ -63,7 +63,7 @@ enum ContractDecoding {
             if let kind = mapMethod(method: pm.method, type: pm.type) {
                 acc.insert(kind)
             }
-            // 未知方式:忽略(降级),不崩溃。
+            // Unknown method: ignored (downgrade), does not crash.
         }
 
         return CheckoutSession(
@@ -77,12 +77,12 @@ enum ContractDecoding {
         )
     }
 
-    /// 把后端 `method`/`type` 映射为 `PaymentMethodKind`。
+    /// Maps the backend `method`/`type` to a `PaymentMethodKind`.
     ///
-    /// 已知卡品牌或 `type == "CARD"` → `.card`;`APPLE_PAY` → `.applePay`;其余返回 nil(忽略)。
+    /// A known card brand or `type == "CARD"` → `.card`; `APPLE_PAY` → `.applePay`; everything else returns nil (ignored).
     ///
-    /// - Note: 会话里下发的可用方式描述的是新卡/钱包;`.savedCard` 的可用性由 `cofEnabled` 与
-    ///   列卡结果(§7.5)决定,不从这里的方式条目推导。
+    /// - Note: The available methods issued in the session describe new card / wallet; the availability of `.savedCard` is determined by `cofEnabled` and
+    ///   the card listing result (§7.5), not derived from the method entries here.
     private static func mapMethod(method: String, type: String) -> PaymentMethodKind? {
         switch method.uppercased() {
         case "APPLE_PAY":
@@ -90,14 +90,14 @@ enum ContractDecoding {
         case "VISA", "MASTERCARD", "AMEX", "CARD":
             return .card
         default:
-            // 回退到 type:显式 CARD 也视为新卡。
+            // Fall back to type: an explicit CARD is also treated as a new card.
             return type.uppercased() == "CARD" ? .card : nil
         }
     }
 
-    // MARK: - Result(§7.4)
+    // MARK: - Result (§7.4)
 
-    /// 结果 JSON 的线格式。
+    /// The wire format of the result JSON.
     private struct ResultWire: Decodable {
         let txnId: String?
         let txnStatus: String
@@ -105,21 +105,21 @@ enum ContractDecoding {
         let action: ActionWire?
     }
 
-    /// `action` 对象(§7.4;`txnStatus == "R"` 时携带)。
+    /// The `action` object (§7.4; carried when `txnStatus == "R"`).
     private struct ActionWire: Decodable {
         let type: String
         let redirectUrl: String?
     }
 
-    /// 解码结果 JSON 为 `ResultEnvelope`(快照 + 可选动作)。
+    /// Decodes the result JSON into a `ResultEnvelope` (snapshot + optional action).
     ///
-    /// `txnStatus` 映射到 `TxnStatus`(I/S/F/R);当 `txnStatus == "R"` 时解析 `action.type`:
-    /// `redirect` 且有合法 `redirectUrl` → `.redirect(url:)`,否则 `.unknown`;
-    /// `qrCode` → `.qrCode`;`showContent` → `.showContent`;其他 → `.unknown`。
+    /// `txnStatus` maps to `TxnStatus` (I/S/F/R); when `txnStatus == "R"`, parses `action.type`:
+    /// `redirect` with a valid `redirectUrl` → `.redirect(url:)`, otherwise `.unknown`;
+    /// `qrCode` → `.qrCode`; `showContent` → `.showContent`; everything else → `.unknown`.
     ///
-    /// - Parameter data: 结果 JSON 数据。
-    /// - Returns: 解码后的结果信封。
-    /// - Throws: JSON 结构不符或 `txnStatus` 非法时抛出 `DecodingError`。
+    /// - Parameter data: The result JSON data.
+    /// - Returns: The decoded result envelope.
+    /// - Throws: Throws `DecodingError` when the JSON structure does not match or `txnStatus` is invalid.
     static func decodeResult(from data: Data) throws -> ResultEnvelope {
         let wire = try JSONDecoder().decode(ResultWire.self, from: data)
 
@@ -127,7 +127,7 @@ enum ContractDecoding {
             throw DecodingError.dataCorrupted(
                 DecodingError.Context(
                     codingPath: [],
-                    debugDescription: "未知 txnStatus: \(wire.txnStatus)"
+                    debugDescription: "Unknown txnStatus: \(wire.txnStatus)"
                 )
             )
         }
@@ -142,12 +142,12 @@ enum ContractDecoding {
         return ResultEnvelope(snapshot: snapshot, action: action)
     }
 
-    /// 把 `action` 对象映射为 `PaymentAction`;无法识别时降级为 `.unknown`。
+    /// Maps the `action` object to a `PaymentAction`; downgrades to `.unknown` when unrecognized.
     private static func mapAction(_ action: ActionWire?) -> PaymentAction {
         guard let action else { return .unknown }
         switch action.type {
         case "redirect":
-            // redirect 需要合法 URL;缺失或非法则无法跳转,降级为 unknown。
+            // redirect requires a valid URL; if missing or invalid, a redirect is impossible, so downgrade to unknown.
             if let raw = action.redirectUrl, let url = URL(string: raw) {
                 return .redirect(url: url)
             }
@@ -163,7 +163,7 @@ enum ContractDecoding {
 
     // MARK: - ISO-8601
 
-    /// 解析 ISO-8601 字符串为 `Date`;兼容带/不带小数秒两种写法。
+    /// Parses an ISO-8601 string into a `Date`; supports both with and without fractional seconds.
     private static func parseISO8601(_ string: String) -> Date? {
         let withFractional = ISO8601DateFormatter()
         withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

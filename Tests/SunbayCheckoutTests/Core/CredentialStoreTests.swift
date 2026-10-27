@@ -21,7 +21,7 @@ final class CredentialStoreTests: XCTestCase {
     func test_clear_calledTwice_isSafe_andCurrentStaysNil() async {
         let store = CredentialStore()
         await store.hold(customerAccessSecret: "secret-abc")
-        // clear() 幂等:重复调用不崩溃,current 持续为 nil。
+        // clear() is idempotent: repeated calls do not crash, and current stays nil.
         await store.clear()
         await store.clear()
         let current = await store.current()

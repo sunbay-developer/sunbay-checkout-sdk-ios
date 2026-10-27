@@ -1,45 +1,46 @@
 import Foundation
 import SunbayCheckout
 
-// MARK: - 脚本化结果(demo 用)
+// MARK: - Scripted result (for the demo)
 
-/// 本次 demo 想让 `submit` 落到的终态/中间态脚本。
+/// The terminal/intermediate-state scenario this demo wants `submit` to land on.
 ///
-/// 让 demo 一键切换四种 `CheckoutOutcome`(succeeded / failed / pending / unknown)
-/// 以及 `requiresAction`,全部打在 mock 后端里,UI 不需要任何业务分支。
+/// Lets the demo switch between the four `CheckoutOutcome`s (succeeded / failed / pending / unknown)
+/// and `requiresAction` with one tap, all driven inside the mock backend so the UI needs no business branching.
 public enum DemoScript: Sendable {
-    /// 提交即成功(终态 S)。
+    /// Submit succeeds immediately (terminal S).
     case succeeded
-    /// 提交即失败(终态 F)。
+    /// Submit fails immediately (terminal F).
     case failed
-    /// 处理中(非终态 I)——UI 呈现 pending。
+    /// Processing (non-terminal I) — the UI shows pending.
     case pending
-    /// 需要进一步动作(R)。
+    /// Requires further action (R).
     case requiresAction
-    /// 提交超时/网络不可用——Core 进入 unknown,随后可用 `getResult` 恢复。
+    /// Submit timeout / network unavailable — Core enters unknown, then can recover via `getResult`.
     case networkTimeout
 }
 
-/// demo 脚本抛出的"网络不可用"错误(仅 `networkTimeout` 用)。
+/// The "network unavailable" error thrown by the demo scenario (only used by `networkTimeout`).
 ///
-/// 真实后端的网络失败由适配器抛出;这里用一个最小的 Error 模拟 submit 超时,
-/// 让 `CheckoutController` 走 unknown 分支(§3.2:提交超时不盲重试,先 getResult)。
+/// A real backend's network failure is thrown by the adapter; here a minimal Error simulates a submit timeout,
+/// letting `CheckoutController` take the unknown branch (§3.2: a submit timeout does not blindly retry, it queries getResult first).
 private struct DemoNetworkUnavailable: Error {}
 
-// MARK: - 内存 Mock PaymentService
+// MARK: - In-memory Mock PaymentService
 
-/// demo 用的内存 `PaymentService`,实现 SDK 公共协议(Task 11.5 注入缝)。
+/// An in-memory `PaymentService` for the demo, implementing the SDK's public protocol (the Task 11.5 injection seam).
 ///
-/// - `loadSession` 返回脚本化会话:带 demo RSA **公钥**(PKCS#1 DER base64,
-///   让 `CardEncryptor` 能正常导入加密)、`cofEnabled = true`、方式
-///   `[.card, .applePay, .savedCard]`、一笔金额与商户名。
-/// - `submit` 按 `script` 返回脚本化快照(默认成功);`networkTimeout` 抛错让 Core 进 unknown。
-/// - `getResult` 始终返回一个终态快照(供 unknown 恢复 demo)。
+/// - `loadSession` returns a scripted session: with the demo RSA **public key** (PKCS#1 DER base64, so
+///   `CardEncryptor` can import and encrypt normally), `cofEnabled = true`, methods
+///   `[.card, .applePay, .savedCard]`, an amount, and a merchant name.
+/// - `submit` returns a scripted snapshot per `script` (success by default); `networkTimeout` throws to make Core enter unknown.
+/// - `getResult` always returns a terminal snapshot (for the unknown-recovery demo).
 ///
-/// 全内存、无真实后端、无任何机密。线程安全:字段只读或在构造时固定,`script` 可变但
-/// demo 在单线程(主线程点击)驱动;标注 `@unchecked Sendable` 以满足协议的 `Sendable`。
+/// Fully in-memory, no real backend, no secrets. Thread safety: fields are read-only or fixed at construction;
+/// `script` is mutable but the demo drives on a single thread (a main-thread tap); annotated `@unchecked Sendable`
+/// to satisfy the protocol's `Sendable`.
 public final class MockDemoPaymentService: PaymentService, @unchecked Sendable {
-    /// 本次要演示的脚本(可在 demo UI 切换)。
+    /// The scenario to demo this time (switchable in the demo UI).
     public var script: DemoScript
 
     public init(script: DemoScript = .succeeded) {
@@ -52,7 +53,7 @@ public final class MockDemoPaymentService: PaymentService, @unchecked Sendable {
             amount: Amount(minorUnits: 4299, currencyCode: "USD"), // 42.99 USD
             merchantName: "Sunbay Demo Store",
             methods: [.card, .applePay, .savedCard],
-            expiresAt: Date().addingTimeInterval(15 * 60), // 15 分钟后过期
+            expiresAt: Date().addingTimeInterval(15 * 60), // expires in 15 minutes
             rsaPublicKey: DemoRSAKey.publicKeyPKCS1Base64,
             cofEnabled: true
         )
@@ -69,20 +70,20 @@ public final class MockDemoPaymentService: PaymentService, @unchecked Sendable {
         case .requiresAction:
             return PaymentSnapshot(sessionId: req.sessionId, status: .requiresAction, txnId: "demo_txn_\(req.attemptId.uuidString.prefix(8))")
         case .networkTimeout:
-            // 模拟 submit 超时/网络不可用 → Core 进入 unknown(不盲重试),随后 getResult 恢复。
+            // Simulate a submit timeout / network unavailable → Core enters unknown (no blind retry), then getResult recovers.
             throw DemoNetworkUnavailable()
         }
     }
 
     public func getResult(sessionId: String) async throws -> PaymentSnapshot {
-        // 恢复 demo:无论先前脚本如何,查询都给出一个已确认的终态(成功)。
+        // Recovery demo: regardless of the previous scenario, the query returns a confirmed terminal state (success).
         PaymentSnapshot(sessionId: sessionId, status: .succeeded, txnId: "demo_txn_recovered")
     }
 }
 
-// MARK: - 内存 Mock CofService
+// MARK: - In-memory Mock CofService
 
-/// demo 用的内存 `CofService`,返回 1-2 张脚本化已保存卡(COF 一键付演示)。
+/// An in-memory `CofService` for the demo, returning 1-2 scripted saved cards (COF one-tap pay demo).
 public final class MockDemoCofService: CofService, @unchecked Sendable {
     public init() {}
 
@@ -94,18 +95,19 @@ public final class MockDemoCofService: CofService, @unchecked Sendable {
     }
 }
 
-// MARK: - Demo RSA 公钥(一次性、可提交的演示用公钥)
+// MARK: - Demo RSA public key (a one-off, committable demo public key)
 
-/// 一次性生成的 **demo RSA 公钥**(PKCS#1 `RSAPublicKey` DER,base64)。
+/// A one-off generated **demo RSA public key** (PKCS#1 `RSAPublicKey` DER, base64).
 ///
-/// - 这是 **公钥**(非密钥),专为本 demo 一次性生成、可随源码提交(见 AGENTS.md:公钥非机密)。
-///   对应的私钥**未提交**且已丢弃——没有任何真实后端能用它解密,纯粹让 `CardEncryptor`
-///   在 demo 中成功导入并加密(产出一段合法 base64 密文交给 mock 后端)。
-/// - 格式与 `CardEncryptor` 的导入约定一致:`SecKeyCreateWithData`(kSecAttrKeyTypeRSA +
-///   kSecAttrKeyClassPublic)可直接导入的 PKCS#1 DER。2048-bit(blockSize 256)。
-/// - **切勿**在真实集成中使用此 key;真实公钥由后端经 session 下发。
+/// - This is a **public key** (not a private key), generated once specifically for this demo and committable with
+///   the source (see AGENTS.md: a public key is not confidential). The corresponding private key is **not committed**
+///   and has been discarded — no real backend can decrypt with it; it purely lets `CardEncryptor` import and encrypt
+///   successfully in the demo (producing a valid base64 ciphertext for the mock backend).
+/// - The format matches `CardEncryptor`'s import convention: PKCS#1 DER directly importable via `SecKeyCreateWithData`
+///   (kSecAttrKeyTypeRSA + kSecAttrKeyClassPublic). 2048-bit (blockSize 256).
+/// - **Never** use this key in a real integration; the real public key is delivered by the backend via the session.
 public enum DemoRSAKey {
-    /// demo 公钥,PKCS#1 DER 的 base64(单行)。
+    /// The demo public key, base64 of PKCS#1 DER (single line).
     public static let publicKeyPKCS1Base64 =
         "MIIBCgKCAQEAt65MyjQltDrA/Pl56ZlI9lMkXPB8dqbvrvbCljmZHUPHSDrp0fh4wxjA4iXkzI3OblbiXUZUEVmj+Htwqo9bSeVRXj3jD4HUgIPx13kyVqSifvH+EdCCL3q/+dWVqG+A/JtXrT/r2gtx0qG/d4WStLt6wn7BCwhL+JKs5ngJlQQbmQhajTukzLhY6pXiQKscw0LOWhxYa+y+xk5ILubcKbsDPP5MD12b1avQdc3IeygPRSEz5zBxLVEMgtJLRsfWcjbWpcsXiZQry8GnjjsOlpxPTVd7+fOnAIoHWDbunPktiXK+WcgGG2B4R26JxpP4UUjaUtpLFjLak/UwSt8HjQIDAQAB"
 }

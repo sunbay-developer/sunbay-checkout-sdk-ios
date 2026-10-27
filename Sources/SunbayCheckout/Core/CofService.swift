@@ -1,17 +1,18 @@
 import Foundation
 
-/// 已保存卡(COF)后端能力契约(UI 无关)。
+/// Backend capability contract for saved cards (COF) (UI-agnostic).
 ///
-/// 对应 product-spec §7.5(列卡)。使用 `customerAccessSecret`(Customer Grant)+ `sessionId`
-/// 直连 PSP;作用域从凭证推导,不接受客户端 customerId。未授权返回 403,不得用空列表掩盖。
+/// Corresponds to product-spec §7.5 (list cards). Uses `customerAccessSecret` (Customer Grant) +
+/// `sessionId` to connect directly to the PSP; the scope is derived from the credential and does not
+/// accept a client-supplied customerId. An unauthorized request returns 403 and must not be masked with an empty list.
 ///
-/// - Note: 自 Task 11.5 起**公开**：host 通过 `SunbayCheckout` 注入自实现以支持 COF 列卡。
+/// - Note: **Public** since Task 11.5: the host injects its own implementation via `SunbayCheckout` to support COF card listing.
 public protocol CofService: Sendable {
-    /// 列出当前 Customer 在本会话下可用的已保存卡。
+    /// Lists the saved cards available to the current Customer under this session.
     ///
     /// - Parameters:
-    ///   - customerAccessSecret: Customer Grant 凭证(仅内存持有,见 §7.6)。
-    ///   - sessionId: 会话标识。
-    /// - Returns: 已保存卡展示信息列表。
+    ///   - customerAccessSecret: Customer Grant credential (held in memory only, see §7.6).
+    ///   - sessionId: Session identifier.
+    /// - Returns: A list of saved card display information.
     func listPaymentMethods(customerAccessSecret: String, sessionId: String) async throws -> [SavedCard]
 }

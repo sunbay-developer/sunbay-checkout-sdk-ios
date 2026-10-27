@@ -1,17 +1,18 @@
 import Foundation
 
-/// `requiresAction`(R)状态下后端下发的进一步动作。
+/// The further action issued by the backend in the `requiresAction` (R) state.
 ///
-/// 源自后端结果 JSON 的 `action.type`(见 product-spec §7.4 / §4.5)。首版仅实现 `redirect`;
-/// `qrCode` / `showContent` 为协议预留(运行时按 UNSUPPORTED_CAPABILITY 处理,见 Task 8);
-/// 无法识别的类型降级为 `.unknown`,解码阶段不崩溃。
+/// Derived from the `action.type` field of the backend result JSON (see product-spec §7.4 / §4.5).
+/// The first version only implements `redirect`; `qrCode` / `showContent` are reserved in the
+/// protocol (handled as UNSUPPORTED_CAPABILITY at runtime, see Task 8); unrecognized types are
+/// downgraded to `.unknown` so decoding never crashes.
 enum PaymentAction: Sendable, Equatable {
-    /// 跳转到第三方支付网页(`action.redirectUrl`)。
+    /// Redirect to a third-party payment web page (`action.redirectUrl`).
     case redirect(url: URL)
-    /// 展示二维码(首版不实现)。
+    /// Display a QR code (not implemented in the first version).
     case qrCode
-    /// 展示内容(首版不实现)。
+    /// Display content (not implemented in the first version).
     case showContent
-    /// 未知 / 不支持的动作类型。
+    /// Unknown / unsupported action type.
     case unknown
 }

@@ -3,59 +3,67 @@
     import Foundation
     import UIKit
 
-    /// `WebAuthOpening`（Task 8 协议缝）的真实实现：用系统
-    /// `ASWebAuthenticationSession` 打开第三方 APM 跳转页（如支付宝 web），带 returnUrl
-    /// 回跳（product-spec §4.5）。
+    /// The real implementation of `WebAuthOpening` (the Task 8 protocol seam): uses the system
+    /// `ASWebAuthenticationSession` to open a third-party APM redirect page (e.g. the Alipay
+    /// web page), with a returnUrl callback (product-spec §4.5).
     ///
-    /// ## 职责与边界
-    /// - 只负责「用系统安全浏览器打开一个跳转 URL，并在回跳到约定 scheme 时结束会话」。
-    ///   终态由 Core 继续轮询 / 回跳确认（授权/打开成功 ≠ 交易成功，§3.2）。
-    /// - **不接触任何卡数据**：跳转打开的是第三方 APM 支付网页，属标准做法（§4.5 边界澄清）。
-    /// - 仅 iOS 可用：整体以 `#if canImport(UIKit)` 限定，`import AuthenticationServices`
-    ///   置于其内；macOS 宿主下不编译（Core 保持 UIKit/AuthenticationServices 无关）。
+    /// ## Responsibilities and boundary
+    /// - Responsible only for "opening a redirect URL in the system's secure browser, and
+    ///   ending the session when it is redirected back to the agreed scheme". The terminal
+    ///   state continues to be confirmed by Core via polling / callback (authorization/open
+    ///   success ≠ transaction success, §3.2).
+    /// - **Touches no card data**: what the redirect opens is a third-party APM payment web
+    ///   page, which is standard practice (§4.5 boundary clarification).
+    /// - iOS-only: the whole thing is gated by `#if canImport(UIKit)`, with
+    ///   `import AuthenticationServices` placed inside it; it does not compile under the macOS
+    ///   host (Core stays independent of UIKit/AuthenticationServices).
     ///
-    /// ## 回跳 scheme（callback scheme）
-    /// `ASWebAuthenticationSession` 以「callback URL scheme」识别回跳：后端下发的 returnUrl
-    /// 形如 `<scheme>://...`，系统在用户被重定向回该 scheme 时关闭浏览器并回调。本类以注入的
-    /// `callbackURLScheme`（host App 在 `Info.plist` 注册的自定义 scheme）构造会话；为空时
-    /// 退化为「仅打开、由外部轮询确认」（iOS 17+ 可用 `.callback(.customScheme:)`，这里取
-    /// 跨版本最稳妥的 `callbackURLScheme:` 形式）。
+    /// ## Callback scheme
+    /// `ASWebAuthenticationSession` identifies the return redirect by a "callback URL scheme":
+    /// the returnUrl delivered by the backend has the form `<scheme>://...`, and the system
+    /// closes the browser and calls back when the user is redirected back to that scheme. This
+    /// type constructs the session with an injected `callbackURLScheme` (the custom scheme the
+    /// host App registers in `Info.plist`); when empty, it degrades to "open only, confirmed by
+    /// external polling" (iOS 17+ can use `.callback(.customScheme:)`; here the most
+    /// cross-version-robust `callbackURLScheme:` form is used).
     ///
-    /// ## async 语义
-    /// 实现 `func open(_ url: URL) async`：启动会话并 `await` 到用户完成或取消（回跳 /
-    /// 关闭浏览器）即返回——与 Task 8 协议签名**完全一致**（无返回值、无 throws）。会话结果
-    /// （回跳 URL / 取消 / 错误）不作为交易结论，交由 Core 轮询；故这里只 await 其结束，不透出。
+    /// ## async semantics
+    /// Implements `func open(_ url: URL) async`: starts the session and `await`s until the user
+    /// completes or cancels (redirect back / closing the browser), then returns — **fully
+    /// consistent** with the Task 8 protocol signature (no return value, no throws). The session
+    /// result (redirect URL / cancel / error) is not treated as a transaction conclusion and is
+    /// left to Core polling; so here it only awaits the session's end and does not surface it.
     struct WebAuthOpener: WebAuthOpening {
-        /// host App 注册的回跳自定义 scheme（如 `"sunbaycheckout"`）；为空则不绑定回跳。
+        /// The callback custom scheme registered by the host App (e.g. `"sunbaycheckout"`); when empty, no return redirect is bound.
         let callbackURLScheme: String?
 
-        /// 创建一个 Web 认证打开器。
+        /// Creates a web authentication opener.
         ///
-        /// - Parameter callbackURLScheme: 回跳自定义 scheme；缺省 nil（仅打开，外部确认终态）。
+        /// - Parameter callbackURLScheme: The callback custom scheme; defaults to nil (open only, terminal state confirmed externally).
         init(callbackURLScheme: String? = nil) {
             self.callbackURLScheme = callbackURLScheme
         }
 
-        /// 打开第三方 APM 跳转页并等待用户完成 / 取消（见类型说明）。
+        /// Opens a third-party APM redirect page and waits for the user to complete / cancel (see the type description).
         ///
-        /// - Parameter url: 后端在 `redirect` 动作中下发的跳转地址。
+        /// - Parameter url: The redirect address delivered by the backend in the `redirect` action.
         func open(_ url: URL) async {
             let scheme = callbackURLScheme
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                // ASWebAuthenticationSession 必须在主线程创建 / 启动（UI 相关）。
+                // ASWebAuthenticationSession must be created / started on the main thread (UI-related).
                 Task { @MainActor in
                     let anchorProvider = PresentationAnchorProvider()
                     let session = ASWebAuthenticationSession(
                         url: url,
                         callbackURLScheme: scheme
                     ) { _, _ in
-                        // 回跳 URL / 取消 / 错误都不作为交易结论；仅标记「会话结束」。
-                        // 终态由 Core 轮询 / 回跳确认（§3.2 / §4.5）。不记录任何内容（§5）。
+                        // The redirect URL / cancel / error are none of them treated as a transaction conclusion; only mark "session ended".
+                        // The terminal state is confirmed by Core polling / callback (§3.2 / §4.5). Nothing is logged (§5).
                         continuation.resume()
                     }
                     session.presentationContextProvider = anchorProvider
                     session.prefersEphemeralWebBrowserSession = false
-                    // 持有 anchorProvider 直至会话结束，避免提前释放。
+                    // Hold anchorProvider until the session ends, avoiding premature release.
                     anchorProvider.retainSession = session
                     if !session.start() {
                         continuation.resume()
@@ -65,15 +73,16 @@
         }
     }
 
-    /// 为 `ASWebAuthenticationSession` 提供展示锚点（当前 key window）。
+    /// Provides the presentation anchor (the current key window) for `ASWebAuthenticationSession`.
     ///
-    /// 系统要求实现 `ASWebAuthenticationPresentationContextProviding` 返回一个 window。
-    /// 取当前前台 `UIWindowScene` 的 key window;取不到时回退到一个空 `ASPresentationAnchor`。
+    /// The system requires an implementation of `ASWebAuthenticationPresentationContextProviding`
+    /// to return a window. It takes the key window of the current foreground `UIWindowScene`;
+    /// when none can be obtained, it falls back to an empty `ASPresentationAnchor`.
     @MainActor
     private final class PresentationAnchorProvider: NSObject,
         ASWebAuthenticationPresentationContextProviding
     {
-        /// 持有 session 至回调触发，防止其被提前释放。
+        /// Holds the session until the callback fires, preventing it from being released prematurely.
         var retainSession: ASWebAuthenticationSession?
 
         func presentationAnchor(

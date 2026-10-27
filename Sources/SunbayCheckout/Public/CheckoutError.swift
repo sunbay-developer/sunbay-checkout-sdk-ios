@@ -1,40 +1,41 @@
 import Foundation
 
-/// 结账过程中对外暴露的错误。
+/// Error exposed externally during the checkout process.
 ///
-/// 该类型是公共 API 的一部分，承载可供宿主 App 展示 / 上报的错误信息，
-/// 但绝不包含任何敏感数据（卡号、钱包令牌、密文等）。
+/// This type is part of the public API. It carries error information that the host app can
+/// display / report, but it never contains any sensitive data (card number, wallet token,
+/// ciphertext, etc.).
 public struct CheckoutError: Error, Sendable {
-    /// 错误分类。
+    /// Error category.
     public enum Category: Sendable, Equatable {
-        /// 配置错误（如缺少必要的商户配置）。
+        /// Configuration error (e.g. missing required merchant configuration).
         case configuration
-        /// 校验错误（如卡信息不合法）。
+        /// Validation error (e.g. invalid card information).
         case validation
-        /// 网络错误。
+        /// Network error.
         case network
-        /// 运行时错误。
+        /// Runtime error.
         case runtime
-        /// 支付错误（如被拒付）。
+        /// Payment error (e.g. declined).
         case payment
     }
 
-    /// 稳定的错误码。
+    /// Stable error code.
     public let code: String
-    /// 面向开发者的错误描述。
+    /// Developer-facing error description.
     public let message: String
-    /// 错误分类。
+    /// Error category.
     public let category: Category
-    /// 后端链路追踪标识；不可用时为 nil。
+    /// Backend trace identifier; nil when unavailable.
     public let traceId: String?
 
-    /// 创建一个结账错误。
+    /// Creates a checkout error.
     ///
     /// - Parameters:
-    ///   - code: 稳定的错误码。
-    ///   - message: 面向开发者的错误描述。
-    ///   - category: 错误分类。
-    ///   - traceId: 后端链路追踪标识，可为 nil。
+    ///   - code: Stable error code.
+    ///   - message: Developer-facing error description.
+    ///   - category: Error category.
+    ///   - traceId: Backend trace identifier, may be nil.
     public init(code: String, message: String, category: Category, traceId: String?) {
         self.code = code
         self.message = message

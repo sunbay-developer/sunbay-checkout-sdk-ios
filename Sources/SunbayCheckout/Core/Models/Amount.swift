@@ -1,20 +1,21 @@
 import Foundation
 
-/// 支付金额。
+/// Payment amount.
 ///
-/// 金额以整数最小货币单位（minor units）表示，避免浮点误差；例如 9.99 USD
-/// 记作 `minorUnits = 999`、`currencyCode = "USD"`。
+/// The amount is expressed in integer minor units to avoid floating-point
+/// errors; for example, 9.99 USD is recorded as `minorUnits = 999` and
+/// `currencyCode = "USD"`.
 public struct Amount: Sendable, Equatable {
-    /// 最小货币单位数量（如「分」）。
+    /// The number of minor currency units (such as "cents").
     public let minorUnits: Int64
-    /// ISO 4217 货币代码（如 `"USD"`）。
+    /// ISO 4217 currency code (such as `"USD"`).
     public let currencyCode: String
 
-    /// 创建一个金额。
+    /// Creates an amount.
     ///
     /// - Parameters:
-    ///   - minorUnits: 最小货币单位数量。
-    ///   - currencyCode: ISO 4217 货币代码。
+    ///   - minorUnits: The number of minor currency units.
+    ///   - currencyCode: ISO 4217 currency code.
     public init(minorUnits: Int64, currencyCode: String) {
         self.minorUnits = minorUnits
         self.currencyCode = currencyCode

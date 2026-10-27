@@ -4,13 +4,15 @@ import XCTest
 
 @testable import SunbayCheckout
 
-/// `CardEncryptor` 的往返测试。
+/// Round-trip tests for `CardEncryptor`.
 ///
-/// 测试内自行生成 2048 位 RSA 密钥对(Security framework),用公钥喂给 `encrypt`,
-/// 再用私钥按块解密拼接,验证分块加密(对齐 web `encryptLong`)能精确还原明文 JSON。
+/// The test generates a 2048-bit RSA key pair itself (Security framework), feeds the public key to
+/// `encrypt`, then decrypts the chunks with the private key and concatenates them, verifying that
+/// chunked encryption (mirroring web `encryptLong`) exactly restores the plaintext JSON.
 ///
-/// 密钥导入格式约定:公钥以 **PKCS#1 DER**(`RSAPublicKey`,`SecKeyCopyExternalRepresentation`
-/// 对 RSA 公钥的原生输出)base64 后传入;`CardEncryptor` 以同一格式经 `SecKeyCreateWithData` 导入。
+/// Key import format convention: the public key is passed in as base64 of **PKCS#1 DER**
+/// (`RSAPublicKey`, the native output of `SecKeyCopyExternalRepresentation` for an RSA public key);
+/// `CardEncryptor` imports it in the same format via `SecKeyCreateWithData`.
 final class CardEncryptorTests: XCTestCase {
     func test_encrypt_thenDecrypt_roundTrips_longPayload() throws {
         let (pub, priv) = try Self.makeRSAKeyPair(bits: 2048)
@@ -39,11 +41,12 @@ final class CardEncryptorTests: XCTestCase {
         XCTAssertEqual(obj["timeStamp"], "1700000000000")
     }
 
-    /// Review Focus:明文 JSON 超过单个 RSA 块(2048 位可用 245 字节)时必须分块,
-    /// 不得静默截断。构造超长 cardNumber 把 payload 推过单块边界,断言往返精确还原。
+    /// Review Focus: when the plaintext JSON exceeds a single RSA block (245 bytes usable for 2048-bit),
+    /// it must be chunked and must not be silently truncated. Builds an oversized cardNumber to push the
+    /// payload past the single-block boundary, and asserts the round trip restores it exactly.
     func test_encrypt_thenDecrypt_roundTrips_forcesMultipleBlocks() throws {
         let (pub, priv) = try Self.makeRSAKeyPair(bits: 2048)
-        // 400 位数字,确保序列化后的 JSON 明显超过单块 245 字节可用容量。
+        // 400 digits, ensuring the serialized JSON clearly exceeds the single-block 245-byte usable capacity.
         let longCardNumber = String(repeating: "4", count: 400)
         let input = CardInput(
             cardNumber: longCardNumber,
@@ -58,10 +61,10 @@ final class CardEncryptorTests: XCTestCase {
             now: { Date(timeIntervalSince1970: 1_700_000_000) }
         )
 
-        // 密文长度必须是块大小(256 字节)的整数倍,且多于一个块,证明确实分了块。
+        // The ciphertext length must be an integer multiple of the block size (256 bytes) and more than one block, proving it was actually chunked.
         let cipher = try XCTUnwrap(Data(base64Encoded: b64))
-        XCTAssertEqual(cipher.count % 256, 0, "密文应为块大小的整数倍")
-        XCTAssertGreaterThan(cipher.count, 256, "超长明文应产生多于一个密文块")
+        XCTAssertEqual(cipher.count % 256, 0, "ciphertext should be an integer multiple of the block size")
+        XCTAssertGreaterThan(cipher.count, 256, "an oversized plaintext should produce more than one ciphertext block")
 
         let json = try Self.rsaDecryptChunked(base64: b64, privateKey: priv)
         let obj = try XCTUnwrap(
@@ -88,10 +91,10 @@ final class CardEncryptorTests: XCTestCase {
 
     // MARK: - Test crypto helpers
 
-    /// 生成一对 RSA 密钥。
+    /// Generates an RSA key pair.
     ///
-    /// - Returns: `(publicKeyBase64DER, privateKey)`。公钥为 PKCS#1 DER 的 base64 字符串,
-    ///   用于喂给 `CardEncryptor.encrypt`;私钥为 `SecKey`,供测试内解密。
+    /// - Returns: `(publicKeyBase64DER, privateKey)`. The public key is a base64 string of PKCS#1 DER,
+    ///   used to feed `CardEncryptor.encrypt`; the private key is a `SecKey` for decrypting within the test.
     static func makeRSAKeyPair(bits: Int) throws -> (publicBase64: String, privateKey: SecKey) {
         let attributes: [String: Any] = [
             kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
@@ -111,16 +114,18 @@ final class CardEncryptorTests: XCTestCase {
         return (der.base64EncodedString(), privateKey)
     }
 
-    /// 后端侧的分块解密镜像:把 base64 密文拆成块大小的片段,逐块解密后拼接。
+    /// Backend-side chunked decryption mirror: split the base64 ciphertext into block-sized segments,
+    /// decrypt each block, and concatenate.
     ///
-    /// 证明 `CardEncryptor` 的分块拼接可被"按 blockSize 切分、逐块解密"的后端精确还原。
+    /// Proves that `CardEncryptor`'s chunked concatenation can be exactly restored by a backend that
+    /// "splits by blockSize and decrypts block by block".
     static func rsaDecryptChunked(base64: String, privateKey: SecKey) throws -> Data {
         guard let cipher = Data(base64Encoded: base64) else {
             throw NSError(domain: "CardEncryptorTests", code: -2)
         }
         let blockSize = SecKeyGetBlockSize(privateKey)
         XCTAssertGreaterThan(blockSize, 0)
-        XCTAssertEqual(cipher.count % blockSize, 0, "密文长度必须是块大小的整数倍")
+        XCTAssertEqual(cipher.count % blockSize, 0, "the ciphertext length must be an integer multiple of the block size")
 
         var plaintext = Data()
         var offset = 0

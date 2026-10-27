@@ -4,19 +4,19 @@
 
     @testable import SunbayCheckout
 
-    /// `ApplePayButton`（L3）的单元测试（仅 iOS；macOS 宿主下 `#if canImport(UIKit)` 整体排除）。
+    /// Unit tests for `ApplePayButton` (L3) (iOS only; entirely excluded by `#if canImport(UIKit)` on the macOS host).
     ///
-    /// 通过 **internal 初始化器** 注入 mock 控制器（基于现有 `MockPaymentService` /
-    /// `MockCofService` / `StubActionHandler` 组装的真实 `CheckoutController`）与 mock
-    /// `WalletAuthorizing`，以在无真机 / 无 PassKit 展示的情况下验证：
-    /// 1. 可用钱包 → `isAvailable == true` 且触发 `onAvailabilityChange(true)`；
-    /// 2. 点击 → 驱动 `onResult` 得到脚本化 outcome（此处 `.succeeded`）。
+    /// Injects a mock controller (a real `CheckoutController` assembled from the existing `MockPaymentService` /
+    /// `MockCofService` / `StubActionHandler`) and a mock `WalletAuthorizing` via the **internal initializer**,
+    /// to verify the following without a real device / without PassKit presentation:
+    /// 1. an available wallet → `isAvailable == true` and triggers `onAvailabilityChange(true)`;
+    /// 2. a tap → drives `onResult` to the scripted outcome (here `.succeeded`).
     ///
-    /// 钱包授权成功 ≠ 交易成功；本测试里脚本化后端返回 `S` 使 outcome 为 `.succeeded`。
+    /// Wallet authorization success ≠ transaction success; this test scripts the backend to return `S` so the outcome is `.succeeded`.
     final class ApplePayButtonTests: XCTestCase {
-        // MARK: - 组装辅助
+        // MARK: - Assembly helpers
 
-        /// 一个可用的 Apple Pay 会话（后端允许 `.applePay`、未过期）。
+        /// An available Apple Pay session (backend allows `.applePay`, not expired).
         private func availableSession(id: String) -> CheckoutSession {
             CheckoutSession(
                 id: id,
@@ -29,7 +29,7 @@
             )
         }
 
-        /// 用 mock 后端 + stub action handler 组装一个真实 `CheckoutController`。
+        /// Assemble a real `CheckoutController` with a mock backend + stub action handler.
         private func makeController(
             session: CheckoutSession,
             submit snapshot: PaymentSnapshot
@@ -46,7 +46,7 @@
             )
         }
 
-        // MARK: - 1. 可用性
+        // MARK: - 1. Availability
 
         func test_construct_withAvailableWallet_isAvailableTrue_andFiresCallback() {
             let sessionId = "sess_apple_1"
@@ -77,7 +77,7 @@
             XCTAssertEqual(observed.last, true)
         }
 
-        // MARK: - 2. 点击驱动结果
+        // MARK: - 2. Tap drives the result
 
         func test_tap_drivesOnResult_withScriptedOutcome() {
             let sessionId = "sess_apple_2"
@@ -88,7 +88,7 @@
             )
             let wallet = MockWalletAuthorizer(canMake: true, outcome: .success(Data([0xAB, 0xCD])))
 
-            // 先等待可用性就绪，避免在 session 加载前点击。
+            // Wait for availability to be ready first, to avoid tapping before the session loads.
             let availableExpectation = expectation(description: "available")
             let resultExpectation = expectation(description: "onResult")
             var received: CheckoutOutcome?
@@ -109,9 +109,9 @@
             }
 
             wait(for: [availableExpectation], timeout: 2.0)
-            // 无 host app 的 xctest 运行里 `UIApplication` 为 nil，`sendActions(for:)`
-            // 无法把控件事件派发到 target；故直接按 target-action 注册表手动触发 `.touchUpInside`，
-            // 等价于一次点击而不依赖 UIApplication 分发。
+            // In an xctest run without a host app, `UIApplication` is nil and `sendActions(for:)`
+            // cannot dispatch control events to the target; so trigger `.touchUpInside` directly via the
+            // target-action registry, equivalent to a tap without relying on UIApplication dispatch.
             fireTouchUpInside(on: button)
 
             wait(for: [resultExpectation], timeout: 2.0)
@@ -121,12 +121,13 @@
             XCTAssertEqual(txnId, "txn_ok")
         }
 
-        // MARK: - 手动触发控件事件（无 host app 环境）
+        // MARK: - Manually trigger control events (no host app environment)
 
-        /// 直接依据控件的 target-action 注册表触发 `.touchUpInside`。
+        /// Triggers `.touchUpInside` directly based on the control's target-action registry.
         ///
-        /// 在没有 host app 的 xctest 进程里 `UIApplication.shared` 为 nil，`sendActions`
-        /// 不会派发；此法读取控件自己登记的 target/action 并直接调用，等价于一次点击。
+        /// In an xctest process without a host app, `UIApplication.shared` is nil and `sendActions`
+        /// does not dispatch; this reads the target/action the control registered itself and calls it
+        /// directly, equivalent to a tap.
         private func fireTouchUpInside(on control: UIControl) {
             for target in control.allTargets {
                 let actions = control.actions(forTarget: target, forControlEvent: .touchUpInside) ?? []
@@ -139,8 +140,8 @@
 
     // MARK: - Mock WalletAuthorizing
 
-    /// 可脚本化的 `WalletAuthorizing` 替身：设备能力与授权结果均可脚本化。
-    /// 授权返回的 token `Data` 仅用于喂给 `confirmWallet`，绝不出现在结果/日志（§5）。
+    /// Scriptable double for `WalletAuthorizing`: both device capability and the authorization result can be scripted.
+    /// The token `Data` returned by authorization is only used to feed `confirmWallet` and must never appear in results/logs (§5).
     final class MockWalletAuthorizer: WalletAuthorizing, @unchecked Sendable {
         enum Outcome {
             case success(Data)

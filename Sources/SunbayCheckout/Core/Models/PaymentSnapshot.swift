@@ -1,35 +1,36 @@
 import Foundation
 
-/// 后端交易状态。
+/// Backend transaction status.
 ///
-/// 原始值与后端契约一致：`I`（初始 / 处理中）、`S`（成功）、`F`（失败）、
-/// `R`（需要进一步动作）。`S` 与 `F` 为终态。
+/// The raw values match the backend contract: `I` (initial / processing),
+/// `S` (succeeded), `F` (failed), `R` (requires further action). `S` and `F`
+/// are terminal states.
 public enum TxnStatus: String, Sendable {
-    /// 初始 / 处理中。
+    /// Initial / processing.
     case initial = "I"
-    /// 成功（终态）。
+    /// Succeeded (terminal state).
     case succeeded = "S"
-    /// 失败（终态）。
+    /// Failed (terminal state).
     case failed = "F"
-    /// 需要进一步动作。
+    /// Requires further action.
     case requiresAction = "R"
 }
 
-/// 一次支付结果查询的快照。
+/// A snapshot of a single payment result query.
 public struct PaymentSnapshot: Sendable, Equatable {
-    /// 会话标识。
+    /// Session identifier.
     public let sessionId: String
-    /// 当前交易状态。
+    /// Current transaction status.
     public let status: TxnStatus
-    /// 交易标识；尚未分配时为 nil。
+    /// Transaction identifier; nil when not yet assigned.
     public let txnId: String?
 
-    /// 创建一个支付快照。
+    /// Creates a payment snapshot.
     ///
     /// - Parameters:
-    ///   - sessionId: 会话标识。
-    ///   - status: 当前交易状态。
-    ///   - txnId: 交易标识，可为 nil。
+    ///   - sessionId: Session identifier.
+    ///   - status: Current transaction status.
+    ///   - txnId: Transaction identifier, may be nil.
     public init(sessionId: String, status: TxnStatus, txnId: String?) {
         self.sessionId = sessionId
         self.status = status
