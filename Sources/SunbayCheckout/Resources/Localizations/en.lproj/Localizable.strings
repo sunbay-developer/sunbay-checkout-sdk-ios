@@ -4,3 +4,8 @@
 "sunbay.sheet.saveThisCard" = "Save this card";
 "sunbay.sheet.pay" = "Pay";
 "sunbay.sheet.applePay" = "Apple Pay";
+"sunbay.error.already_presenting" = "A checkout is already in progress.";
+"sunbay.error.network_unavailable" = "The network is unavailable.";
+"sunbay.error.checkout_expired" = "The checkout session has expired.";
+"sunbay.error.payment_failed" = "The payment failed.";
+"sunbay.error.card_encryption_failed" = "Failed to prepare card data.";

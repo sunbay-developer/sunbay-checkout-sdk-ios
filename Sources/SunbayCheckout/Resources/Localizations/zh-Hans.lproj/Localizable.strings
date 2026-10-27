@@ -4,3 +4,8 @@
 "sunbay.sheet.saveThisCard" = "保存此卡";
 "sunbay.sheet.pay" = "支付";
 "sunbay.sheet.applePay" = "Apple Pay";
+"sunbay.error.already_presenting" = "结账正在进行中。";
+"sunbay.error.network_unavailable" = "网络不可用";
+"sunbay.error.checkout_expired" = "结账会话已过期。";
+"sunbay.error.payment_failed" = "支付失败";
+"sunbay.error.card_encryption_failed" = "无法准备卡数据。";
