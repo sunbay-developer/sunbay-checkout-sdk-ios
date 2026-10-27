@@ -31,6 +31,9 @@
 
         private let session: CheckoutSession
         private let savedCards: [SavedCard]
+        /// Localized-string provider injected by `PaymentSheet` (built from a `LocalizationResolver`).
+        /// Maps a `sunbay.sheet.*` key to the title string in the resolved locale.
+        private let localize: (String) -> String
 
         // MARK: - Subviews
 
@@ -38,6 +41,9 @@
         private let contentStack = UIStackView()
         private let cardField = CardField()
         private let saveCardSwitch = UISwitch()
+
+        /// The visible button/label titles collected while building the layout. Test-only readout (see `renderedTitles`).
+        private var collectedTitles: [String] = []
 
         /// Reentrancy guard: onAction fires only once (the terminal state dismisses this page from PaymentSheet).
         private var didReportAction = false
@@ -47,9 +53,11 @@
         /// - Parameters:
         ///   - session: The loaded session, validated as not expired (used to render merchant/amount/available methods).
         ///   - savedCards: The listed saved cards (empty when COF is unavailable).
-        init(session: CheckoutSession, savedCards: [SavedCard]) {
+        ///   - localize: Localized-string provider mapping a `sunbay.sheet.*` key to its title in the resolved locale.
+        init(session: CheckoutSession, savedCards: [SavedCard], localize: @escaping (String) -> String) {
             self.session = session
             self.savedCards = savedCards
+            self.localize = localize
             super.init(nibName: nil, bundle: nil)
         }
 
@@ -65,12 +73,24 @@
             buildLayout()
         }
 
+        // MARK: - Test readout
+
+        /// The visible button/label titles produced during layout, in build order.
+        ///
+        /// internal, test-only: lets localization tests assert that titles were resolved
+        /// through the injected `localize` closure. Call after `loadViewIfNeeded()`.
+        func renderedTitles() -> [String] {
+            collectedTitles
+        }
+
         // MARK: - Layout
 
         private func buildLayout() {
             // Cancel entry point (top).
             let cancelButton = UIButton(type: .system)
-            cancelButton.setTitle("Cancel", for: .normal)
+            let cancelTitle = localize("sunbay.sheet.cancel")
+            cancelButton.setTitle(cancelTitle, for: .normal)
+            collectedTitles.append(cancelTitle)
             cancelButton.addTarget(self, action: #selector(handleCancel), for: .touchUpInside)
 
             // Merchant / amount header.
@@ -103,7 +123,7 @@
 
             // Saved-card list (COF; only when there are cards).
             if !savedCards.isEmpty {
-                let header = sectionLabel("Saved cards")
+                let header = sectionLabel(localize("sunbay.sheet.savedCards"))
                 contentStack.addArrangedSubview(header)
                 for card in savedCards {
                     contentStack.addArrangedSubview(savedCardRow(card))
@@ -112,7 +132,7 @@
             }
 
             // New-card form.
-            contentStack.addArrangedSubview(sectionLabel("New card"))
+            contentStack.addArrangedSubview(sectionLabel(localize("sunbay.sheet.newCard")))
             cardField.translatesAutoresizingMaskIntoConstraints = false
             contentStack.addArrangedSubview(cardField)
 
@@ -121,7 +141,9 @@
             saveRow.axis = .horizontal
             saveRow.spacing = 8
             let saveLabel = UILabel()
-            saveLabel.text = "Save this card"
+            let saveTitle = localize("sunbay.sheet.saveThisCard")
+            saveLabel.text = saveTitle
+            collectedTitles.append(saveTitle)
             saveLabel.textColor = .label
             saveRow.addArrangedSubview(saveLabel)
             saveRow.addArrangedSubview(saveCardSwitch)
@@ -129,7 +151,9 @@
 
             // The new-card "Pay" button.
             let payButton = UIButton(type: .system)
-            payButton.setTitle("Pay", for: .normal)
+            let payTitle = localize("sunbay.sheet.pay")
+            payButton.setTitle(payTitle, for: .normal)
+            collectedTitles.append(payTitle)
             payButton.addTarget(self, action: #selector(handlePayNewCard), for: .touchUpInside)
             contentStack.addArrangedSubview(payButton)
 
@@ -137,7 +161,9 @@
             if session.methods.contains(.applePay) {
                 contentStack.addArrangedSubview(separator())
                 let applePayButton = UIButton(type: .system)
-                applePayButton.setTitle("Apple Pay", for: .normal)
+                let applePayTitle = localize("sunbay.sheet.applePay")
+                applePayButton.setTitle(applePayTitle, for: .normal)
+                collectedTitles.append(applePayTitle)
                 applePayButton.addTarget(self, action: #selector(handleApplePay), for: .touchUpInside)
                 contentStack.addArrangedSubview(applePayButton)
             }
@@ -148,6 +174,7 @@
             label.text = text
             label.font = .preferredFont(forTextStyle: .subheadline)
             label.textColor = .secondaryLabel
+            collectedTitles.append(text)
             return label
         }
 

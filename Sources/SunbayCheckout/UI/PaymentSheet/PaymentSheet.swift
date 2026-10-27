@@ -79,6 +79,11 @@
         private let sessionId: String
         /// COF credential (optional); held in memory only and passed to `CheckoutController.start`, never logged/returned (§5).
         private let customerAccessSecret: String?
+        /// Localized-string provider handed to `PaymentSheetViewController` so its titles render
+        /// in the configured locale. Built from a `LocalizationResolver`; maps a `sunbay.sheet.*`
+        /// key to its title. Core stays UI-agnostic — the resolver lives in Core, the closure is
+        /// consumed only here in the UI layer.
+        private let localize: (String) -> String
 
         // MARK: - Public initialization (assembles the real dependencies)
 
@@ -105,7 +110,8 @@
             self.init(
                 controller: controller,
                 sessionId: sessionId,
-                customerAccessSecret: customerAccessSecret
+                customerAccessSecret: customerAccessSecret,
+                localize: LocalizationResolver(explicitLocale: checkout.configuration.locale).localizedNoComment
             )
         }
 
@@ -117,14 +123,19 @@
         ///   - controller: The payment orchestrator.
         ///   - sessionId: The session identifier.
         ///   - customerAccessSecret: COF credential (optional).
+        ///   - localize: Localized-string provider for the VC titles; defaults to a nil-locale
+        ///     resolver (system-preferred languages, then the `en` development localization), so
+        ///     existing internal-init call sites compile unchanged.
         init(
             controller: CheckoutController,
             sessionId: String,
-            customerAccessSecret: String? = nil
+            customerAccessSecret: String? = nil,
+            localize: @escaping (String) -> String = LocalizationResolver(explicitLocale: nil).localizedNoComment
         ) {
             self.controller = controller
             self.sessionId = sessionId
             self.customerAccessSecret = customerAccessSecret
+            self.localize = localize
         }
 
         // MARK: - Public API
@@ -150,7 +161,8 @@
                     Task { @MainActor in
                         let vc = PaymentSheetViewController(
                             session: context.session,
-                            savedCards: context.savedCards
+                            savedCards: context.savedCards,
+                            localize: self.localize
                         )
                         viewController = vc
                         vc.onAction = { action in
