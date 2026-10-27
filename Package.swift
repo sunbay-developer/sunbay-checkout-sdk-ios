@@ -52,6 +52,14 @@ let package = Package(
             dependencies: ["SunbayCheckout", "SunbayCheckoutMocks"],
             path: "Tests/SunbayCheckoutTests"
         ),
+        // Protocol-driven e2e target: drives the internal Core CheckoutController through all five
+        // CheckoutOutcome results via `@testable import SunbayCheckout` (our own harness, not a host
+        // integrator), using the public scriptable doubles from SunbayCheckoutMocks.
+        .testTarget(
+            name: "SunbayCheckoutE2ETests",
+            dependencies: ["SunbayCheckout", "SunbayCheckoutMocks"],
+            path: "Tests/SunbayCheckoutE2ETests"
+        ),
         // 示例 demo 目标:仅依赖 SunbayCheckout(公共 API),源码在 Example 下。
         .executableTarget(
             name: "SunbayCheckoutDemo",
