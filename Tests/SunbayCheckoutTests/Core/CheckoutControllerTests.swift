@@ -40,13 +40,25 @@ final class CheckoutControllerTests: XCTestCase {
         payment: MockPaymentService,
         cof: MockCofService = MockCofService(),
         credentials: CredentialStore = CredentialStore(),
-        actionHandler: StubActionHandler = StubActionHandler()
+        actionHandler: StubActionHandler = StubActionHandler(),
+        poller: ResultPoller? = nil
     ) -> CheckoutController {
         CheckoutController(
             paymentService: payment,
             cofService: cof,
             credentials: credentials,
-            actionHandler: actionHandler
+            actionHandler: actionHandler,
+            poller: poller
+        )
+    }
+
+    /// 构造一个以注入 payment 为后端、且注入「零等待」sleep 的 poller,
+    /// 让控制器在 `.initial`(pending)时能确定性、无真实休眠地轮询到终态。
+    private func noWaitPoller(payment: MockPaymentService) -> ResultPoller {
+        ResultPoller(
+            service: payment,
+            config: PollConfig(initial: 0.001, max: 0.001, overallLimit: 0.05),
+            sleep: { _ in }
         )
     }
 
@@ -317,6 +329,44 @@ final class CheckoutControllerTests: XCTestCase {
             XCTAssertEqual(err.code, "UNSUPPORTED_CAPABILITY")
         } else {
             XCTFail("R + 处理器 .failed 应映射 failed,实际:\(outcome)")
+        }
+    }
+
+    // MARK: - 两源单次交付去重(Task 6 review 遗留项,Task 7 真正落地)
+
+    /// submit 返回 `.initial`(pending)→ 控制器用 poller 轮询到 `.succeeded`。
+    ///
+    /// 这取代了 Task 6 里「两个相同终态快照只交付一次」的平凡断言:现在存在**两个真实结果来源**
+    /// (submit→pending、poll→terminal),验证确认调用**恰好一次**解析为终态、且解析后**单活跃锁已释放**
+    /// (后续 confirm 能再次开始)——这才是真正的双源单次交付检查。
+    func test_pendingThenPolledTerminal_deliversSingleOutcome() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession())
+        // submit 先返回非终态 I;随后 getResult(轮询)依次 I, S。
+        payment.stubSubmit([PaymentSnapshot(sessionId: "sess_1", status: .initial, txnId: "txn_p")])
+        payment.stubGetResult([
+            PaymentSnapshot(sessionId: "sess_1", status: .initial, txnId: "txn_p"),
+            PaymentSnapshot(sessionId: "sess_1", status: .succeeded, txnId: "txn_done"),
+        ])
+
+        let controller = makeController(payment: payment, poller: noWaitPoller(payment: payment))
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+
+        let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
+
+        // 恰好一次解析为 succeeded(轮询拿到的终态)。
+        if case .succeeded(let txnId) = outcome {
+            XCTAssertEqual(txnId, "txn_done", "应交付轮询得到的终态 txnId")
+        } else {
+            XCTFail("pending→轮询终态应交付一次 succeeded,实际:\(outcome)")
+        }
+        XCTAssertEqual(payment.submitCallCount, 1, "一次 confirm 只 submit 一次")
+
+        // 单活跃锁解析后应已释放:后续 confirm 不被 alreadyPresenting 挡住(能再次开始)。
+        payment.stubSubmit([terminalSucceeded()])
+        let again = await controller.confirmSavedCard(paymentMethodId: "pm_2")
+        if case .failed(_, let err) = again, err.code == "ALREADY_PRESENTING" {
+            XCTFail("终态解析后单活跃锁应已释放,后续 confirm 应能开始")
         }
     }
 

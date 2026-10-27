@@ -92,6 +92,12 @@ actor CheckoutController {
     private let credentials: CredentialStore
     private let actionHandler: any ActionHandling
 
+    /// pending(`I`)→ 终态的结果轮询器(§4.4)。
+    ///
+    /// 可注入(测试用零等待 sleep 使轮询确定且不真正休眠);未注入时用同一 `paymentService`
+    /// 以默认参数构造,保证生产路径无需显式传入即可工作。
+    private let poller: ResultPoller
+
     /// 当前已加载的会话;`start` 成功后写入。
     private var session: CheckoutSession?
 
@@ -108,16 +114,20 @@ actor CheckoutController {
     ///   - cofService: 已保存卡列卡能力。
     ///   - credentials: 内存凭证持有者(终态即清)。
     ///   - actionHandler: `requiresAction` 分发器(Task 8 提供真实实现)。
+    ///   - poller: pending→终态结果轮询器(可选)。缺省时用同一 `paymentService` 以 `.default`
+    ///     参数构造;测试可注入零等待 sleep 的 poller 以确定性地驱动 pending 轮询。
     init(
         paymentService: any PaymentService,
         cofService: any CofService,
         credentials: CredentialStore,
-        actionHandler: any ActionHandling
+        actionHandler: any ActionHandling,
+        poller: ResultPoller? = nil
     ) {
         self.paymentService = paymentService
         self.cofService = cofService
         self.credentials = credentials
         self.actionHandler = actionHandler
+        self.poller = poller ?? ResultPoller(service: paymentService)
     }
 
     // MARK: - 生命周期
@@ -310,7 +320,8 @@ actor CheckoutController {
     ///
     /// - `S` → `.succeeded`(终态,清凭证)
     /// - `F` → `.failed`(终态,清凭证)
-    /// - `I` → `.pending`(非终态;轮询是 Task 7,这里仅返回 pending)
+    /// - `I` → 非终态:驱动 `ResultPoller` 轮询至终态或上限(§4.4),再映射轮询结果:
+    ///   终态 → succeeded/failed(清凭证);达上限仍非终态 → `.unknown`(清凭证)
     /// - `R` → 委派 `ActionHandling`:`.pending` → `.pending`,`.failed(err)` → `.failed`
     private func mapSnapshot(_ snapshot: PaymentSnapshot) async -> CheckoutOutcome {
         switch snapshot.status {
@@ -324,8 +335,20 @@ actor CheckoutController {
             return .failed(txnId: snapshot.txnId, error: CheckoutErrors.paymentFailed())
 
         case .initial:
-            // 非终态:不清凭证。轮询至终态是 Task 7(ResultPoller)的职责;本任务仅返回 pending。
-            return .pending(txnId: snapshot.txnId)
+            // 非终态:轮询至终态或上限(Task 7)。轮询用注入/默认 ResultPoller。
+            let polled = await poller.pollUntilTerminal(sessionId: snapshot.sessionId)
+            switch polled.status {
+            case .succeeded:
+                await terminalCleanup()
+                return .succeeded(txnId: polled.txnId ?? "")
+            case .failed:
+                await terminalCleanup()
+                return .failed(txnId: polled.txnId, error: CheckoutErrors.paymentFailed())
+            case .initial, .requiresAction:
+                // 达上限仍非终态 → unknown(非失败,§4.3);清 UI 侧凭证。
+                await terminalCleanup()
+                return .unknown(sessionId: snapshot.sessionId)
+            }
 
         case .requiresAction:
             // 取动作(seam):服务实现若提供 action 则用之,否则按 .unknown 兜底(→ 不支持)。
