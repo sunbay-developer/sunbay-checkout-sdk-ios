@@ -540,8 +540,10 @@ developer-message fallback above); amounts format via `Locale`.
 ### 9.2 Recorded future extensions (not in v1)
 
 - **More languages:** one `.lproj` + one resolver map entry each (e.g. `zh-TW → zh-Hant`).
-- **Host-supplied / full custom languages:** expose the two-tier lookup's first tier as public API.
-  The `SunbayLocalizedString` pipeline already routes through a host-table tier that is empty in v1.
+- **Host-supplied / full custom languages:** a future `SunbayLocalizedString` could consult a
+  host-supplied string table before falling back to the SDK's bundled strings, with that first
+  (host) tier exposed as public API. v1 does not implement this tier — today `SunbayLocalizedString`
+  is a single bundle lookup. This is a reserved extension point.
 - **Decision-A PaymentSheet UI driver seam:** for in-sheet-branch e2e coverage.
 - **Localized-layout snapshot tests.**
 
