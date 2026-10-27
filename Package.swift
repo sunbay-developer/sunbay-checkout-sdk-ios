@@ -12,6 +12,13 @@ let package = Package(
             name: "SunbayCheckout",
             targets: ["SunbayCheckout"]
         ),
+        // Public-API-only scriptable backend doubles, shared by the e2e test target and the Example
+        // app (a separate Xcode/Tuist project). Exposed as a library product so the Example app can
+        // depend on it without internal access.
+        .library(
+            name: "SunbayCheckoutMocks",
+            targets: ["SunbayCheckoutMocks"]
+        ),
         // 示例 demo 可执行产品(Task 13)。只消费 SunbayCheckout 公共 API + 公共
         // PaymentService/CofService 协议;真实运行目标是 iOS 模拟器(见 Example/README.md)。
         .executable(
@@ -32,9 +39,17 @@ let package = Package(
             path: "Sources/SunbayCheckout",
             resources: [.process("Resources/Localizations")]
         ),
+        // Public-API-only scriptable backend doubles (ScriptablePaymentService, ScriptableCofService,
+        // DemoSessionFactory). Depends only on SunbayCheckout's public API (no @testable, no UIKit),
+        // so it builds on the macOS host and is consumable by both the e2e test target and the Example app.
+        .target(
+            name: "SunbayCheckoutMocks",
+            dependencies: ["SunbayCheckout"],
+            path: "Sources/SunbayCheckoutMocks"
+        ),
         .testTarget(
             name: "SunbayCheckoutTests",
-            dependencies: ["SunbayCheckout"],
+            dependencies: ["SunbayCheckout", "SunbayCheckoutMocks"],
             path: "Tests/SunbayCheckoutTests"
         ),
         // 示例 demo 目标:仅依赖 SunbayCheckout(公共 API),源码在 Example 下。
