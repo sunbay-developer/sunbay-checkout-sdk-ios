@@ -4,3 +4,9 @@
 xcuserdata/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 .superpowers/
+
+# Tuist-generated Example app artifacts (Project.swift and Sources/ are checked in).
+Example/SunbayCheckoutDemo/*.xcodeproj
+Example/SunbayCheckoutDemo/*.xcworkspace
+Example/SunbayCheckoutDemo/Derived/
+Example/SunbayCheckoutDemo/.build/
