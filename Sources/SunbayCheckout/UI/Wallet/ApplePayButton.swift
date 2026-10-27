@@ -89,8 +89,9 @@
         ///   - sessionId: 要结账的会话标识。
         ///   - style: 按钮配色风格;缺省 `.automatic`。
         ///
-        /// - Note: 真实后端 `PaymentService` / `CofService` 适配器在后续任务（真实后端联调）
-        ///   接入；在其就绪前，公共路径使用「未配置」占位服务（fail-closed），不影响公共 API 形态。
+        /// - Note: 控制器使用 `checkout` 实例所持有的后端服务：host 若经
+        ///   `SunbayCheckout(configuration:paymentService:cofService:)` 注入了真实/mock 服务，
+        ///   则按钮使用它们；否则回退到共享的 fail-closed `Unconfigured*` 默认（§7/§8 契约未定前）。
         public convenience init(
             checkout: SunbayCheckout,
             sessionId: String,
@@ -98,8 +99,6 @@
         ) {
             let webAuthOpener = WebAuthOpener()
             let controller = checkout.makeController(
-                paymentService: UnconfiguredPaymentService(),
-                cofService: UnconfiguredCofService(),
                 credentials: CredentialStore(),
                 actionHandler: ActionHandler(webAuthOpener: webAuthOpener)
             )
@@ -241,43 +240,6 @@
             } else {
                 DispatchQueue.main.async(execute: work)
             }
-        }
-    }
-
-    // MARK: - 未配置占位服务（fail-closed，待真实后端适配器接入）
-
-    /// 「未配置」的 `PaymentService` 占位实现（internal）。
-    ///
-    /// 真实后端适配器就绪前，公共 `init(checkout:sessionId:)` 需要向 `makeController` 传入
-    /// 一个 `PaymentService`;此占位对所有调用抛 `NETWORK_UNAVAILABLE`（fail-closed，不静默成功）。
-    /// 其存在只为让公共 API 形态成立并编译,不改变任何对外符号。
-    private struct UnconfiguredPaymentService: PaymentService {
-        private func unconfigured() -> CheckoutError {
-            CheckoutError(
-                code: "NETWORK_UNAVAILABLE",
-                message: "No backend adapter is configured for this SDK build.",
-                category: .network,
-                traceId: nil
-            )
-        }
-
-        func loadSession(_ id: String) async throws -> CheckoutSession { throw unconfigured() }
-        func submit(_ req: SubmitRequest) async throws -> PaymentSnapshot { throw unconfigured() }
-        func getResult(sessionId: String) async throws -> PaymentSnapshot { throw unconfigured() }
-    }
-
-    /// 「未配置」的 `CofService` 占位实现（internal，fail-closed）。
-    private struct UnconfiguredCofService: CofService {
-        func listPaymentMethods(
-            customerAccessSecret: String,
-            sessionId: String
-        ) async throws -> [SavedCard] {
-            throw CheckoutError(
-                code: "NETWORK_UNAVAILABLE",
-                message: "No backend adapter is configured for this SDK build.",
-                category: .network,
-                traceId: nil
-            )
         }
     }
 #endif
