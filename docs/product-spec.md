@@ -336,18 +336,23 @@ checkout-sdk-native/ios/
 │   │   ├── Wallet/                     # L3 ApplePayButton [首版]
 │   │   ├── CardField/                  # 卡输入控件 + 安全规格
 │   │   └── Embedded/                   # L2 [预留,首版空占位]
-│   └── Core/
-│       ├── CheckoutController.swift    # actor 编排 + 状态机
-│       ├── PaymentService.swift        # protocol (mock/real)
-│       ├── CofService.swift            # 列卡(直连 PSP)
-│       ├── CardEncryptor.swift         # RSA 本地加密(明文边界)
-│       ├── WalletAuthorizer.swift      # PassKit
-│       ├── ActionHandler.swift         # redirect/qrCode 分发
-│       ├── CredentialStore.swift       # 内存持有 secret,终态即清
-│       └── Models/
-├── Tests/SunbayCheckoutTests/         # XCTest:状态机/加密/幂等/恢复
+│   ├── Core/
+│   │   ├── CheckoutController.swift    # actor 编排 + 状态机
+│   │   ├── PaymentService.swift        # protocol (mock/real)
+│   │   ├── CofService.swift            # 列卡(直连 PSP)
+│   │   ├── CardEncryptor.swift         # RSA 本地加密(明文边界)
+│   │   ├── WalletAuthorizer.swift      # PassKit
+│   │   ├── ActionHandler.swift         # redirect/qrCode 分发
+│   │   ├── CredentialStore.swift       # 内存持有 secret,终态即清
+│   │   ├── Localization/               # i18n subsystem [见 §9]
+│   │   └── Models/
+│   └── Resources/Localizations/        # {en,zh-Hans}.lproj/Localizable.strings
+├── Sources/SunbayCheckoutMocks/       # public-API-only shared doubles (e2e + Example) [见 §9]
+├── Tests/
+│   ├── SunbayCheckoutTests/           # XCTest:状态机/加密/幂等/恢复
+│   └── SunbayCheckoutE2ETests/        # protocol-driven e2e (host, swift test) [见 §9]
 └── Example/
-    ├── SunbayCheckoutDemo/            # mock 示例 App
+    ├── SunbayCheckoutDemo/            # Tuist-generated App (Project.swift + Sources/ checked in)
     └── ApplePayProbe/                 # Apple Pay 真机探针
 ```
 
@@ -501,3 +506,54 @@ AddressInfo { country, state?, city, line1, line2?, postalCode, district?,
 7. [P1] customerAccessSecret 的 TTL / 撤销 / 单次语义。
 8. [P1] 最终 API URL / 鉴权头 / 字段映射(web 的 line1→address 之类是否沿用)。
 9. [P2] 目标市场地区性合规(数据驻留等)。
+
+---
+
+## 9. Localization (i18n), Example app, and test structure
+
+> This section is written in English per `AGENTS.md`. Full design:
+> `docs/superpowers/specs/2026-10-27-ios-i18n-demo-e2e-design.md`.
+
+### 9.1 Localization subsystem
+
+The localization code lives in `Sources/SunbayCheckout/Core/Localization/`, with string resources in
+`Sources/SunbayCheckout/Resources/Localizations/{en,zh-Hans}.lproj/Localizable.strings`. v1 ships
+**en-US** and **zh-CN** (Simplified Chinese).
+
+Components:
+
+- `SunbayLocalizedString` — a lookup helper over `Bundle.module`.
+- `LocalizationResolver` — the resolution chain, highest priority first: explicit
+  `CheckoutConfiguration.locale` → session language (reserved; no v1 data source) → system language →
+  `en-US` default.
+- `AmountFormatter` — locale-aware currency formatting via `NumberFormatter`, with currency-derived
+  fraction digits.
+- `CheckoutError.localizedDisplayMessage(using:)` — maps a stable error `code` to
+  `sunbay.error.<lowercased-code>`, falling back to the developer-supplied `message` when no localized
+  string exists.
+
+**Public BCP-47 codes vs internal `.lproj` names.** The public API uses BCP-47 region form (`en-US`,
+`zh-CN`), aligned with hpp/jssdk. Internally these map to Apple `.lproj` directory names
+(`en-US → en`, `zh-CN → zh-Hans`). Errors localize **client-side from the code** (with the
+developer-message fallback above); amounts format via `Locale`.
+
+### 9.2 Recorded future extensions (not in v1)
+
+- **More languages:** one `.lproj` + one resolver map entry each (e.g. `zh-TW → zh-Hant`).
+- **Host-supplied / full custom languages:** expose the two-tier lookup's first tier as public API.
+  The `SunbayLocalizedString` pipeline already routes through a host-table tier that is empty in v1.
+- **Decision-A PaymentSheet UI driver seam:** for in-sheet-branch e2e coverage.
+- **Localized-layout snapshot tests.**
+
+### 9.3 Three-layer example/test structure
+
+- **Example app** (`Example/SunbayCheckoutDemo/`) — a Tuist-generated Xcode app (`Project.swift` +
+  `Sources/` checked in; the generated project is git-ignored) with a configuration playground
+  (environment, locale, currency/amount, methods, COF, scenario). It is the customer reference surface
+  and the UI localization gate. `Example/ApplePayProbe/` remains the standalone PassKit probe.
+- **`SunbayCheckoutMocks`** (`Sources/SunbayCheckoutMocks/`) — a public-API-only library target
+  (`ScriptablePaymentService`, `ScriptableCofService`, `DemoSessionFactory`, `DemoRSAKey`) providing
+  shared doubles for both the e2e target and the Example app.
+- **e2e target** (`Tests/SunbayCheckoutE2ETests/`) — protocol-driven automation with `@testable`
+  controller access, no UIKit, runs on the host via `swift test`. Covers the five outcomes,
+  idempotency / single-active, query-first-on-failure, COF-disabled, and localization assertions.

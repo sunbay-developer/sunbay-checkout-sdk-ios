@@ -56,6 +56,18 @@ See `docs/product-spec.md` §6.2 for the full tree. In short:
 `Sources/SunbayCheckout/{Public, UI, Core}` + `Tests` + `Example/{SunbayCheckoutDemo, ApplePayProbe}`.
 Distribution: **Swift Package Manager** primary; XCFramework reserved/on-demand; CocoaPods not planned.
 
+The tree also now includes:
+- `Sources/SunbayCheckout/Core/Localization/` + `Sources/SunbayCheckout/Resources/Localizations/{en,zh-Hans}.lproj/` —
+  the i18n subsystem and its string resources (v1 ships en-US + zh-CN). See `docs/product-spec.md` §9.
+- `Sources/SunbayCheckoutMocks/` — a public-API-only library target (scriptable service doubles + demo
+  fixtures) shared by the e2e target and the Example app; depends on no internal types.
+- `Example/SunbayCheckoutDemo/` — a Tuist-generated Xcode app (`Project.swift` + `Sources/` checked in;
+  the generated `*.xcodeproj`/`*.xcworkspace`/`Derived/` are git-ignored). This is the SDK-consuming
+  real-device/demo surface and the UI localization gate. `Example/ApplePayProbe/` remains the standalone
+  PassKit probe.
+- `Tests/SunbayCheckoutE2ETests/` — a protocol-driven e2e target that runs on the host via `swift test`
+  (no UIKit), alongside `Tests/SunbayCheckoutTests/`.
+
 ## 4. Testing & verification
 
 - XCTest covering state machine, RSA encryption, idempotency/dedup, recovery. `swift test` must pass.
