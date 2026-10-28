@@ -40,6 +40,29 @@ The manifest wires the SDK as a **local Swift package** at the repo root
 (`packages: [.package(path: "../..")]`) and depends on the `SunbayCheckout` and
 `SunbayCheckoutMocks` products by name. `tuist generate` resolves the package into the project.
 
+## Running on a real device (Apple Pay signing)
+
+The simulator needs no signing, and by default the manifest ships a **placeholder** Apple Pay
+merchant id (`merchant.com.sunbay.demo`) and **no** signing team, so it commits clean and runs on
+the simulator with zero setup. That placeholder is not registered with Apple, so building for a
+**real device** will fail to sign with errors like *"doesn't support merchant.com.sunbay.demo
+Merchant Identifier"* and *"doesn't include the com.apple.developer.in-app-payments entitlement"*.
+
+To sign for a real device, override the merchant id (and your team) via Tuist environment variables
+at generate time - these are read by the manifest's `Environment` API and never committed:
+
+```bash
+# from Example/SunbayCheckoutDemo
+TUIST_SUNBAY_DEMO_MERCHANT_ID=merchant.com.<your-merchant> \
+TUIST_SUNBAY_DEMO_DEVELOPMENT_TEAM=<YOUR_TEAM_ID> \
+  tuist generate
+```
+
+The merchant id must already be registered under that team in your Apple Developer account, with
+the Apple Pay capability enabled. For the full token path on-device you also need a sandbox tester
+signed in and a test card in Wallet. Running `tuist generate` with no overrides restores the
+placeholder.
+
 ## Configuration playground
 
 The app is a Stripe-style config screen (`DemoRootView`) over a `DemoSettings` value. Every knob

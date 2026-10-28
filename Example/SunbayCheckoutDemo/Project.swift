@@ -11,9 +11,28 @@ import ProjectDescription
 // products by name (`SunbayCheckout`, `SunbayCheckoutMocks`) through `.package(product:)`.
 // `tuist generate` resolves them into the generated project.
 //
-// English/ASCII only. No real merchant certificates or secrets are committed: the Apple Pay
-// entitlement carries a PLACEHOLDER merchant id; a real one is configured by the integrating
-// developer on-device (see Example/README.md and AGENTS.md section 5).
+// English/ASCII only. No real merchant certificates or team ids are committed. The Apple Pay
+// entitlement carries a PLACEHOLDER merchant id by default; a developer who wants to sign for a
+// real device overrides it (and the signing team) via Tuist environment variables read below, so
+// their internal values never land in this repository. See Example/README.md and AGENTS.md
+// section 5.
+//
+// Overrides (Tuist reads TUIST_-prefixed env vars at generate time via the `Environment` API):
+//   TUIST_SUNBAY_DEMO_MERCHANT_ID       e.g. merchant.com.sunbay.dev   (default: merchant.com.sunbay.demo)
+//   TUIST_SUNBAY_DEMO_DEVELOPMENT_TEAM  your Apple Developer Team id    (default: none; the simulator needs none)
+
+// The Apple Pay merchant id. A real device needs one registered under the signing team; the
+// default is a non-functional placeholder suitable for the simulator and for committing.
+private let merchantId = Environment.sunbayDemoMerchantId.getString(default: "merchant.com.sunbay.demo")
+
+// Optional signing team. When set, it flows into the target's build settings so Xcode can produce
+// a provisioning profile that includes the Apple Pay capability for a real device. Left empty for
+// the simulator (which does not sign).
+private let developmentTeam = Environment.sunbayDemoDevelopmentTeam.getString(default: "")
+
+private let signingSettings: SettingsDictionary = developmentTeam.isEmpty
+    ? [:]
+    : ["DEVELOPMENT_TEAM": .string(developmentTeam)]
 
 let project = Project(
     name: "SunbayCheckoutDemo",
@@ -42,16 +61,17 @@ let project = Project(
             ),
             sources: ["Sources/**"],
             entitlements: .dictionary([
-                // Placeholder merchant id. A real integration replaces this with the merchant's
-                // own identifier and provisions the matching capability/certificate on device.
+                // Merchant id for the Apple Pay capability. Defaults to a non-functional
+                // placeholder; override with SUNBAY_DEMO_MERCHANT_ID for real-device signing.
                 "com.apple.developer.in-app-payments": .array([
-                    .string("merchant.com.sunbay.demo"),
+                    .string(merchantId),
                 ]),
             ]),
             dependencies: [
                 .package(product: "SunbayCheckout"),
                 .package(product: "SunbayCheckoutMocks"),
-            ]
+            ],
+            settings: .settings(base: signingSettings)
         ),
     ],
     schemes: [
