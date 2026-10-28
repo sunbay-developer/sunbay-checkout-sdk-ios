@@ -64,14 +64,16 @@ What it does:
 All output lives under `build/`, which is git-ignored. The script is not part of the
 normal build/test flow and nothing depends on it.
 
-> **Environment note.** Archiving a *pure-SwiftPM* library scheme into a distributable
-> `.framework` can be finicky: in some toolchains `xcodebuild archive` on the SPM scheme
-> emits only a raw object file rather than a `.framework` bundle, in which case
-> `-create-xcframework` has nothing to consume and the script **fails loudly** (non-zero
-> exit) rather than producing an empty/invalid artifact. When that happens, producing a
-> real `.xcframework` requires wrapping the SPM product in a framework target (e.g. a
-> Tuist/Xcode framework project) before archiving. This wrapping is deferred to the C3
-> work below.
+> **Prerequisite note (architectural, not environmental).** A *pure-SwiftPM* **library**
+> scheme does not build as a `.framework` on any machine -- archiving it yields a raw
+> object file (or a static library), never a `.framework` bundle. This is a property of
+> the product kind, not a toolchain quirk: a different environment will **not** make the
+> current script produce an artifact as-is. Because `-create-xcframework -framework` has
+> nothing to consume, the script **fails loudly** (non-zero exit) rather than producing
+> an empty/invalid artifact. Producing any binary from the current product therefore
+> **requires** first wrapping the SPM product in a framework target (e.g. a Tuist/Xcode
+> framework project) -- the C3 step below. That wrapping is a hard prerequisite, not an
+> optimization.
 
 ### How a consumer uses the produced `.xcframework` today
 
@@ -104,8 +106,11 @@ Binary SPM distribution via `.binaryTarget(url:checksum:)` is a **recorded futur
 
 **C3 checklist (when the preconditions are met):**
 
-1. Build the `.xcframework` (using the framework-wrapped product; see the environment
-   note in section 2) via `scripts/build-xcframework.sh`.
+1. Build the `.xcframework` (using the framework-wrapped product; see the prerequisite
+   note in section 2) via `scripts/build-xcframework.sh`. Note: `xcodebuild
+   -create-xcframework` also supports a `-library <path> -headers <path>` form for
+   static-library products, so when implementing C3 evaluate whether to wrap the product
+   in a framework (`-framework`) or feed a static library (`-library`).
 2. Host the `.xcframework` (zipped) at a stable URL -- e.g. a GitHub Release asset for the
    tag.
 3. Compute the checksum against the hosted zip:

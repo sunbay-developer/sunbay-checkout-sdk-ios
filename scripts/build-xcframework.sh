@@ -26,6 +26,14 @@ set -euo pipefail
 # Failure behavior:
 #   - `set -euo pipefail` means any failing xcodebuild step aborts the script with a
 #     non-zero exit. The script never exits 0 without producing a valid .xcframework.
+#
+# Prerequisite (architectural, not environmental):
+#   - The current `SunbayCheckout` product is a PURE-SwiftPM *library*, which does not
+#     build as a .framework on any machine -- archiving it yields a raw object file (or a
+#     static library), never a .framework bundle. A different environment will NOT make
+#     this script produce an artifact as-is. Producing any binary therefore REQUIRES
+#     first wrapping the SPM product in a framework target (the C3 step). See
+#     docs/releasing.md. Until that wrapper exists, the discovery gate below fails loudly.
 
 SCHEME="SunbayCheckout"
 BUILD_DIR="build"
@@ -76,11 +84,13 @@ if [[ -z "${DEVICE_FRAMEWORK}" || -z "${SIMULATOR_FRAMEWORK}" ]]; then
   echo "  device archive:    ${DEVICE_ARCHIVE} -> '${DEVICE_FRAMEWORK}'" >&2
   echo "  simulator archive: ${SIMULATOR_ARCHIVE} -> '${SIMULATOR_FRAMEWORK}'" >&2
   echo >&2
-  echo "This is a known limitation of archiving a PURE-SwiftPM library scheme: xcodebuild" >&2
-  echo "emits only a raw object file (SunbayCheckout.o) under Products/.../Objects, not a" >&2
-  echo ".framework bundle. Producing a distributable framework requires wrapping the SPM" >&2
-  echo "product in a framework target (e.g. a Tuist/Xcode framework project) before" >&2
-  echo "-create-xcframework can consume it. See docs/releasing.md (future C3 path)." >&2
+  echo "This is an architectural property of a PURE-SwiftPM *library* scheme, not a" >&2
+  echo "toolchain/environment quirk: archiving such a product produces no consumable" >&2
+  echo ".framework (e.g. only a raw object file or a static library), on any machine." >&2
+  echo "A different environment will NOT make this succeed as-is. Producing a" >&2
+  echo "distributable framework REQUIRES wrapping the SPM product in a framework target" >&2
+  echo "(e.g. a Tuist/Xcode framework project) before -create-xcframework can consume it." >&2
+  echo "See docs/releasing.md (future C3 path)." >&2
   echo >&2
   echo "Products tree(s) for diagnosis:" >&2
   find "${DEVICE_ARCHIVE}/Products" 2>/dev/null >&2 || true
@@ -91,6 +101,8 @@ fi
 echo "==> Creating XCFramework"
 echo "    device:    ${DEVICE_FRAMEWORK}"
 echo "    simulator: ${SIMULATOR_FRAMEWORK}"
+# Note: -create-xcframework also supports a `-library <path> -headers <path>` form for
+# static-library products; a C3 implementer should evaluate -framework vs -library.
 xcodebuild -create-xcframework \
   -framework "${DEVICE_FRAMEWORK}" \
   -framework "${SIMULATOR_FRAMEWORK}" \
