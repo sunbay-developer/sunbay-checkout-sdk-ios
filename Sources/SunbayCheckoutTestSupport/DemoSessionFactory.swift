@@ -1,3 +1,9 @@
+// SunbayCheckoutTestSupport: TEST/EXAMPLE SCAFFOLDING ONLY.
+//
+// This module provides scriptable service doubles and demo fixtures shared by the test targets
+// and the Example app. It is NOT a stable public API and MUST NOT be used in production
+// integrations. Its surface may change without a semantic-version guarantee.
+
 import Foundation
 
 import SunbayCheckout

@@ -3,12 +3,12 @@ import ProjectDescription
 // Tuist manifest for the SunbayCheckout Example app.
 //
 // This produces a REAL Xcode app (not a SwiftPM executable) that consumes only the SDK's
-// public API plus the public `SunbayCheckoutMocks` doubles. The SDK lives in the Swift
+// public API plus the public `SunbayCheckoutTestSupport` doubles. The SDK lives in the Swift
 // package at the repository root, two directories up from this manifest.
 //
 // Local-package wiring: the root `Package.swift` is declared as a local Swift package via
 // `packages: [.package(path: "../..")]`, and the app target depends on the two library
-// products by name (`SunbayCheckout`, `SunbayCheckoutMocks`) through `.package(product:)`.
+// products by name (`SunbayCheckout`, `SunbayCheckoutTestSupport`) through `.package(product:)`.
 // `tuist generate` resolves them into the generated project.
 //
 // English/ASCII only. No real merchant certificates or team ids are committed. The Apple Pay
@@ -41,7 +41,7 @@ let project = Project(
     // has no run action and triggers "scheme is not configured for running" in Xcode).
     options: .options(automaticSchemesOptions: .disabled),
     packages: [
-        // The SDK Swift package at the repo root (contains SunbayCheckout + SunbayCheckoutMocks).
+        // The SDK Swift package at the repo root (contains SunbayCheckout + SunbayCheckoutTestSupport).
         .package(path: "../.."),
     ],
     targets: [
@@ -69,7 +69,7 @@ let project = Project(
             ]),
             dependencies: [
                 .package(product: "SunbayCheckout"),
-                .package(product: "SunbayCheckoutMocks"),
+                .package(product: "SunbayCheckoutTestSupport"),
             ],
             settings: .settings(base: signingSettings)
         ),

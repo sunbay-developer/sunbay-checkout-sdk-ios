@@ -12,12 +12,13 @@ let package = Package(
             name: "SunbayCheckout",
             targets: ["SunbayCheckout"]
         ),
-        // Public-API-only scriptable backend doubles, shared by the e2e test target and the Example
-        // app (a separate Xcode/Tuist project). Exposed as a library product so the Example app can
-        // depend on it without internal access.
+        // TEST/EXAMPLE SCAFFOLDING ONLY: scriptable service doubles + demo fixtures, shared by the
+        // test targets and the Example app (a separate Xcode/Tuist project). Exposed as a library
+        // product so the Example app can depend on it without internal access. This is NOT a stable
+        // public API and MUST NOT be used in production integrations.
         .library(
-            name: "SunbayCheckoutMocks",
-            targets: ["SunbayCheckoutMocks"]
+            name: "SunbayCheckoutTestSupport",
+            targets: ["SunbayCheckoutTestSupport"]
         ),
         // Apple Pay 真机探针(Task 14)。**独立**可执行产品:直连 PassKit,
         // **不依赖** SunbayCheckout(不是 SDK 消费者)。真实运行目标是 iOS 模拟器/真机
@@ -33,25 +34,27 @@ let package = Package(
             path: "Sources/SunbayCheckout",
             resources: [.process("Resources/Localizations")]
         ),
-        // Public-API-only scriptable backend doubles (ScriptablePaymentService, ScriptableCofService,
-        // DemoSessionFactory). Depends only on SunbayCheckout's public API (no @testable, no UIKit),
-        // so it builds on the macOS host and is consumable by both the e2e test target and the Example app.
+        // TEST/EXAMPLE SCAFFOLDING ONLY: scriptable service doubles + demo fixtures
+        // (ScriptablePaymentService, ScriptableCofService, DemoSessionFactory). Depends only on
+        // SunbayCheckout's public API (no @testable, no UIKit), so it builds on the macOS host and is
+        // consumable by both the test targets and the Example app. This is NOT a stable public API
+        // and MUST NOT be used in production integrations.
         .target(
-            name: "SunbayCheckoutMocks",
+            name: "SunbayCheckoutTestSupport",
             dependencies: ["SunbayCheckout"],
-            path: "Sources/SunbayCheckoutMocks"
+            path: "Sources/SunbayCheckoutTestSupport"
         ),
         .testTarget(
             name: "SunbayCheckoutTests",
-            dependencies: ["SunbayCheckout", "SunbayCheckoutMocks"],
+            dependencies: ["SunbayCheckout", "SunbayCheckoutTestSupport"],
             path: "Tests/SunbayCheckoutTests"
         ),
         // Protocol-driven e2e target: drives the internal Core CheckoutController through all five
         // CheckoutOutcome results via `@testable import SunbayCheckout` (our own harness, not a host
-        // integrator), using the public scriptable doubles from SunbayCheckoutMocks.
+        // integrator), using the public scriptable doubles from SunbayCheckoutTestSupport.
         .testTarget(
             name: "SunbayCheckoutE2ETests",
-            dependencies: ["SunbayCheckout", "SunbayCheckoutMocks"],
+            dependencies: ["SunbayCheckout", "SunbayCheckoutTestSupport"],
             path: "Tests/SunbayCheckoutE2ETests"
         ),
         // The SunbayCheckoutDemo executable target has been migrated to a standalone Tuist-generated

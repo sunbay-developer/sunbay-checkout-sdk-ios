@@ -7,10 +7,10 @@ import XCTest
 // to reach them. This is an allowed, deliberate choice: this target is our OWN test harness, not a
 // host integrator. The Example app (a separate project) stays strictly public-API-only. The
 // scriptable backend doubles (`ScriptablePaymentService` / `ScriptableCofService` /
-// `DemoSessionFactory`) are public API and are imported normally from `SunbayCheckoutMocks`, so
+// `DemoSessionFactory`) are public API and are imported normally from `SunbayCheckoutTestSupport`, so
 // only the controller access relies on `@testable`.
 @testable import SunbayCheckout
-import SunbayCheckoutMocks
+import SunbayCheckoutTestSupport
 
 /// A minimal `ActionHandling` stand-in local to the e2e target.
 ///

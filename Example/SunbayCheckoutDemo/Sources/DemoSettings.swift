@@ -6,7 +6,7 @@ import SunbayCheckout
 /// The full configuration surface exposed by the demo playground.
 ///
 /// A `Codable`/`Equatable` value type holding every knob the config screen drives. It maps to a
-/// `CheckoutConfiguration` plus the scripted mock services (from `SunbayCheckoutMocks`) at Pay time.
+/// `CheckoutConfiguration` plus the scripted mock services (from `SunbayCheckoutTestSupport`) at Pay time.
 /// Deliberately a plain value type (no SDK reference types) so SwiftUI can diff it and so it stays
 /// trivially serializable.
 struct DemoSettings: Codable, Equatable {

@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 
 @testable import SunbayCheckout
-import SunbayCheckoutMocks
+import SunbayCheckoutTestSupport
 
 /// E2E invariant cases for the Core `CheckoutController`: single-active guard (idempotency against
 /// concurrent confirms), "query first on submit failure", and the COF-disabled downgrade.

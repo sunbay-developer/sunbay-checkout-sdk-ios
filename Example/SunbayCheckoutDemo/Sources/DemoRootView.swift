@@ -1,6 +1,6 @@
 import Foundation
 import SunbayCheckout
-import SunbayCheckoutMocks
+import SunbayCheckoutTestSupport
 
 #if canImport(UIKit) && canImport(SwiftUI)
     import SwiftUI
@@ -11,12 +11,12 @@ import SunbayCheckoutMocks
     /// The demo configuration playground.
     ///
     /// A Stripe-style config screen: a `Form` exposing every `DemoSettings` knob, a "Pay (sheet)"
-    /// action that maps the settings into a `CheckoutConfiguration` + scripted `SunbayCheckoutMocks`
+    /// action that maps the settings into a `CheckoutConfiguration` + scripted `SunbayCheckoutTestSupport`
     /// services and presents the SDK `PaymentSheet`, a standalone `ApplePayButton` section, and a
     /// last-outcome display.
     ///
     /// Consumes only the SDK public API (`SunbayCheckout`, `CheckoutConfiguration`, `PaymentSheet`,
-    /// `ApplePayButton`, `CheckoutOutcome`, `CheckoutError`) plus the public `SunbayCheckoutMocks`
+    /// `ApplePayButton`, `CheckoutOutcome`, `CheckoutError`) plus the public `SunbayCheckoutTestSupport`
     /// doubles (`ScriptablePaymentService`, `ScriptableCofService`, `DemoSessionFactory`,
     /// `DemoRSAKey`). No internal types, no `@testable`.
     ///
@@ -197,7 +197,7 @@ import SunbayCheckoutMocks
         ///
         /// Maps `DemoSettings` into a `CheckoutConfiguration` (environment + locale + placeholder
         /// merchant id) and injects `ScriptablePaymentService` / `ScriptableCofService` from
-        /// `SunbayCheckoutMocks` via the public `SunbayCheckout(configuration:paymentService:cofService:)`
+        /// `SunbayCheckoutTestSupport` via the public `SunbayCheckout(configuration:paymentService:cofService:)`
         /// seam. The scripted session and submit snapshots reflect the amount/methods/COF/scenario knobs.
         private func makeCheckout() -> SunbayCheckout {
             let config = CheckoutConfiguration(

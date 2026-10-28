@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 
 @testable import SunbayCheckout
-import SunbayCheckoutMocks
+import SunbayCheckoutTestSupport
 
 /// E2E localization assertions: the same `CheckoutError` resolves to different user-facing messages
 /// under different locales, driven by `localizedDisplayMessage(using:)` and `LocalizationResolver`

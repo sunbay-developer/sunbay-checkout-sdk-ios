@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 
 @testable import SunbayCheckout
-import SunbayCheckoutMocks
+import SunbayCheckoutTestSupport
 
 /// Protocol-driven e2e cases: drive the Core `CheckoutController` through all five
 /// `CheckoutOutcome` results using the public scriptable doubles plus `@testable` controller access.

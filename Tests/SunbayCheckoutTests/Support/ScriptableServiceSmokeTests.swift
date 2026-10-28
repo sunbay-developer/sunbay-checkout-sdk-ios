@@ -1,7 +1,7 @@
 import XCTest
 
 import SunbayCheckout
-import SunbayCheckoutMocks
+import SunbayCheckoutTestSupport
 
 /// Smoke test: the shared, public-API-only scriptable services are importable without `@testable`
 /// and behave as scripted. Runs on the macOS host via `swift test`.
