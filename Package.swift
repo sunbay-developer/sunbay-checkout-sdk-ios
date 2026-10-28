@@ -67,5 +67,16 @@ let package = Package(
             path: "Example/ApplePayProbe",
             exclude: ["README.md"]
         ),
+        // FUTURE (C3 -- NOT ENABLED): binary SPM distribution switch point. See docs/releasing.md.
+        // When the real backend is integrated, the public API is frozen, and the product is
+        // officially released, host the SunbayCheckout.xcframework, compute its checksum with
+        // `swift package compute-checksum`, then enable the binary target below and wire the
+        // `SunbayCheckout` library product to it. This stays COMMENTED so the package builds from
+        // source exactly as it does today.
+        // .binaryTarget(
+        //     name: "SunbayCheckout",
+        //     url: "https://example.com/SunbayCheckout/<version>/SunbayCheckout.xcframework.zip",
+        //     checksum: "<swift package compute-checksum output>"
+        // ),
     ]
 )

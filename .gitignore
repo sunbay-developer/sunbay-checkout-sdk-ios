@@ -14,3 +14,6 @@ Example/SunbayCheckoutDemo/.build/
 
 # Cross-package integration smoke test build products.
 IntegrationSmokeTest/.build/
+
+# On-demand XCFramework packaging output (scripts/build-xcframework.sh).
+build/
