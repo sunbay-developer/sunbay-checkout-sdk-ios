@@ -11,3 +11,6 @@ Example/SunbayCheckoutDemo/*.xcodeproj
 Example/SunbayCheckoutDemo/*.xcworkspace
 Example/SunbayCheckoutDemo/Derived/
 Example/SunbayCheckoutDemo/.build/
+
+# Cross-package integration smoke test build products.
+IntegrationSmokeTest/.build/
