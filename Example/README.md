@@ -23,12 +23,18 @@ Then build/run on a simulator (pick any installed iOS Simulator device):
 ```bash
 xcodebuild \
   -workspace SunbayCheckoutDemo.xcworkspace \
-  -scheme 'SunbayCheckoutDemo (SunbayCheckoutDemo project)' \
+  -scheme SunbayCheckoutDemo \
   -destination 'platform=iOS Simulator,name=iPhone 17' \
   build
 ```
 
 Or open the generated workspace in Xcode and run the `SunbayCheckoutDemo` scheme (Cmd-R).
+
+The manifest declares `SunbayCheckoutDemo` as the single runnable app scheme and disables Tuist's
+automatic per-target scheme generation (`options: .options(automaticSchemesOptions: .disabled)`), so
+this is the only app scheme you select. (Xcode may still list extra schemes that Xcode itself
+auto-exposes for the local Swift package dependency, e.g. `SunbayCheckout` / `SunbayCheckout-Package`
+- those are not the app and are not needed to run the demo.)
 
 The manifest wires the SDK as a **local Swift package** at the repo root
 (`packages: [.package(path: "../..")]`) and depends on the `SunbayCheckout` and

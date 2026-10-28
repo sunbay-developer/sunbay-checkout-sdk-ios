@@ -17,6 +17,10 @@ import ProjectDescription
 
 let project = Project(
     name: "SunbayCheckoutDemo",
+    // Disable Tuist's automatic per-target scheme generation so the project exposes exactly one
+    // clean, runnable scheme (declared below) instead of several same-named schemes (one of which
+    // has no run action and triggers "scheme is not configured for running" in Xcode).
+    options: .options(automaticSchemesOptions: .disabled),
     packages: [
         // The SDK Swift package at the repo root (contains SunbayCheckout + SunbayCheckoutMocks).
         .package(path: "../.."),
@@ -48,6 +52,19 @@ let project = Project(
                 .package(product: "SunbayCheckout"),
                 .package(product: "SunbayCheckoutMocks"),
             ]
+        ),
+    ],
+    schemes: [
+        // One explicit, runnable scheme for the app target. Building and running this scheme
+        // launches SunbayCheckoutDemo.app on a simulator; no other app scheme is generated.
+        .scheme(
+            name: "SunbayCheckoutDemo",
+            shared: true,
+            buildAction: .buildAction(targets: ["SunbayCheckoutDemo"]),
+            runAction: .runAction(
+                configuration: .debug,
+                executable: "SunbayCheckoutDemo"
+            )
         ),
     ]
 )
