@@ -14,6 +14,7 @@ struct DemoSettings: Codable, Equatable {
 
     /// Runtime environment knob. Maps to `CheckoutConfiguration.Environment`.
     enum DemoEnvironment: String, Codable, CaseIterable, Identifiable {
+        case dev
         case test
         case production
 
@@ -22,6 +23,7 @@ struct DemoSettings: Codable, Equatable {
         /// The SDK configuration value for this knob.
         var configurationValue: CheckoutConfiguration.Environment {
             switch self {
+            case .dev: return .dev
             case .test: return .test
             case .production: return .production
             }
@@ -30,6 +32,7 @@ struct DemoSettings: Codable, Equatable {
         /// A short display label.
         var label: String {
             switch self {
+            case .dev: return "Dev"
             case .test: return "Test"
             case .production: return "Production"
             }

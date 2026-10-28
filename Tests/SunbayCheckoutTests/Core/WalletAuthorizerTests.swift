@@ -28,25 +28,32 @@ final class WalletAuthorizerTests: XCTestCase {
     func test_checkoutConfiguration_storesValues() {
         let appearance = Appearance(colorPrimary: "#112233")
         let config = CheckoutConfiguration(
-            environment: .production,
+            environment: .dev,
             applePayMerchantId: "merchant.host",
             appearance: appearance,
             locale: "zh-CN"
         )
 
-        XCTAssertEqual(config.environment, .production)
+        XCTAssertEqual(config.environment, .dev)
         XCTAssertEqual(config.applePayMerchantId, "merchant.host")
         XCTAssertEqual(config.appearance, appearance)
         XCTAssertEqual(config.locale, "zh-CN")
     }
 
-    func test_checkoutConfiguration_defaultsAreNil() {
-        let config = CheckoutConfiguration(environment: .test)
+    func test_checkoutConfiguration_environmentDefaultsToProduction() {
+        // environment defaults to production; developers only pass .dev / .test explicitly.
+        let config = CheckoutConfiguration()
 
-        XCTAssertEqual(config.environment, .test)
+        XCTAssertEqual(config.environment, .production)
         XCTAssertNil(config.applePayMerchantId)
         XCTAssertNil(config.appearance)
         XCTAssertNil(config.locale)
+    }
+
+    func test_checkoutConfiguration_environmentIsThreeValued() {
+        XCTAssertEqual(CheckoutConfiguration(environment: .dev).environment, .dev)
+        XCTAssertEqual(CheckoutConfiguration(environment: .test).environment, .test)
+        XCTAssertEqual(CheckoutConfiguration(environment: .production).environment, .production)
     }
 
     // MARK: - canMakePayments is callable (device-dependent value; only assert it does not throw and returns a Bool)

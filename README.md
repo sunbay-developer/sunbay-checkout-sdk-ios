@@ -20,8 +20,7 @@ controls, encrypts it locally with an RSA public key, and submits it directly to
 
 ```swift
 let checkout = SunbayCheckout(
-    configuration: .init(environment: .production, applePayMerchantId: nil,
-                         appearance: nil, locale: nil)
+    configuration: .init()   // defaults to .production; pass environment: .dev / .test to target a non-production backend
 )
 
 // L1 — black-box sheet

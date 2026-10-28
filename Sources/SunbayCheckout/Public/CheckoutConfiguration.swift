@@ -7,8 +7,15 @@ import Foundation
 /// default to nil.
 public struct CheckoutConfiguration: Sendable, Equatable {
     /// Runtime environment.
+    ///
+    /// Declares which Sunbay environment the host integration targets. Defaults to `production`;
+    /// developers pass `dev` / `test` explicitly only when connecting to a non-production backend.
+    /// The SDK stores this as the host's declared intent; it does not itself derive backend URLs
+    /// from it (the host-injected `PaymentService` / `CofService` adapters own the real endpoints).
     public enum Environment: Sendable, Equatable {
-        /// Test environment.
+        /// Development environment.
+        case dev
+        /// Test / UAT environment.
         case test
         /// Production environment.
         case production
@@ -32,12 +39,12 @@ public struct CheckoutConfiguration: Sendable, Equatable {
     /// Creates a configuration.
     ///
     /// - Parameters:
-    ///   - environment: Runtime environment.
+    ///   - environment: Runtime environment; defaults to `.production`. Pass `.dev` / `.test` only to target a non-production backend.
     ///   - applePayMerchantId: Host-configured Apple Pay merchant id; defaults to nil (falls back to the session).
     ///   - appearance: Appearance configuration; defaults to nil.
     ///   - locale: Locale; defaults to nil.
     public init(
-        environment: Environment,
+        environment: Environment = .production,
         applePayMerchantId: String? = nil,
         appearance: Appearance? = nil,
         locale: String? = nil

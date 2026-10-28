@@ -75,7 +75,8 @@ WalletAuthorizer, CofService, ActionHandler, CredentialStore} → Models`。壳�
 
 ```swift
 public struct CheckoutConfiguration {
-    public enum Environment { case test, production }
+    /// Defaults to `.production`; pass `.dev` / `.test` only to target a non-production backend.
+    public enum Environment { case dev, test, production }
     public let environment: Environment
     /// Apple Pay merchant id, host-provided. When nil, the id delivered by the
     /// session is used (two merchant-id models, same code path; host config wins).
