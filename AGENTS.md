@@ -59,7 +59,7 @@ Distribution: **Swift Package Manager** primary; XCFramework reserved/on-demand;
 The tree also now includes:
 - `Sources/SunbayCheckout/Core/Localization/` + `Sources/SunbayCheckout/Resources/Localizations/{en,zh-Hans}.lproj/` —
   the i18n subsystem and its string resources (v1 ships en-US + zh-CN). See `docs/product-spec.md` §9.
-- `Sources/SunbayCheckoutMocks/` — a public-API-only library target (scriptable service doubles + demo
+- `Sources/SunbayCheckoutTestSupport/` — a public-API-only library target (scriptable service doubles + demo
   fixtures) shared by the e2e target and the Example app; depends on no internal types.
 - `Example/SunbayCheckoutDemo/` — a Tuist-generated Xcode app (`Project.swift` + `Sources/` checked in;
   the generated `*.xcodeproj`/`*.xcworkspace`/`Derived/` are git-ignored). This is the SDK-consuming

@@ -347,7 +347,7 @@ checkout-sdk-native/ios/
 │   │   ├── Localization/               # i18n subsystem [见 §9]
 │   │   └── Models/
 │   └── Resources/Localizations/        # {en,zh-Hans}.lproj/Localizable.strings
-├── Sources/SunbayCheckoutMocks/       # public-API-only shared doubles (e2e + Example) [见 §9]
+├── Sources/SunbayCheckoutTestSupport/ # public-API-only shared doubles (e2e + Example) [见 §9]
 ├── Tests/
 │   ├── SunbayCheckoutTests/           # XCTest:状态机/加密/幂等/恢复
 │   └── SunbayCheckoutE2ETests/        # protocol-driven e2e (host, swift test) [见 §9]
@@ -553,7 +553,7 @@ developer-message fallback above); amounts format via `Locale`.
   `Sources/` checked in; the generated project is git-ignored) with a configuration playground
   (environment, locale, currency/amount, methods, COF, scenario). It is the customer reference surface
   and the UI localization gate. `Example/ApplePayProbe/` remains the standalone PassKit probe.
-- **`SunbayCheckoutMocks`** (`Sources/SunbayCheckoutMocks/`) — a public-API-only library target
+- **`SunbayCheckoutTestSupport`** (`Sources/SunbayCheckoutTestSupport/`) — a public-API-only library target
   (`ScriptablePaymentService`, `ScriptableCofService`, `DemoSessionFactory`, `DemoRSAKey`) providing
   shared doubles for both the e2e target and the Example app.
 - **e2e target** (`Tests/SunbayCheckoutE2ETests/`) — protocol-driven automation with `@testable`
