@@ -73,6 +73,9 @@ let package = Package(
         // `swift package compute-checksum`, then enable the binary target below and wire the
         // `SunbayCheckout` library product to it. This stays COMMENTED so the package builds from
         // source exactly as it does today.
+        // NOTE: this binary target reuses the name "SunbayCheckout", which collides with the
+        // existing source `.target(name: "SunbayCheckout")`. When enabling, REPLACE the source
+        // target (do not keep both) -- SwiftPM forbids two targets sharing a name.
         // .binaryTarget(
         //     name: "SunbayCheckout",
         //     url: "https://example.com/SunbayCheckout/<version>/SunbayCheckout.xcframework.zip",
