@@ -30,28 +30,58 @@ public struct CheckoutConfiguration: Sendable, Equatable {
     /// the same code path; the host configuration takes precedence, see `resolveMerchantId`).
     public let applePayMerchantId: String?
 
-    /// Appearance / color configuration (first version only stores it, does not consume it).
-    public let appearance: Appearance?
+    #if canImport(UIKit)
+        /// Appearance / color configuration consumed by the UI layer.
+        ///
+        /// iOS-only: `Appearance` carries `UIColor` / `UIFont` (UIKit), so it — and this property —
+        /// is gated by `#if canImport(UIKit)`. Core never consumes appearance, so the rest of the
+        /// configuration stays host-compilable.
+        public let appearance: Appearance?
+    #endif
 
     /// Locale (e.g. `"zh-CN"`).
     public let locale: String?
 
-    /// Creates a configuration.
-    ///
-    /// - Parameters:
-    ///   - environment: Runtime environment; defaults to `.production`. Pass `.dev` / `.test` only to target a non-production backend.
-    ///   - applePayMerchantId: Host-configured Apple Pay merchant id; defaults to nil (falls back to the session).
-    ///   - appearance: Appearance configuration; defaults to nil.
-    ///   - locale: Locale; defaults to nil.
-    public init(
-        environment: Environment = .production,
-        applePayMerchantId: String? = nil,
-        appearance: Appearance? = nil,
-        locale: String? = nil
-    ) {
-        self.environment = environment
-        self.applePayMerchantId = applePayMerchantId
-        self.appearance = appearance
-        self.locale = locale
-    }
+    #if canImport(UIKit)
+        /// Creates a configuration.
+        ///
+        /// iOS variant: exposes the UIKit-only `appearance` parameter. Off-UIKit (macOS host) the
+        /// parallel initializer below omits `appearance`, so Core stays host-compilable.
+        ///
+        /// - Parameters:
+        ///   - environment: Runtime environment; defaults to `.production`. Pass `.dev` / `.test` only to target a non-production backend.
+        ///   - applePayMerchantId: Host-configured Apple Pay merchant id; defaults to nil (falls back to the session).
+        ///   - appearance: Appearance configuration; defaults to nil.
+        ///   - locale: Locale; defaults to nil.
+        public init(
+            environment: Environment = .production,
+            applePayMerchantId: String? = nil,
+            appearance: Appearance? = nil,
+            locale: String? = nil
+        ) {
+            self.environment = environment
+            self.applePayMerchantId = applePayMerchantId
+            self.appearance = appearance
+            self.locale = locale
+        }
+    #else
+        /// Creates a configuration.
+        ///
+        /// Off-UIKit (macOS host) variant: `Appearance` is UIKit-only and therefore absent here, so
+        /// the host-compilable Core can still construct a configuration.
+        ///
+        /// - Parameters:
+        ///   - environment: Runtime environment; defaults to `.production`. Pass `.dev` / `.test` only to target a non-production backend.
+        ///   - applePayMerchantId: Host-configured Apple Pay merchant id; defaults to nil (falls back to the session).
+        ///   - locale: Locale; defaults to nil.
+        public init(
+            environment: Environment = .production,
+            applePayMerchantId: String? = nil,
+            locale: String? = nil
+        ) {
+            self.environment = environment
+            self.applePayMerchantId = applePayMerchantId
+            self.locale = locale
+        }
+    #endif
 }

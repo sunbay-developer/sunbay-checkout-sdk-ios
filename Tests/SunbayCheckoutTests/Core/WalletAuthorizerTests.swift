@@ -26,17 +26,28 @@ final class WalletAuthorizerTests: XCTestCase {
     // MARK: - CheckoutConfiguration field storage (round-trip)
 
     func test_checkoutConfiguration_storesValues() {
-        let appearance = Appearance(colorPrimary: "#112233")
-        let config = CheckoutConfiguration(
-            environment: .dev,
-            applePayMerchantId: "merchant.host",
-            appearance: appearance,
-            locale: "zh-CN"
-        )
+        #if canImport(UIKit)
+            var appearance = Appearance()
+            appearance.colors.primary = UIColor(sunbayHex: "#112233")
+            let config = CheckoutConfiguration(
+                environment: .dev,
+                applePayMerchantId: "merchant.host",
+                appearance: appearance,
+                locale: "zh-CN"
+            )
+        #else
+            let config = CheckoutConfiguration(
+                environment: .dev,
+                applePayMerchantId: "merchant.host",
+                locale: "zh-CN"
+            )
+        #endif
 
         XCTAssertEqual(config.environment, .dev)
         XCTAssertEqual(config.applePayMerchantId, "merchant.host")
-        XCTAssertEqual(config.appearance, appearance)
+        #if canImport(UIKit)
+            XCTAssertEqual(config.appearance, appearance)
+        #endif
         XCTAssertEqual(config.locale, "zh-CN")
     }
 
@@ -46,7 +57,9 @@ final class WalletAuthorizerTests: XCTestCase {
 
         XCTAssertEqual(config.environment, .production)
         XCTAssertNil(config.applePayMerchantId)
-        XCTAssertNil(config.appearance)
+        #if canImport(UIKit)
+            XCTAssertNil(config.appearance)
+        #endif
         XCTAssertNil(config.locale)
     }
 
