@@ -17,3 +17,15 @@
 "sunbay.address.billingTitle" = "Billing address";
 "sunbay.address.shippingTitle" = "Shipping address";
 "sunbay.address.sameAsBilling" = "Same as billing";
+"sunbay.address.country" = "Country";
+"sunbay.address.line1" = "Address";
+"sunbay.address.postalCode" = "Postal code";
+"sunbay.address.loadError" = "Couldn't load address options.";
+"sunbay.card.number" = "Card number";
+"sunbay.card.expiry" = "MM / YY";
+"sunbay.card.cvc" = "CVC";
+"sunbay.cof.newPaymentMethod" = "New card";
+"sunbay.common.retry" = "Retry";
+"sunbay.sheet.back" = "Back";
+"sunbay.sheet.close" = "Close";
+"sunbay.sheet.poweredBy" = "Powered by SUNBAY";
