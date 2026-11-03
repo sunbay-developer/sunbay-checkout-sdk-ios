@@ -1,6 +1,10 @@
 #if canImport(UIKit)
     import UIKit
 
+    #if canImport(PassKit)
+        import PassKit
+    #endif
+
     /// A standalone Apple Pay button (L3, product-spec §2.3).
     ///
     /// ## Positioning
@@ -81,6 +85,14 @@
         /// Whether the backend allows Apple Pay (updated after the session loads).
         private var backendAllowed = false
 
+        /// The requested color style; retained so `.automatic` can refresh on trait changes.
+        private let style: ApplePayButtonStyle
+
+        #if canImport(PassKit)
+            /// The official PassKit button rendered as a pinned subview (owns its own appearance).
+            private var paymentButton: PKPaymentButton?
+        #endif
+
         // MARK: - Public initialization (assembles the real dependencies)
 
         /// Constructs the button from a `SunbayCheckout` entry point and a session identifier (the public entry point used by the host).
@@ -150,6 +162,7 @@
             )
             self.deviceCapable = walletAuthorizer.canMakePayments()
             self.isAvailable = false // Not available before "backend allows" is known.
+            self.style = style
 
             super.init(frame: .zero)
 
@@ -221,23 +234,75 @@
 
         // MARK: - Appearance
 
-        /// Applies the minimal color scheme (follows the light/dark scheme). Does not hardcode business colors; only this control's own visuals.
-        private func configureAppearance(_ style: ApplePayButtonStyle) {
-            layer.cornerRadius = 8
-            let (bg, fg): (UIColor, UIColor)
-            switch style {
-            case .black:
-                (bg, fg) = (.black, .white)
-            case .white:
-                (bg, fg) = (.white, .black)
-                layer.borderWidth = 1
-                layer.borderColor = UIColor.separator.cgColor
-            case .automatic:
-                // Follow the trait: dark → white background/black text, light → black background/white text (label/systemBackground adapt automatically).
-                (bg, fg) = (.label, .systemBackground)
+        /// Maps an `ApplePayButtonStyle` + current interface trait to a `PKPaymentButtonStyle` (pure).
+        ///
+        /// - `.black` → `.black`
+        /// - `.white` → `.white`
+        /// - `.automatic` → by trait: `.dark` → `.white`, otherwise `.black`
+        ///
+        /// All three resolved styles (`.black` / `.white` / `.whiteOutline`) exist since iOS 8.3,
+        /// so the mapping is safe at the iOS 15 minimum with no downgrade needed.
+        #if canImport(PassKit)
+            static func pkStyle(
+                for style: ApplePayButtonStyle,
+                trait: UIUserInterfaceStyle
+            ) -> PKPaymentButtonStyle {
+                switch style {
+                case .black:
+                    return .black
+                case .white:
+                    return .white
+                case .automatic:
+                    return trait == .dark ? .white : .black
+                }
             }
-            backgroundColor = bg
-            tintColor = fg
+        #endif
+
+        /// Renders the official PassKit `PKPaymentButton` as a pinned subview filling the control.
+        ///
+        /// `PKPaymentButton` owns its own HIG-compliant appearance (no business colors hardcoded);
+        /// its tap is forwarded to the same `handleTap` path (authorize → confirmWallet → onResult).
+        private func configureAppearance(_ style: ApplePayButtonStyle) {
+            #if canImport(PassKit)
+                rebuildPaymentButton(style)
+            #endif
+        }
+
+        #if canImport(PassKit)
+            /// Builds (or rebuilds) the `PKPaymentButton` for the given style and pins it to the control.
+            private func rebuildPaymentButton(_ style: ApplePayButtonStyle) {
+                paymentButton?.removeFromSuperview()
+
+                let pkStyle = Self.pkStyle(
+                    for: style,
+                    trait: traitCollection.userInterfaceStyle
+                )
+                let button = PKPaymentButton(paymentButtonType: .plain, paymentButtonStyle: pkStyle)
+                button.translatesAutoresizingMaskIntoConstraints = false
+                // Forward the PassKit button tap to the same tap path used by the control itself.
+                button.addTarget(self, action: #selector(handleTap), for: .touchUpInside)
+                button.isUserInteractionEnabled = false // Let the enclosing UIControl gate taps via isEnabled.
+                addSubview(button)
+                NSLayoutConstraint.activate([
+                    button.topAnchor.constraint(equalTo: topAnchor),
+                    button.bottomAnchor.constraint(equalTo: bottomAnchor),
+                    button.leadingAnchor.constraint(equalTo: leadingAnchor),
+                    button.trailingAnchor.constraint(equalTo: trailingAnchor),
+                ])
+                paymentButton = button
+            }
+        #endif
+
+        /// Refreshes the `.automatic` style when the interface trait (light/dark) changes.
+        override public func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+            super.traitCollectionDidChange(previousTraitCollection)
+            #if canImport(PassKit)
+                guard style == .automatic else { return }
+                guard traitCollection.userInterfaceStyle
+                    != previousTraitCollection?.userInterfaceStyle
+                else { return }
+                rebuildPaymentButton(style)
+            #endif
         }
 
         // MARK: - Main-thread utility
