@@ -149,6 +149,13 @@
             // own `state` stays `.failed(reason:)` until the next edit/retry; re-editability is that the
             // inputs are re-enabled, per spec §3.2.)
             XCTAssertTrue(vc.isCardFormInteractiveForTest, "Inputs should be re-enabled after a failure.")
+            // The CTA must also be moved off `.processing` and back to interactive so the user can
+            // resubmit (spec §3.1 "failed … can return to editing for retry"). The form is still
+            // complete from `fillCardForTest()`, so the Pay button should be enabled again — not stuck
+            // spinning. This is the assertion that fails before the re-enable fix.
+            XCTAssertTrue(
+                vc.isConfirmButtonEnabledForTest,
+                "Pay button must be interactive again after a failure so the user can retry.")
         }
     }
 #endif

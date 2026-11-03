@@ -149,6 +149,12 @@
         /// Test readout: whether the card form is currently interactive (re-enabled after a failure).
         var isCardFormInteractiveForTest: Bool { cardForm.isUserInteractionEnabled }
 
+        /// Test readout: whether the primary CTA is interactive (enabled) right now. After a `.failed`
+        /// outcome with a complete form this must be `true` so the user can retry (spec §3.1/§3.2) —
+        /// the button is `isEnabled` only in its `.enabled` status, so this reflects the fix that moves
+        /// the CTA off `.processing` on the `.failed`→editing transition.
+        var isConfirmButtonEnabledForTest: Bool { confirmButton.isEnabled }
+
         /// Applies a confirm outcome: runs the state machine and drives the UI per spec §3.2.
         ///
         /// The processing phase is held for at least `ConfirmButton.minimumFlightTime` from the confirm
@@ -234,6 +240,9 @@
 
         /// Moves to the processing phase: machine, CTA spinner, disabled inputs, delegate notices.
         private func beginProcessing() {
+            // Re-entrancy guard: a confirm already in flight must not be fired again, independent of the
+            // UI enabled-state (a double-tap or a programmatic re-trigger).
+            guard stateMachine.state != .processing else { return }
             notice.hide()
             cardForm.showFieldError(.number, message: nil)
             processingStartedAt = Date()
@@ -245,6 +254,11 @@
         }
 
         /// Returns to the editable state after a non-success outcome, re-enabling inputs.
+        ///
+        /// On the `.showError` path the machine's state is `.failed(reason:)` (not `.editing`); the CTA
+        /// must still be moved off `.processing` so the user can retry (spec §3.1/§3.2). This is why
+        /// `refreshConfirmButtonState()` treats `.failed` as an editable state and resets the CTA to
+        /// `.enabled`/`.disabled` by submittability rather than leaving it spinning.
         private func returnToEditing() {
             processingStartedAt = nil
             setInputsEnabled(true)
@@ -280,9 +294,19 @@
             shippingContainer?.isUserInteractionEnabled = enabled
         }
 
-        /// Updates the CTA enabled/disabled status from the current card completeness.
+        /// Updates the CTA enabled/disabled status from the current payment submittability.
+        ///
+        /// Safe to call while the machine is `.editing` **or** `.failed` — both are editable states
+        /// where the user may (re)submit (spec §3.1 "failed … can return to editing for retry", §3.2
+        /// "failed … stay open"). It must not clobber the CTA while a confirm is in flight
+        /// (`.processing`) or during the success animation (`.succeeded`), so those are guarded out.
         private func refreshConfirmButtonState() {
-            guard stateMachine.state == .editing else { return }
+            switch stateMachine.state {
+            case .processing, .succeeded:
+                return
+            case .editing, .failed:
+                break
+            }
             // On the saved-card list the CTA is driven by selection; on the new-card subpage it tracks
             // card completeness. Keep it enabled on the list page (one-tap happens on row selection).
             if isShowingSavedList {
