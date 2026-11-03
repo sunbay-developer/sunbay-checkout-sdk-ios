@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SUNBAY Checkout SDK · UI</title>
+<style>
+*{box-sizing:border-box;margin:0}
+body{font-family:-apple-system,"SF Pro Text",Roboto,"Helvetica Neue",sans-serif;background:#e9eaee;color:#111;padding:24px}
+body.dark-page{background:#0b0b0d;color:#eee}
+h1{font-size:20px}
+h2{font-size:15px;margin:26px 0 4px}
+.note{font-size:12px;opacity:.65;margin-bottom:12px;max-width:760px;line-height:1.5}
+.bar{display:flex;gap:14px;align-items:center;margin:12px 0 20px;flex-wrap:wrap}
+.seg{display:inline-flex;background:rgba(127,127,127,.2);border-radius:10px;padding:3px}
+.seg button{border:0;background:none;padding:6px 14px;border-radius:8px;font-size:13px;cursor:pointer;color:inherit}
+.seg button.on{background:#ff6000;color:#fff}
+.wrap{display:flex;gap:22px;flex-wrap:wrap}
+.phone{width:300px}
+.cap{font-size:12px;opacity:.65;margin-bottom:6px;text-align:center}
+
+/* ---------- device ---------- */
+.screen{width:300px;height:640px;border:6px solid #1c1c1e;overflow:hidden;position:relative;display:flex;flex-direction:column;justify-content:flex-end;
+  background:#f3f4f7;font-size:13px;--inh:38px;--btnh:36px;--payh:32px;--gap:14px;--sr:22px;--bw:1px;--div:var(--bd);--sh:none}
+.screen.ios{border-radius:38px}
+.screen.android{border-radius:24px;border-color:#2a2a2d}
+.screen:before{content:"";position:absolute;inset:0;background:rgba(15,15,20,.32);z-index:1}
+.screen.dark{background:#1d1d22}.screen.dark:before{background:rgba(0,0,0,.5)}
+.screen.compact{--inh:34px;--btnh:32px;--payh:28px;--gap:10px}
+.sbar{position:absolute;top:0;left:0;right:0;height:30px;z-index:3;display:flex;justify-content:space-between;align-items:center;padding:6px 22px 0;color:#fff;font-size:11px;font-weight:600}
+.android .sbar{padding:4px 16px 0;font-weight:500}
+.batt{width:18px;height:9px;border:1.2px solid #fff;border-radius:3px;position:relative}.batt:after{content:"";position:absolute;inset:1px;right:5px;background:#fff;border-radius:1px}
+.punch{position:absolute;top:8px;left:50%;width:9px;height:9px;margin-left:-4px;border-radius:50%;background:#111;z-index:4}
+.island{position:absolute;top:7px;left:50%;width:70px;height:20px;margin-left:-35px;border-radius:12px;background:#111;z-index:4}
+.app{position:absolute;inset:0;padding:44px 18px 0}
+.app .b{height:10px;width:90px;border-radius:5px;background:#d9dbe3;margin-bottom:16px}
+.app .hero{height:150px;border-radius:18px;background:linear-gradient(135deg,#c9d3ea,#9aa8cf);margin-bottom:14px}
+.app .l{height:9px;border-radius:5px;background:#d9dbe3;margin-bottom:8px}
+.app .g{display:flex;gap:10px;margin-top:14px}.app .g i{flex:1;height:70px;border-radius:12px;background:#e4e6ec}
+.dark .app .b,.dark .app .l{background:#34343c}.dark .app .g i{background:#2a2a31}.dark .app .hero{background:linear-gradient(135deg,#3b4262,#2b3050)}
+
+/* ---------- sheet ---------- */
+.sheet{position:relative;z-index:2;background:var(--bg);color:var(--fg);border-radius:var(--sr) var(--sr) 0 0;padding:0 16px 8px}
+.grab{width:34px;height:4px;border-radius:2px;background:var(--line);margin:7px auto 8px}
+.head{display:flex;align-items:center;gap:6px;margin-bottom:14px}
+.head b{font-size:13px;font-weight:500;color:var(--sub);flex:1}
+.bk{color:var(--sub);font-size:20px;line-height:1;margin-right:-2px;width:18px}
+.x{width:22px;height:22px;border-radius:50%;background:var(--field-nb);color:var(--sub);display:flex;align-items:center;justify-content:center;font-size:11px}
+.stack{display:flex;flex-direction:column;gap:var(--gap)}
+.express{display:flex;flex-direction:column;gap:8px}
+.pay{height:var(--payh);border-radius:var(--r);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;gap:4px}
+.apple{background:var(--apple-bg);color:var(--apple-fg)}
+.google{background:var(--g-bg);color:var(--g-fg);border:1px solid var(--g-bd)}
+.gl{font-weight:800;background:conic-gradient(from -45deg,#ea4335 0 25%,#4285f4 0 50%,#34a853 0 75%,#fbbc05 0);-webkit-background-clip:text;background-clip:text;color:transparent;font-size:14px}
+.or{display:flex;align-items:center;gap:8px;color:var(--sub);font-size:10.5px}
+.or:before,.or:after{content:"";flex:1;height:1px;background:var(--or)}
+.inp{height:var(--inh);border-radius:var(--r);padding:0 12px;display:flex;align-items:center;justify-content:space-between;background:var(--field);color:var(--sub);font-size:13px;border:var(--bw) solid var(--bd);box-shadow:var(--sh)}
+.inp svg{flex:none}
+.grp{border-radius:var(--r);background:var(--field);overflow:hidden;border:var(--bw) solid var(--bd);box-shadow:var(--sh)}
+.grp.err{border-color:var(--danger)}
+.grp .inp{background:none;border-radius:0;border:0;box-shadow:none}
+.grp .gr{display:flex}.grp .gr>.inp{flex:1}
+.grp .gr>.inp+.inp{border-left:1px solid var(--div)}
+.grp>.inp+.gr{border-top:1px solid var(--div)}
+.grp .inp.bad{color:var(--danger);background:color-mix(in srgb,var(--danger) 10%,var(--bg))}
+.msg{color:var(--danger);font-size:11px;margin-top:-6px;display:flex;flex-direction:column;gap:2px}
+.two{display:flex;gap:8px}.two>*{flex:1}
+.fields{display:flex;flex-direction:column;gap:8px}
+.sec-t{font-weight:600;font-size:11.5px;color:var(--sub);margin-bottom:-4px}
+.sw{display:flex;align-items:center;gap:8px;font-size:12.5px;min-height:20px}
+.cb{width:16px;height:16px;border-radius:min(4px,var(--r));border:1.5px solid var(--cbd);display:flex;align-items:center;justify-content:center;flex:none}
+.cb.on{background:var(--brand);border-color:var(--brand)}
+.cta{height:var(--btnh);border-radius:var(--r);background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;gap:8px}
+.cta.okb{background:var(--ok)}
+.alert{display:flex;gap:8px;align-items:flex-start;padding:9px 12px;border-radius:var(--r);background:color-mix(in srgb,var(--danger) 9%,var(--bg));color:var(--danger);font-size:12px;line-height:1.4}
+.cta.ghost{background:none;color:var(--sub);font-weight:500}
+.cta.line{background:var(--field);color:var(--fg);font-weight:500}
+.foot{display:flex;align-items:center;justify-content:center;gap:4px;font-size:10px;color:var(--sub);padding-top:12px}
+.hind{height:4px;border-radius:2px;background:var(--fg);opacity:.22;margin:12px auto 2px;width:110px}
+.android .hind{width:72px}
+.ci{height:var(--inh);display:flex;align-items:center;gap:8px;padding:0 11px;border-radius:var(--r);background:var(--field);border:var(--bw) solid var(--bd);box-shadow:var(--sh)}
+.ci.sel{border:1.5px solid var(--brand);background:color-mix(in srgb,var(--brand) 7%,var(--bg))}
+.radio{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--cbd);flex:none;position:relative}
+.sel .radio{border-color:var(--brand)}.sel .radio:after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--brand)}
+.bi{width:28px;height:19px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:7.5px;font-weight:700;color:#fff;flex:none}
+.visa{background:#1a3a8f}.mc{background:#3a3a3f}
+.ci .n{flex:1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px}.ci .e{color:var(--sub);font-size:11px}
+.list{display:flex;flex-direction:column;gap:6px}
+.sec-l{font-size:11.5px;color:var(--sub);font-weight:500;margin-bottom:-6px}
+.plus{width:16px;height:16px;border-radius:50%;background:color-mix(in srgb,var(--brand) 14%,var(--bg));color:var(--brand);font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;flex:none;font-weight:600}
+.bi.plain{background:none;border:1px solid var(--line);color:var(--sub)}
+.bi.plain svg{width:14px;height:10px}
+.add{display:flex;align-items:center;gap:6px;color:var(--brand);font-weight:600;height:30px;font-size:13px}
+.dis .stack>*:not(.cta){opacity:.5}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+.result{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:14px 0 4px}
+.badge{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:6px}
+.badge.ok{background:color-mix(in srgb,var(--ok) 14%,var(--bg))}
+.badge.no{background:color-mix(in srgb,var(--danger) 12%,var(--bg))}
+.result h3{font-size:16px;font-weight:600}
+.result p{font-size:12px;color:var(--sub);line-height:1.45;max-width:230px}
+.result .amt{font-size:22px;font-weight:600;margin:2px 0}
+.otp{display:flex;gap:6px;justify-content:center}
+.otp i{width:34px;height:42px;border-radius:var(--r);background:var(--field);display:flex;align-items:center;justify-content:center;font-style:normal;font-size:16px}
+.otp i.f{border:1.5px solid var(--brand)}
+.bank{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--r);background:var(--field);font-size:12px;color:var(--sub)}
+.bank b{color:var(--fg);font-weight:600}
+.link{text-align:center;color:var(--brand);font-size:12px;font-weight:500}
+
+/* ---------- theme tokens ---------- */
+.light{--bd:#d9dce3;--field-nb:#f6f7f9;--bg:#fff;--fg:#14141a;--sub:#80838f;--line:#ebecf0;--hair:#eceef2;--or:#f1f2f5;--field:#fff;--cbd:#c9ccd4;--danger:#e5484d;--ok:#16a34a;--apple-bg:#000;--apple-fg:#fff;--g-bg:#000;--g-fg:#fff;--g-bd:#000}
+.dark{--bd:#3a3a44;--field-nb:#1f1f25;--bg:#17171b;--fg:#f2f2f5;--sub:#8e90a0;--line:#2e2e36;--hair:#2a2a31;--or:#25252b;--field:#17171b;--cbd:#4a4a55;--danger:#ff6369;--ok:#3dd68c;--apple-bg:#fff;--apple-fg:#000;--g-bg:#000;--g-fg:#fff;--g-bd:#3c3c46}
+
+/* ---------- customize lab ---------- */
+.lab{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+.ctl{width:250px;display:flex;flex-direction:column;gap:12px;font-size:12px}
+.ctl label{display:flex;flex-direction:column;gap:4px;opacity:.9}
+.ctl .r{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.ctl select,.ctl input[type=range]{width:100%}
+.ctl select{padding:6px;border-radius:8px;border:1px solid rgba(127,127,127,.35);background:transparent;color:inherit}
+.sw-c{width:24px;height:24px;border-radius:50%;border:2px solid transparent;cursor:pointer;outline:1px solid rgba(127,127,127,.35)}
+.sw-c.on{border-color:#fff;outline:2px solid #888}
+.chk{display:flex;flex-direction:row!important;gap:6px!important;align-items:center}
+pre{background:#14141a;color:#d7d9e0;padding:14px;border-radius:12px;font-size:11.5px;line-height:1.55;width:330px;overflow:auto}
+pre .k{color:#9fb4ff}pre .s{color:#ffb98a}pre .n{color:#8fe0a8}
+.tabpane{display:none}.tabpane.on{display:block}
+</style>
+</head>
+<body>
+<h1>SUNBAY Checkout SDK · UI (Style A)</h1>
+<div class="bar">
+  <div class="seg" id="tabs"><button class="on" data-t="ios">iOS</button><button data-t="android">Android</button><button data-t="lab">Customize (Schema)</button></div>
+  <div class="seg" id="mode"><button class="on" data-m="light">Light</button><button data-m="dark">Dark</button></div>
+</div>
+
+<div id="ios" class="tabpane on"></div>
+<div id="android" class="tabpane"></div>
+<div id="lab" class="tabpane"></div>
+
+<script>
+/* ---------- icons ---------- */
+const LOCK='<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>';
+const CARDI='<svg width="16" height="12" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="1" y="1" width="22" height="16" rx="3"/><path d="M1 6h22"/></svg>';
+const CHEV='<svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5l3 3 3-3"/></svg>';
+const TICK='<svg width="10" height="8" viewBox="0 0 10 8" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4l2.7 2.7L9 1.3"/></svg>';
+const APPLE='<svg width="13" height="15" viewBox="0 0 14 16" fill="currentColor"><path d="M11.6 8.5c0-1.8 1.5-2.7 1.5-2.7-.8-1.2-2.1-1.4-2.5-1.4-1.1-.1-2.1.6-2.6.6s-1.4-.6-2.2-.6C4.2 4.4 3 5.2 2.4 6.3 1.2 8.4 2.1 11.5 3.3 13.2c.6.8 1.2 1.7 2.1 1.7.9 0 1.2-.5 2.2-.5s1.3.5 2.2.5 1.5-.8 2.1-1.7c.7-1 .9-1.9.9-2-.1 0-1.8-.7-1.8-2.7zM9.9 3c.5-.6.8-1.4.7-2.2-.7 0-1.5.5-2 1.1-.4.5-.8 1.3-.7 2.1.8.1 1.5-.4 2-1z"/></svg>';
+const OKI='<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const CHECKW='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const WARN='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5M12 16v.1"/></svg>';
+const ERRI='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 7.5v5.5M12 16.3v.1"/></svg>';
+const CHEVR='<svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 1.5L6.5 6 2 10.5"/></svg>';
+const NOI='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+
+/* ---------- parts ---------- */
+const head=(t,back)=>`<div class="grab"></div><div class="head">${back?'<div class="bk">‹</div>':''}<b>${t}</b><div class="x">✕</div></div>`;
+const chk=(t,on)=>`<div class="sw"><div class="cb ${on?'on':''}">${on?TICK:''}</div><span>${t}</span></div>`;
+const inp=(t,ic='',bad='')=>`<div class="inp ${bad}"><span>${t}</span>${ic}</div>`;
+const cardGrp=(err)=>`<div class="grp ${err?'err':''}">${inp('Card number',err?ERRI:CARDI,err?'bad':'')}<div class="gr">${inp('MM / YY')}${inp('CVC',LOCK)}</div></div>${err?'<div class="msg"><span>Your card number is invalid.</span></div>':''}`;
+const fields=(title)=>`<div class="sec-t">${title}</div><div class="fields">${inp('Address')}<div class="two">${inp('City')}${inp('State',CHEV)}</div><div class="two">${inp('Country',CHEV)}${inp('ZIP')}</div></div>`;
+const addr=(c)=>c.billing?fields('Billing address')+(c.shipping?chk('Shipping same as billing',true):''):(c.shipping?fields('Shipping address'):'');
+const pay=(l='Pay $128.00',cls='')=>`<div class="cta ${cls}">${l}</div>`;
+const foot=(p)=>`<div class="foot">${LOCK} Powered by SUNBAY</div><div class="hind"></div>`;
+const saved=(b,c,n,e,sel)=>`<div class="ci ${sel?'sel':''}"><div class="radio"></div><div class="bi ${c}">${b}</div><div class="n">${n}</div><div class="e">${e}</div></div>`;
+function express(c){
+  if(c.pos==='off')return '';
+  let h='';
+  if(c.apple)h+=`<div class="pay apple">${APPLE} Pay</div>`;
+  if(c.google)h+=`<div class="pay google"><span class="gl">G</span> Pay</div>`;
+  return h?`<div class="express">${h}</div>`:'';
+}
+/* order: express on top / bottom */
+function withExpress(c,body,payBtn){
+  const e=express(c);
+  if(!e)return body+payBtn;
+  return c.pos==='bottom'?`${body}${payBtn}<div class="or">Or</div>${e}`:`${e}<div class="or">Or pay using</div>${body}${payBtn}`;
+}
+
+/* ---------- scenes ---------- */
+const newRow=()=>`<div class="ci"><div class="bi plain">${CARDI}</div><div class="n">New card</div><span class="e">${CHEVR}</span></div>`;
+const form=(c,err,saveOn)=>cardGrp(err)+(c.cof?chk('Save card',saveOn):'')+addr(c);
+const wrap=(c,body,btn)=>head('Pay Acme Store')+`<div class="stack">${withExpress(c,body,btn)}</div>`+foot();
+const lbl=(t)=>`<div class="sec-l">${t}</div>`;
+const listBody=(hasSaved)=>hasSaved
+  ?`${lbl('Saved')}<div class="list">${saved('VISA','visa','Visa •••• 4242','08/28',true)}${saved('MC','mc','Mastercard •••• 8210','03/27',false)}</div>${lbl('New payment method')}<div class="list">${newRow()}</div>`
+  :`<div class="list">${newRow()}</div>`;
+/* new-card page, used for the card form and its states */
+const cardPage=(c,o={})=>{
+  const body=form(c,o.err,o.saveOn)+(o.extra||'');
+  const btn=o.btn||pay();
+  const inner=head('New card',true)+`<div class="stack">${body+btn}</div>`+foot();
+  return o.dis?`<div class="dis">${inner}</div>`:inner;
+};
+const scenes={
+ home:(c)=>wrap(c,listBody(false),''),
+ saved:(c)=>wrap(c,listBody(c.cof),pay()),
+ add:(c)=>cardPage(c,{saveOn:true}),
+ error:(c)=>cardPage(c,{err:true}),
+ processing:(c)=>cardPage(c,{dis:true,saveOn:true,btn:`<div class="cta" style="opacity:.9"><span class="spin"></span>Processing</div>`}),
+ success:(c)=>cardPage(c,{dis:true,saveOn:true,btn:`<div class="cta okb">${CHECKW}</div>`}),
+ failed:(c)=>cardPage(c,{extra:`<div class="alert">${WARN}<span>Insufficient funds. Try another card or payment method.</span></div>`})
+};
+
+/* ---------- device ---------- */
+function device(c,scene,mode,extra=''){
+  const ios=c.platform==='ios';
+  const bw=Number(c.borderWidth),off=bw===0;
+  const SH={none:'none',soft:'0 1px 2px rgba(16,24,40,.08)',medium:'0 3px 10px rgba(16,24,40,.14)'};
+  const style=`--brand:${c.brand};--r:${c.radius}px;--sr:${Math.max(c.radius+12,14)}px;--bw:${bw}px;--div:${off?'var(--hair)':'var(--bd)'};--sh:${SH[c.shadow]||'none'}${c.bgColor?';--field:'+c.bgColor:(off?';--field:var(--field-nb)':'')}${c.borderColor?';--bd:'+c.borderColor:''}`;
+  const bar=ios?`<div class="island"></div><div class="sbar"><span>9:41</span><span class="batt"></span></div>`
+               :`<div class="punch"></div><div class="sbar"><span>9:41</span><span class="batt"></span></div>`;
+  return `<div class="screen ${c.platform} ${mode} ${c.density==='compact'?'compact':''}" style="${style}">${bar}
+   <div class="app"><div class="b"></div><div class="hero"></div><div class="l" style="width:70%"></div><div class="l" style="width:45%"></div><div class="g"><i></i><i></i></div></div>
+   <div class="sheet">${scenes[scene](c)}</div></div>`;
+}
+const base=(platform)=>({platform,brand:'#ff6000',radius:10,density:'comfortable',pos:'top',apple:platform==='ios',google:platform==='android',cof:true,billing:true,shipping:true,borderWidth:1,borderColor:'',shadow:'none',bgColor:''});
+
+const gallery=[
+ ['home','1 · Home (no saved cards)',{}],
+ ['saved','2 · Home (saved cards)',{}],
+ ['add','3 · New card page',{}],
+ ['error','4 · Field error',{billing:false,shipping:false}],
+ ['processing','5 · Processing',{billing:false,shipping:false}],
+ ['success','6 · Success (closes after 3s)',{billing:false,shipping:false}],
+ ['failed','7 · Failed (stays, shows reason)',{billing:false,shipping:false}]
+];
+let mode='light';
+function renderPlatform(p){
+  const note=p==='ios'?'iOS: Apple Pay is the express method. Corner radius, bottom home indicator and Dynamic Island frame follow iOS.'
+    :'Android: Google Pay is the express method (Apple Pay is not available). Gesture bar and punch-hole frame follow Android.';
+  document.getElementById(p).innerHTML=`<p class="note">${note}</p><div class="wrap">`+gallery.map(([s,t,o])=>`<div class="phone"><div class="cap">${t}</div>${device({...base(p),...o},s,mode)}</div>`).join('')+'</div>';
+}
+
+/* ---------- customize lab ---------- */
+const st={...base('ios'),mode:'light',scene:'saved'};
+const BCOL=['','#9aa0ae','#ff6000','#2563eb'];
+const FCOL=['','#ffffff','#f3f4f7','#fff4ec'];
+const COLORS=['#ff6000','#2563eb','#16a34a','#7c3aed','#111111'];
+function schema(c){
+  const m=[];if(c.apple)m.push('applePay');if(c.google)m.push('googlePay');
+  const j={version:1,theme:{mode:c.mode,primaryColor:c.brand,cornerRadius:c.radius,density:c.density,input:{background:c.bgColor||'auto',border:{width:Number(c.borderWidth),color:c.borderColor||'auto'},shadow:c.shadow}},
+    layout:{expressPosition:c.pos,expressMethods:m},
+    features:{cardOnFile:c.cof,billingAddress:c.billing,shippingAddress:c.shipping}};
+  return JSON.stringify(j,null,2).replace(/"([^"]+)":/g,'<span class="k">"$1"</span>:').replace(/: "([^"]*)"/g,': <span class="s">"$1"</span>').replace(/: (\d+|true|false)/g,': <span class="n">$1</span>');
+}
+const presets=[
+ ['Default',{}],
+ ['Sharp · Blue · Express at bottom',{brand:'#2563eb',radius:3,pos:'bottom',density:'compact',mode:'light',borderColor:'#c3d3fb',borderWidth:1.5,shadow:'soft'}],
+ ['Round · Green · Dark · No border',{brand:'#16a34a',radius:20,mode:'dark',apple:true,google:true,borderWidth:0}]
+];
+function renderLab(){
+  const el=document.getElementById('lab');
+  const sceneOpts=['home','saved','add','error','processing','success','failed'].map(s=>`<option ${st.scene===s?'selected':''}>${s}</option>`).join('');
+  const sel=(k,opts)=>`<select data-k="${k}">${opts.map(o=>`<option ${String(st[k])===o?'selected':''}>${o}</option>`).join('')}</select>`;
+  el.innerHTML=`<p class="note">Merchants pass a JSON schema when they create the checkout. Change the controls and watch the page and the JSON update. Default values are our brand theme.</p>
+  <div class="lab">
+   <div class="ctl">
+     <label>Platform ${sel('platform',['ios','android'])}</label>
+     <label>Mode ${sel('mode',['light','dark'])}</label>
+     <label>Screen <select data-k="scene">${sceneOpts}</select></label>
+     <label>Primary color<div class="r">${COLORS.map(x=>`<span class="sw-c ${st.brand===x?'on':''}" data-c="${x}" style="background:${x}"></span>`).join('')}</div></label>
+     <label>Corner radius: ${st.radius}px<input type="range" min="0" max="20" value="${st.radius}" data-k="radius"></label>
+     <label>Input border color<div class="r">${BCOL.map(x=>`<span class="sw-c ${st.borderColor===x?'on':''}" data-bc="${x}" title="${x||'auto'}" style="background:${x||'linear-gradient(135deg,#e4e6ec 50%,#34343c 50%)'}"></span>`).join('')}</div></label>
+     <label>Input border width ${sel('borderWidth',['0','1','1.5','2'])}</label>
+     <label>Input shadow ${sel('shadow',['none','soft','medium'])}</label>
+     <label>Input background<div class="r">${FCOL.map(x=>`<span class="sw-c ${st.bgColor===x?'on':''}" data-fc="${x}" title="${x||'auto'}" style="background:${x||'linear-gradient(135deg,#fff 50%,#1f1f25 50%)'}"></span>`).join('')}</div></label>
+     <label>Density ${sel('density',['comfortable','compact'])}</label>
+     <label>Express position ${sel('pos',['top','bottom','off'])}</label>
+     <div class="r"><label class="chk"><input type="checkbox" data-b="apple" ${st.apple?'checked':''}>Apple Pay</label><label class="chk"><input type="checkbox" data-b="google" ${st.google?'checked':''}>Google Pay</label></div>
+     <div class="r"><label class="chk"><input type="checkbox" data-b="cof" ${st.cof?'checked':''}>Card on file</label><label class="chk"><input type="checkbox" data-b="billing" ${st.billing?'checked':''}>Billing</label><label class="chk"><input type="checkbox" data-b="shipping" ${st.shipping?'checked':''}>Shipping</label></div>
+   </div>
+   <div class="phone"><div class="cap">Live preview</div>${device(st,st.scene,st.mode)}</div>
+   <pre>${schema(st)}</pre>
+  </div>
+  <h2>Presets</h2><p class="note">Same SDK, three looks from the schema alone.</p>
+  <div class="wrap">${presets.map(([t,o])=>{const c={...base('ios'),mode:'light',...o};return `<div class="phone"><div class="cap">${t}</div>${device(c,'saved',c.mode)}</div>`}).join('')}</div>`;
+  el.querySelectorAll('[data-k]').forEach(n=>n.oninput=()=>{st[n.dataset.k]=n.type==='range'?+n.value:n.value;
+    if(n.dataset.k==='platform'){st.apple=st.platform==='ios';st.google=st.platform==='android'}renderLab()});
+  el.querySelectorAll('[data-b]').forEach(n=>n.onchange=()=>{st[n.dataset.b]=n.checked;renderLab()});
+  el.querySelectorAll('[data-fc]').forEach(n=>n.onclick=()=>{st.bgColor=n.dataset.fc;renderLab()});
+  el.querySelectorAll('[data-bc]').forEach(n=>n.onclick=()=>{st.borderColor=n.dataset.bc;renderLab()});
+  el.querySelectorAll('[data-c]').forEach(n=>n.onclick=()=>{st.brand=n.dataset.c;renderLab()});
+}
+
+/* ---------- wiring ---------- */
+function all(){
+  document.body.className=mode==='dark'?'dark-page':'';
+  renderPlatform('ios');renderPlatform('android');renderLab();
+}
+document.getElementById('mode').onclick=e=>{const m=e.target.dataset.m;if(!m)return;mode=m;
+  [...e.currentTarget.children].forEach(b=>b.classList.toggle('on',b.dataset.m===m));all()};
+document.getElementById('tabs').onclick=e=>{const t=e.target.dataset.t;if(!t)return;
+  [...e.currentTarget.children].forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  document.querySelectorAll('.tabpane').forEach(p=>p.classList.toggle('on',p.id===t))};
+all();
+</script>
+</body>
+</html>
