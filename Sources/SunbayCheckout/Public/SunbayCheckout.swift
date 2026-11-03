@@ -34,6 +34,13 @@ public final class SunbayCheckout {
     /// The saved-card capability injected by the host (or the fail-closed default). internal.
     let cofService: any CofService
 
+    /// The address-metadata capability used by the full-mode address form (or the fail-soft default).
+    ///
+    /// Always stored wrapped in an `AddressMetadataCache` (caching + in-flight dedup, §7.3). The UI
+    /// shell (`PaymentSheet`) reads this to build the content VC's `addressService`. internal: not
+    /// exposed externally. UI-agnostic (Core type; never imports UIKit).
+    let addressMetadataService: any AddressMetadataService
+
     /// Creates the entry point from a configuration (plain init, source compatible).
     ///
     /// With no backend service injected, `makeController` uses the shared fail-closed
@@ -53,21 +60,34 @@ public final class SunbayCheckout {
     /// Creates the entry point from a configuration and host-provided backend services (service injection seam, Task 11.5).
     ///
     /// The host implements `PaymentService` / `CofService` (mock or real backend adapters)
-    /// and injects them here; the public UI (`ApplePayButton` / the later `PaymentSheet`)
-    /// drives end-to-end payments through them, with no changes needed to Core/UI.
+    /// and injects them here; the public UI (`ApplePayButton` / `PaymentSheet`) drives
+    /// end-to-end payments through them, with no changes needed to Core/UI.
+    ///
+    /// The optional `addressMetadataService` powers the full-mode address form (§7.5). It defaults
+    /// to a fail-soft empty service (returns an empty country list / minimal config rather than
+    /// throwing), so hosts that never opt into `.full` address collection — the default is
+    /// `.simple`, which never calls it — do not have to inject anything. Whatever is supplied is
+    /// wrapped in an `AddressMetadataCache` (caching + in-flight dedup).
     ///
     /// - Parameters:
     ///   - configuration: Host configuration.
     ///   - paymentService: The payment backend capability provided by the host.
     ///   - cofService: The saved-card capability provided by the host.
+    ///   - addressMetadataService: The address-metadata capability (full-mode address form); `nil` (the default) uses a fail-soft empty service.
     public init(
         configuration: CheckoutConfiguration,
         paymentService: any PaymentService,
-        cofService: any CofService
+        cofService: any CofService,
+        addressMetadataService: (any AddressMetadataService)? = nil
     ) {
         self.configuration = configuration
         self.paymentService = paymentService
         self.cofService = cofService
+        // Always cache-wrap the service (caching + in-flight dedup, §7.3); the fail-soft empty
+        // default and a real adapter are indistinguishable to the UI. The default stays internal by
+        // being constructed here rather than referenced from a public default-argument value.
+        self.addressMetadataService = AddressMetadataCache(
+            wrapping: addressMetadataService ?? EmptyAddressMetadataService())
     }
 
     // MARK: - Internal factory seam (used by PaymentSheet / ApplePayButton)
