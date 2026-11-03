@@ -1,65 +1,164 @@
-import Foundation
+#if canImport(UIKit)
+    import CoreGraphics
+    import UIKit
 
-/// Appearance configuration for the checkout UI.
-///
-/// This type is part of the public API. The first version only defines and stores these
-/// fields; it does **not** consume them (no behavior). All fields are optional.
-public struct Appearance: Sendable, Equatable {
-    /// Color scheme.
-    public enum ColorScheme: String, Sendable {
-        /// Light.
-        case light
-        /// Dark.
-        case dark
-        /// Follow the system.
-        case auto
-    }
-
-    /// Primary color.
-    public let colorPrimary: String?
-    /// Background color.
-    public let colorBackground: String?
-    /// Text color.
-    public let colorText: String?
-    /// Border color.
-    public let colorBorder: String?
-    /// Danger / error color.
-    public let colorDanger: String?
-    /// Border radius.
-    public let borderRadius: String?
-    /// Font family.
-    public let fontFamily: String?
-    /// Color scheme.
-    public let colorScheme: ColorScheme?
-
-    /// Creates an appearance configuration; all parameters default to nil.
+    /// Appearance configuration for the checkout UI (Stripe-style nested value type, design §4.1).
     ///
-    /// - Parameters:
-    ///   - colorPrimary: Primary color.
-    ///   - colorBackground: Background color.
-    ///   - colorText: Text color.
-    ///   - colorBorder: Border color.
-    ///   - colorDanger: Danger / error color.
-    ///   - borderRadius: Border radius.
-    ///   - fontFamily: Font family.
-    ///   - colorScheme: Color scheme.
-    public init(
-        colorPrimary: String? = nil,
-        colorBackground: String? = nil,
-        colorText: String? = nil,
-        colorBorder: String? = nil,
-        colorDanger: String? = nil,
-        borderRadius: String? = nil,
-        fontFamily: String? = nil,
-        colorScheme: ColorScheme? = nil
-    ) {
-        self.colorPrimary = colorPrimary
-        self.colorBackground = colorBackground
-        self.colorText = colorText
-        self.colorBorder = colorBorder
-        self.colorDanger = colorDanger
-        self.borderRadius = borderRadius
-        self.fontFamily = fontFamily
-        self.colorScheme = colorScheme
+    /// This type is part of the public API. It is a plain data bag describing how the SDK UI should
+    /// look; the Theme layer turns it into concrete, non-optional values via `ResolvedAppearance`.
+    /// Every field is optional or has a default, so a merchant overrides only what they care about
+    /// (Stripe style: default-init, then set properties).
+    ///
+    /// iOS-only: the nested types carry `UIColor` / `UIFont`, which belong to UIKit, so the whole
+    /// type is gated by `#if canImport(UIKit)` and does not compile under the macOS host
+    /// (`swift test`). `CheckoutConfiguration.appearance` is `#if`-wrapped accordingly; Core never
+    /// consumes appearance.
+    public struct Appearance: Sendable, Equatable {
+        /// The default appearance (all built-in semantic defaults).
+        public static let `default` = Appearance()
+
+        /// Creates an appearance with all built-in defaults. Set individual properties to override.
+        public init() {}
+
+        /// Color overrides. Each `nil` field falls back to the built-in semantic default.
+        public var colors: Colors = .init()
+        /// Font override (base font + size scale factor).
+        public var font: Font = .init()
+        /// Primary call-to-action button overrides.
+        public var primaryButton: PrimaryButton = .init()
+        /// Corner radius for grouped components, in points.
+        public var cornerRadius: CGFloat = 10
+        /// Border width for grouped components, in points. `0` yields a borderless (hairline) look.
+        public var borderWidth: CGFloat = 1
+        /// Drop shadow applied to grouped components.
+        public var shadow: Shadow = .none
+        /// Color scheme preference; drives `overrideUserInterfaceStyle`.
+        public var colorScheme: ColorScheme = .automatic
+        /// Vertical rhythm / spacing density.
+        public var density: Density = .comfortable
+        /// Where the express-checkout (wallet) row is placed relative to the card form.
+        public var expressPosition: ExpressPosition = .top
+        /// Billing address collection mode.
+        public var billingAddressMode: AddressCollectionMode = .simple
+        /// Shipping address collection mode.
+        public var shippingAddressMode: AddressCollectionMode = .simple
+
+        /// Color scheme preference.
+        public enum ColorScheme: Sendable {
+            /// Force light.
+            case light
+            /// Force dark.
+            case dark
+            /// Follow the system.
+            case automatic
+        }
+
+        /// Vertical rhythm / spacing density.
+        public enum Density: Sendable {
+            /// Roomy spacing (default).
+            case comfortable
+            /// Tighter spacing.
+            case compact
+        }
+
+        /// Placement of the express-checkout (wallet) row.
+        public enum ExpressPosition: Sendable {
+            /// Above the card form.
+            case top
+            /// Below the card form.
+            case bottom
+            /// Hidden.
+            case off
+        }
+
+        /// Address collection mode.
+        public enum AddressCollectionMode: Sendable {
+            /// Three fields: country / line1 / postal code.
+            case simple
+            /// Backend-layout-driven full address form.
+            case full
+        }
+
+        /// Color overrides. A `nil` value falls back to the built-in semantic default.
+        public struct Colors: Sendable, Equatable {
+            /// Creates an all-default color set.
+            public init() {}
+
+            /// Brand / accent color. `nil` → built-in brand.
+            public var primary: UIColor?
+            /// Primary surface (screen / sheet) background. `nil` → semantic background.
+            public var background: UIColor?
+            /// Grouped-component background. `nil` → semantic component background.
+            public var componentBackground: UIColor?
+            /// Primary text color. `nil` → semantic text.
+            public var text: UIColor?
+            /// Secondary (de-emphasized) text color. `nil` → semantic secondary text.
+            public var textSecondary: UIColor?
+            /// Hairline border / separator color. `nil` → semantic border.
+            public var border: UIColor?
+            /// Error / destructive color. `nil` → built-in danger.
+            public var danger: UIColor?
+            /// Success / confirmation color. `nil` → built-in success.
+            public var success: UIColor?
+        }
+
+        /// Font override.
+        public struct Font: Sendable, Equatable {
+            /// Creates an all-default font set.
+            public init() {}
+
+            /// Base font. `nil` → system font. Resolved fonts derive their sizes from this.
+            public var base: UIFont?
+            /// Multiplier applied to every resolved text-style point size.
+            public var sizeScaleFactor: CGFloat = 1.0
+        }
+
+        /// Primary call-to-action button overrides.
+        public struct PrimaryButton: Sendable, Equatable {
+            /// Creates an all-default primary-button config.
+            public init() {}
+
+            /// Button background color. `nil` → `colors.primary`.
+            public var backgroundColor: UIColor?
+            /// Button title color. `nil` → white (contrast-checked).
+            public var textColor: UIColor?
+            /// Button corner radius. `nil` → inherits `Appearance.cornerRadius`.
+            public var cornerRadius: CGFloat?
+        }
+
+        /// Drop shadow for grouped components.
+        public struct Shadow: Sendable, Equatable {
+            /// Shadow color.
+            public let color: UIColor
+            /// Shadow opacity.
+            public let opacity: Float
+            /// Shadow offset.
+            public let offset: CGSize
+            /// Shadow blur radius.
+            public let radius: CGFloat
+
+            /// Creates a shadow.
+            ///
+            /// - Parameters:
+            ///   - color: Shadow color.
+            ///   - opacity: Shadow opacity.
+            ///   - offset: Shadow offset.
+            ///   - radius: Shadow blur radius.
+            public init(color: UIColor, opacity: Float, offset: CGSize, radius: CGFloat) {
+                self.color = color
+                self.opacity = opacity
+                self.offset = offset
+                self.radius = radius
+            }
+
+            /// No shadow.
+            public static let none = Shadow(color: .clear, opacity: 0, offset: .zero, radius: 0)
+            /// A subtle shadow.
+            public static let soft = Shadow(
+                color: .black, opacity: 0.08, offset: .init(width: 0, height: 1), radius: 2)
+            /// A stronger shadow.
+            public static let medium = Shadow(
+                color: .black, opacity: 0.14, offset: .init(width: 0, height: 3), radius: 10)
+        }
     }
-}
+#endif

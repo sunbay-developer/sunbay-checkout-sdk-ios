@@ -28,10 +28,11 @@
     /// - `seam` is an `async` closure that receives a `CheckoutContext` (containing the loaded
     ///   session and the listed saved cards) and returns the user-selected `UserAction` (confirm
     ///   new card / select saved card / wallet / cancel).
-    /// - `present(from:)` is just a thin UIKit wrapper: it constructs and presents a
-    ///   `PaymentSheetViewController`, bridges the VC's user actions into that `seam`, then
-    ///   `await`s `runCheckout` to get the `CheckoutOutcome` from the same logic, and finally
-    ///   dismisses the VC.
+    /// - `present(from:)` is just a thin UIKit wrapper: it builds a
+    ///   `CheckoutContentViewController` (render + state machine) hosted in a
+    ///   `PaymentSheetContainerViewController` (bottom sheet), bridges the content's user actions
+    ///   into that `seam`, then `await`s `runCheckout` to get the `CheckoutOutcome` from the same
+    ///   logic, and finally dismisses the sheet.
     ///
     /// Unit tests inject a mock controller through the internal initializer, call
     /// `runCheckout(seam:)` directly, and trigger the target action via `seam`, thereby verifying
@@ -79,11 +80,29 @@
         private let sessionId: String
         /// COF credential (optional); held in memory only and passed to `CheckoutController.start`, never logged/returned (§5).
         private let customerAccessSecret: String?
-        /// Localized-string provider handed to `PaymentSheetViewController` so its titles render
-        /// in the configured locale. Built from a `LocalizationResolver`; maps a `sunbay.sheet.*`
-        /// key to its title. Core stays UI-agnostic — the resolver lives in Core, the closure is
-        /// consumed only here in the UI layer.
+        /// Localized-string provider handed to the content VC so its copy renders in the configured
+        /// locale. Built from a `LocalizationResolver`; maps a `sunbay.*` key to its localized
+        /// string. Core stays UI-agnostic — the resolver lives in Core, the closure is consumed only
+        /// here in the UI layer.
         private let localize: (String) -> String
+
+        /// The resolved appearance for the content + container, and the merchant color-scheme
+        /// preference (drives `overrideUserInterfaceStyle`). Built in `present()` from the host
+        /// configuration's appearance (or `.default`).
+        private let appearance: Appearance
+
+        /// The address-metadata service threaded in from `SunbayCheckout` (already cache-wrapped),
+        /// used to build the content VC's full-mode address form. UI-agnostic (Core type).
+        private let addressMetadataService: any AddressMetadataService
+
+        // MARK: - Public observation
+
+        /// Observes the coarse-grained in-sheet presentation state (spec §3.4).
+        ///
+        /// The container forwards every internal state transition (editing / processing / succeeded /
+        /// failed) to this closure on the main actor; hosts use it for analytics and never drive the
+        /// flow through it. Defaults to `nil`.
+        public var onStateChange: ((CheckoutPresentationState) -> Void)?
 
         // MARK: - Public initialization (assembles the real dependencies)
 
@@ -111,7 +130,9 @@
                 controller: controller,
                 sessionId: sessionId,
                 customerAccessSecret: customerAccessSecret,
-                localize: LocalizationResolver(explicitLocale: checkout.configuration.locale).localizedNoComment
+                localize: LocalizationResolver(explicitLocale: checkout.configuration.locale).localizedNoComment,
+                appearance: checkout.configuration.appearance ?? .default,
+                addressMetadataService: checkout.addressMetadataService
             )
         }
 
@@ -123,67 +144,88 @@
         ///   - controller: The payment orchestrator.
         ///   - sessionId: The session identifier.
         ///   - customerAccessSecret: COF credential (optional).
-        ///   - localize: Localized-string provider for the VC titles; defaults to a nil-locale
+        ///   - localize: Localized-string provider for the content copy; defaults to a nil-locale
         ///     resolver (system-preferred languages, then the `en` development localization), so
         ///     existing internal-init call sites compile unchanged.
+        ///   - appearance: The appearance for the content + container; defaults to `.default` so
+        ///     existing internal-init call sites (tests driving `runCheckout` directly) compile
+        ///     unchanged.
+        ///   - addressMetadataService: The address-metadata service for the full-mode address form;
+        ///     defaults to a fail-soft empty service so existing call sites compile unchanged.
         init(
             controller: CheckoutController,
             sessionId: String,
             customerAccessSecret: String? = nil,
-            localize: @escaping (String) -> String = LocalizationResolver(explicitLocale: nil).localizedNoComment
+            localize: @escaping (String) -> String = LocalizationResolver(explicitLocale: nil).localizedNoComment,
+            appearance: Appearance = .default,
+            addressMetadataService: any AddressMetadataService = EmptyAddressMetadataService()
         ) {
             self.controller = controller
             self.sessionId = sessionId
             self.customerAccessSecret = customerAccessSecret
             self.localize = localize
+            self.appearance = appearance
+            self.addressMetadataService = addressMetadataService
         }
 
         // MARK: - Public API
 
         /// Pops the payment page and waits for the user to complete one operation (§2.2).
         ///
-        /// A thin UIKit wrapper: constructs `PaymentSheetViewController`, and `runCheckout(seam:)`
-        /// drives start → (after the COF decision) list → present the VC → wait for user action →
-        /// confirm → outcome; dismisses the VC once complete. Returns the result of a **single**
-        /// presentation; `pending/unknown` need to be paired with `retrievePayment()` or
-        /// server-side reconciliation.
+        /// Builds the resolved appearance, the host-agnostic `CheckoutContentViewController`, and the
+        /// `PaymentSheetContainerViewController`, presents the container, and bridges the content's
+        /// `didRequest` confirm intents into `runCheckout` — driving start → (COF) list → confirm →
+        /// outcome per attempt — feeding each outcome back to the content via `applyOutcome(_:)`.
+        ///
+        /// ## Retry loop
+        /// `runCheckout` stays single-shot (one seam → one confirm → one outcome, preserving the
+        /// existing `PaymentSheetTests`). The retry loop lives here: a `.failed` / `.pending` /
+        /// `.unknown` outcome is fed back to the content (inline notice, the sheet stays open); the
+        /// next user confirm produces another `didRequest` and another `runCheckout` attempt. The loop
+        /// ends when the content finishes (`didFinishWith` — e.g. a success auto-close) or the user
+        /// cancels / pulls the sheet down (`.canceled`). Returns the result of a **single**
+        /// presentation; `pending/unknown` still pair with `retrievePayment()` or server-side
+        /// reconciliation.
         ///
         /// - Parameter presenter: The host view controller used to present the payment page modally.
         /// - Returns: The `CheckoutOutcome` of this presentation (user cancel → `.canceled`).
         @MainActor
         public func present(from presenter: UIViewController) async -> CheckoutOutcome {
-            // The VC holder: used to present it during the seam phase of runCheckout and to bridge its user actions.
-            var viewController: PaymentSheetViewController?
+            let coordinator = PresentationCoordinator(
+                presenter: presenter,
+                appearance: appearance,
+                localize: localize,
+                addressService: addressMetadataService,
+                onStateChange: { [weak self] state in self?.onStateChange?(state) }
+            )
 
-            let outcome = await runCheckout { [weak presenter] context in
-                // Construct and present the VC on the main thread, and await its user action as the result of this seam.
-                await withCheckedContinuation { (continuation: CheckedContinuation<UserAction, Never>) in
-                    Task { @MainActor in
-                        let vc = PaymentSheetViewController(
-                            session: context.session,
-                            savedCards: context.savedCards,
-                            localize: self.localize
-                        )
-                        viewController = vc
-                        vc.onAction = { action in
-                            continuation.resume(returning: action)
-                        }
-                        vc.modalPresentationStyle = .formSheet
-                        if let presenter {
-                            presenter.present(vc, animated: true)
-                        } else {
-                            // No presenter (abnormal) → treat as cancel, to avoid hanging.
-                            continuation.resume(returning: .cancel)
-                        }
-                    }
+            // Drive attempts until the content finishes (success auto-close / cancel) or the sheet is
+            // canceled. Each confirm is exactly one `runCheckout` attempt (one confirm → one outcome);
+            // non-terminal outcomes keep the sheet open for the next confirm (no blind resubmit).
+            var lastOutcome: CheckoutOutcome = .canceled
+            loop: while true {
+                let outcome = await runCheckout { context in
+                    await coordinator.awaitNextAction(session: context.session, savedCards: context.savedCards)
                 }
+
+                // The user canceled or pulled the sheet down before confirming → done.
+                if await coordinator.wasCanceled {
+                    lastOutcome = .canceled
+                    break loop
+                }
+
+                lastOutcome = outcome
+                // Feed the outcome into the content; `.succeeded` auto-closes (→ finish), others stay
+                // open for retry. `applyOutcome` returns once the content has reacted.
+                let finished = await coordinator.applyOutcome(outcome)
+                if finished {
+                    break loop
+                }
+                // Non-terminal: loop back and await the next confirm (or a cancel).
             }
 
-            // Dismiss the VC (if presented).
-            await MainActor.run {
-                viewController?.dismiss(animated: true)
-            }
-            return outcome
+            await coordinator.dismiss()
+            return lastOutcome
         }
 
         /// A UI-independent result lookup (crash/kill recovery, §2.2 / §4.3). Delegates to the controller.
@@ -251,6 +293,177 @@
                 await controller.dismiss()
                 return .canceled
             }
+        }
+    }
+
+    /// Main-actor bridge between the retry-loop `present()` logic and the presented container/content.
+    ///
+    /// `present()` owns the loop (one `runCheckout` per confirm); this coordinator owns the UIKit
+    /// objects and the continuations that connect them:
+    /// - `awaitNextAction` lazily builds + presents the container (on the first call, once the
+    ///   session has loaded) and suspends until the content emits the next `didRequest` (→ the
+    ///   returned `UserAction`) or the user cancels / pulls down (→ `.cancel`).
+    /// - `applyOutcome` forwards the attempt's outcome to the content and resolves whether the
+    ///   presentation finished: `.succeeded` auto-closes (await the content's `didFinishWith`), while
+    ///   non-terminal outcomes keep the sheet open for another confirm.
+    ///
+    /// The container is the content's delegate; this coordinator only wires the container's
+    /// `onUserAction` / `onFinish` / `onStateChange` callbacks. `@MainActor` (UIKit affinity).
+    @MainActor
+    private final class PresentationCoordinator {
+        private weak var presenter: UIViewController?
+        private let appearance: Appearance
+        private let localize: (String) -> String
+        private let addressService: any AddressMetadataService
+        private let onStateChange: (CheckoutPresentationState) -> Void
+
+        private var content: CheckoutContentViewController?
+        private var container: PaymentSheetContainerViewController?
+
+        /// The continuation awaiting the next user action (set while a seam call is suspended).
+        private var actionContinuation: CheckedContinuation<PaymentSheet.UserAction, Never>?
+        /// The continuation awaiting a content-driven finish (success auto-close), when applicable.
+        private var finishContinuation: CheckedContinuation<Void, Never>?
+
+        /// Set once the user canceled / pulled the sheet down; `present()` reads it to end the loop.
+        private(set) var wasCanceled = false
+        /// Whether the sheet has already been presented (so later attempts reuse it).
+        private var isPresented = false
+
+        init(
+            presenter: UIViewController,
+            appearance: Appearance,
+            localize: @escaping (String) -> String,
+            addressService: any AddressMetadataService,
+            onStateChange: @escaping (CheckoutPresentationState) -> Void
+        ) {
+            self.presenter = presenter
+            self.appearance = appearance
+            self.localize = localize
+            self.addressService = addressService
+            self.onStateChange = onStateChange
+        }
+
+        /// Builds + presents the sheet on first use, then suspends until the next confirm / cancel.
+        ///
+        /// - Parameters:
+        ///   - session: The loaded session (used to build the content VC on first call).
+        ///   - savedCards: The listed saved cards (COF).
+        /// - Returns: The next user action (or `.cancel` on cancel / pull-down / no presenter).
+        func awaitNextAction(session: CheckoutSession, savedCards: [SavedCard]) async -> PaymentSheet.UserAction {
+            if !isPresented {
+                presentSheet(session: session, savedCards: savedCards)
+            }
+            return await withCheckedContinuation { continuation in
+                if wasCanceled {
+                    continuation.resume(returning: .cancel)
+                    return
+                }
+                actionContinuation = continuation
+            }
+        }
+
+        /// Builds the content VC + container and presents it modally.
+        private func presentSheet(session: CheckoutSession, savedCards: [SavedCard]) {
+            let resolved = ResolvedAppearance.resolve(appearance)
+            let contentVC = CheckoutContentViewController(
+                session: session,
+                savedCards: savedCards,
+                appearance: resolved,
+                localize: localize,
+                billingMode: appearance.billingAddressMode,
+                shippingMode: appearance.shippingAddressMode,
+                addressService: addressService
+            )
+            let containerVC = PaymentSheetContainerViewController(
+                content: contentVC,
+                appearance: resolved,
+                colorScheme: appearance.colorScheme
+            )
+            containerVC.onUserAction = { [weak self] action in
+                self?.resumeAction(action)
+            }
+            containerVC.onFinish = { [weak self] outcome in
+                self?.handleContainerFinish(outcome)
+            }
+            containerVC.onStateChange = { [weak self] state in
+                self?.onStateChange(state)
+            }
+
+            content = contentVC
+            container = containerVC
+            isPresented = true
+
+            guard let presenter else {
+                // No presenter (abnormal): treat as cancel so the loop ends instead of hanging.
+                wasCanceled = true
+                resumeAction(.cancel)
+                return
+            }
+            presenter.present(containerVC, animated: true)
+        }
+
+        /// Resumes the suspended seam with a user action (guards against a double resume).
+        private func resumeAction(_ action: PaymentSheet.UserAction) {
+            guard let continuation = actionContinuation else { return }
+            actionContinuation = nil
+            continuation.resume(returning: action)
+        }
+
+        /// Handles a container-reported finish (success auto-close or cancel / pull-down).
+        ///
+        /// A cancel finish arrives when the user pulled the sheet down (the content never emitted a
+        /// confirm). A success finish arrives after the content's success animation; it resolves the
+        /// pending `applyOutcome` await so `present()` can return.
+        private func handleContainerFinish(_ outcome: CheckoutOutcome) {
+            switch outcome {
+            case .canceled:
+                wasCanceled = true
+                // Unblock a suspended seam (user pulled down before confirming).
+                resumeAction(.cancel)
+            default:
+                break
+            }
+            // Unblock a pending success await.
+            if let finish = finishContinuation {
+                finishContinuation = nil
+                finish.resume()
+            }
+        }
+
+        /// Feeds the attempt outcome to the content and reports whether the presentation finished.
+        ///
+        /// - `.succeeded`: the content animates success then emits `didFinishWith`; await that and
+        ///   report `true` (loop ends).
+        /// - `.canceled`: finished (`true`).
+        /// - non-terminal (`.failed` / `.pending` / `.unknown`): the content shows a notice and stays
+        ///   editable; report `false` so `present()` awaits the next confirm.
+        ///
+        /// - Returns: `true` when the presentation has finished; `false` to keep the sheet open.
+        func applyOutcome(_ outcome: CheckoutOutcome) async -> Bool {
+            switch outcome {
+            case .canceled:
+                return true
+            case .succeeded:
+                content?.applyOutcome(outcome)
+                // Await the content's success auto-close (`didFinishWith` → container `onFinish`).
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    if wasCanceled {
+                        continuation.resume()
+                        return
+                    }
+                    finishContinuation = continuation
+                }
+                return true
+            case .failed, .pending, .unknown:
+                content?.applyOutcome(outcome)
+                return false
+            }
+        }
+
+        /// Dismisses the sheet (if still presented).
+        func dismiss() async {
+            container?.dismiss(animated: true)
         }
     }
 #endif

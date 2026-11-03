@@ -91,6 +91,78 @@ struct DemoSettings: Codable, Equatable {
         }
     }
 
+    // MARK: Appearance preset
+
+    /// An appearance preset mirroring the prototype's "Customize" lab.
+    ///
+    /// Each case maps to a concrete `Appearance` (primary color, corner radius, express position,
+    /// density, color scheme). The raw value is a stable identifier for SwiftUI/Codable; the
+    /// `Appearance` itself is UIKit-only and built in `DemoRootView` (this value type stays free of
+    /// SDK reference/UIKit types so it remains trivially `Codable`/`Equatable`).
+    enum DemoAppearancePreset: String, Codable, CaseIterable, Identifiable {
+        /// Brand default: orange #ff6000, rounded corners, express on top.
+        case brandDefault
+        /// Sharp corners, blue #2563eb primary, express at the bottom, compact density.
+        case sharpBlueExpressBottom
+        /// Round corners, green #16a34a primary, forced dark scheme.
+        case roundGreenDark
+
+        var id: String { rawValue }
+
+        /// A short display label.
+        var label: String {
+            switch self {
+            case .brandDefault: return "Default (orange)"
+            case .sharpBlueExpressBottom: return "Sharp · Blue · Express bottom"
+            case .roundGreenDark: return "Round · Green · Dark"
+            }
+        }
+    }
+
+    // MARK: Color scheme
+
+    /// Color-scheme knob. Maps to `Appearance.ColorScheme` (drives `overrideUserInterfaceStyle`).
+    ///
+    /// When a preset forces a scheme (e.g. "Round · Green · Dark"), this knob takes precedence only
+    /// when the user changes it away from `automatic`; see `DemoRootView.makeAppearance`.
+    enum DemoColorScheme: String, Codable, CaseIterable, Identifiable {
+        case automatic
+        case light
+        case dark
+
+        var id: String { rawValue }
+
+        /// A short display label.
+        var label: String {
+            switch self {
+            case .automatic: return "Automatic"
+            case .light: return "Light"
+            case .dark: return "Dark"
+            }
+        }
+    }
+
+    // MARK: Address collection mode
+
+    /// Billing/shipping address-collection knob. Maps to `Appearance.AddressCollectionMode`.
+    ///
+    /// `.full` drives the backend-layout address form, which reads from the injected
+    /// `ScriptableAddressMetadataService`.
+    enum DemoAddressMode: String, Codable, CaseIterable, Identifiable {
+        case simple
+        case full
+
+        var id: String { rawValue }
+
+        /// A short display label.
+        var label: String {
+            switch self {
+            case .simple: return "Simple (country / line1 / ZIP)"
+            case .full: return "Full (backend layout)"
+            }
+        }
+    }
+
     // MARK: Scenario
 
     /// The scripted outcome the mock `submit` lands on (the five demo scripts).
@@ -134,6 +206,14 @@ struct DemoSettings: Codable, Equatable {
     var methods: Set<DemoMethod>
     /// Whether COF (saved cards) is enabled on the scripted session.
     var cofEnabled: Bool
+    /// The appearance preset (maps to an `Appearance` at Pay time).
+    var appearancePreset: DemoAppearancePreset
+    /// The color-scheme override (maps to `Appearance.colorScheme`).
+    var colorScheme: DemoColorScheme
+    /// The billing address collection mode (maps to `Appearance.billingAddressMode`).
+    var billingAddressMode: DemoAddressMode
+    /// The shipping address collection mode (maps to `Appearance.shippingAddressMode`).
+    var shippingAddressMode: DemoAddressMode
     /// The scripted submit scenario.
     var scenario: DemoScenario
 
@@ -145,6 +225,10 @@ struct DemoSettings: Codable, Equatable {
         amountMinorUnits: 4299,
         methods: [.card, .applePay, .savedCard],
         cofEnabled: true,
+        appearancePreset: .brandDefault,
+        colorScheme: .automatic,
+        billingAddressMode: .simple,
+        shippingAddressMode: .simple,
         scenario: .succeeded
     )
 }

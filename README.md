@@ -4,19 +4,20 @@ Native payment SDK for embedding **Sunbay Checkout** into iOS apps. It renders n
 a card form, an Apple Pay button, and a saved-card (COF) list — collects card data in native
 controls, encrypts it locally with an RSA public key, and submits it directly to the Sunbay backend.
 
-> **Status:** architecture & design phase. This repo currently contains the design spec only; the
-> Swift package and example apps are to be implemented. See `docs/product-spec.md`.
+> **Status:** UI layer implemented (first-release L1 + L3 + COF). The Swift package, example app, and
+> host/simulator test suites are in place; real/sandbox backend end-to-end is the remaining release gate.
+> See `docs/product-spec.md`.
 
 ## Approach
 
 - **Pure native** — no embedded WebView for card collection. The card form is native UIKit.
 - Three UI layers, planned once, delivered by version:
-  - **L1 `PaymentSheet`** — black-box full-screen page (first release)
+  - **L1 `PaymentSheet`** — black-box bottom-sheet page (first release)
   - **L3 `ApplePayButton`** — standalone wallet button (first release)
   - **L2 `EmbeddedPaymentElement`** — host-embedded block (reserved for v2)
 - **COF (saved cards)** is a first-release feature: list saved cards and pay in one tap.
 
-## Quick start (target API, not yet implemented)
+## Quick start
 
 ```swift
 let checkout = SunbayCheckout(
@@ -29,12 +30,36 @@ let sheet = PaymentSheet(
     sessionId: sessionId,                 // created server-side by the merchant backend
     customerAccessSecret: customerAccessSecret  // COF only; delivered over HTTPS
 )
+// Optional: observe the in-sheet presentation state (editing / processing / succeeded / failed).
+sheet.onStateChange = { state in /* ... */ }
 let outcome = await sheet.present(from: self)
 
 // L3 — standalone Apple Pay button
 let button = ApplePayButton(checkout: checkout, sessionId: sessionId)
 button.onResult = { outcome in /* ... */ }
 ```
+
+## Theming (`Appearance`)
+
+`Appearance` is a Stripe-style nested value type, consumed by the UI layer and injected into every
+component. Every color is an optional `UIColor` — leave it `nil` to use the built-in dynamic default.
+
+```swift
+var appearance = Appearance()                 // or Appearance.default
+appearance.colors.primary = UIColor(sunbayHex: "#ff6000")  // public hex convenience; nil on invalid input
+appearance.cornerRadius = 10
+appearance.expressPosition = .top             // Apple Pay row position: .top / .bottom / .off
+appearance.density = .comfortable             // .comfortable / .compact
+appearance.colorScheme = .automatic           // .automatic (follow system) / .light / .dark
+
+let config = CheckoutConfiguration(appearance: appearance)
+```
+
+- **Dark / light.** Built-in defaults are dynamic colors that adapt to the trait collection;
+  `colorScheme` drives `overrideUserInterfaceStyle` so merchants can follow the system or lock to
+  `.light` / `.dark`.
+- **Address collection.** `appearance.billingAddressMode` / `shippingAddressMode` choose `.simple`
+  (country / line1 / postal code) or `.full` (backend-layout driven).
 
 ## Distribution
 
