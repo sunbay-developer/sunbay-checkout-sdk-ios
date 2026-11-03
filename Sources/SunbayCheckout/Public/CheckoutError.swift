@@ -5,7 +5,7 @@ import Foundation
 /// This type is part of the public API. It carries error information that the host app can
 /// display / report, but it never contains any sensitive data (card number, wallet token,
 /// ciphertext, etc.).
-public struct CheckoutError: Error, Sendable {
+public struct CheckoutError: Error, Sendable, Equatable {
     /// Error category.
     public enum Category: Sendable, Equatable {
         /// Configuration error (e.g. missing required merchant configuration).

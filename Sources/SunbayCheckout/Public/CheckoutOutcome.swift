@@ -4,7 +4,7 @@ import Foundation
 ///
 /// This enum is part of the public API; it expresses the terminal and intermediate states
 /// of checkout, and never contains any sensitive data.
-public enum CheckoutOutcome: Sendable {
+public enum CheckoutOutcome: Sendable, Equatable {
     /// Payment succeeded, carrying the transaction identifier.
     case succeeded(txnId: String)
     /// Payment failed, carrying the transaction identifier (may be nil) and error information.
