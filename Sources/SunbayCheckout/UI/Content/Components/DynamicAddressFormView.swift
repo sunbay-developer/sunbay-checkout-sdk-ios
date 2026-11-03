@@ -134,6 +134,21 @@
             }
         }
 
+        /// Applies a country selection: snapshots current input, clears country-scoped code fields
+        /// that no longer apply to the new country (so a stale subdivision code can't survive the
+        /// rebuild), updates the model/title, and reloads that country's config. `state` is the only
+        /// country-scoped code in the model; line1/city/postalCode are raw text and reasonably
+        /// persist. `reload(locale:)` must NOT clear these — only a country change does.
+        private func selectCountry(_ code: String, title: String, button: UIButton?) {
+            captureFieldValues()
+            if model.country != code {
+                model.state = nil
+            }
+            model.country = code
+            button?.setTitle(title, for: .normal)
+            reloadCountryConfig()
+        }
+
         /// Reloads just the selected country's config (on a country change), preserving other values.
         private func reloadCountryConfig() {
             captureFieldValues()
@@ -201,10 +216,7 @@
             let actions = countries.map { country in
                 UIAction(title: country.name) { [weak self] _ in
                     guard let self else { return }
-                    self.captureFieldValues()
-                    self.model.country = country.code
-                    button.setTitle(country.name, for: .normal)
-                    self.reloadCountryConfig()
+                    self.selectCountry(country.code, title: country.name, button: button)
                 }
             }
             button.menu = UIMenu(children: actions)
@@ -399,6 +411,21 @@
         func setPostalCodeForTest(_ value: String) {
             textFields[.postalCode]?.text = value
             model.postalCode = value
+        }
+
+        /// Selects a subdivision by code (as the state menu action would) for tests.
+        func selectStateForTest(_ code: String) {
+            model.state = code
+            if let name = config?.subdivisions.first(where: { $0.code == code })?.name {
+                stateButton?.setTitle(name, for: .normal)
+            }
+        }
+
+        /// Invokes the real country-selection logic for the given country code (the exact production
+        /// code path, including stale-subdivision clearing), then reloads the country config.
+        func selectCountryForTest(_ code: String) {
+            let title = countries.first(where: { $0.code == code })?.name ?? code
+            selectCountry(code, title: title, button: countryButton)
         }
     }
 #endif

@@ -240,8 +240,8 @@
         /// - `.white` → `.white`
         /// - `.automatic` → by trait: `.dark` → `.white`, otherwise `.black`
         ///
-        /// All three resolved styles (`.black` / `.white` / `.whiteOutline`) exist since iOS 8.3,
-        /// so the mapping is safe at the iOS 15 minimum with no downgrade needed.
+        /// Both resolved styles (`.black` / `.white`) exist since iOS 8.3, so the mapping is safe at
+        /// the iOS 15 minimum with no downgrade needed.
         #if canImport(PassKit)
             static func pkStyle(
                 for style: ApplePayButtonStyle,
