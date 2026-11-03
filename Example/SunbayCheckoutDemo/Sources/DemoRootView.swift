@@ -6,27 +6,6 @@ import SunbayCheckoutTestSupport
     import SwiftUI
     import UIKit
 
-    // MARK: - Demo color helper
-
-    /// Builds a `UIColor` from a 6-digit RGB hex string (demo-local, public-API-only).
-    ///
-    /// The SDK's `UIColor(sunbayHex:)` parser is internal, and the demo consumes only the public API,
-    /// so it ships this tiny local parser for the preset colors. Returns an opaque color, or
-    /// `.systemGray` if the string is not a valid 6-digit hex.
-    extension UIColor {
-        convenience init(sunbayDemoHex hex: String) {
-            let cleaned = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
-            guard cleaned.count == 6, let value = UInt64(cleaned, radix: 16) else {
-                self.init(cgColor: UIColor.systemGray.cgColor)
-                return
-            }
-            let red = CGFloat((value & 0xFF0000) >> 16) / 255.0
-            let green = CGFloat((value & 0x00FF00) >> 8) / 255.0
-            let blue = CGFloat(value & 0x0000FF) / 255.0
-            self.init(red: red, green: green, blue: blue, alpha: 1.0)
-        }
-    }
-
     // MARK: - Root view
 
     /// The demo configuration playground.
@@ -292,22 +271,22 @@ import SunbayCheckoutTestSupport
         /// The preset mirrors the prototype's Customize lab (primary color, corner radius, express
         /// position, density, base scheme). The explicit color-scheme control overrides the preset's
         /// scheme only when it is not `.automatic`, so the segmented control stays meaningful on top
-        /// of a preset. Colors are built from RGB literals (the SDK's `UIColor(sunbayHex:)` helper is
-        /// internal; the demo is public-API-only, so it constructs `UIColor` directly).
+        /// of a preset. Preset colors use the SDK's public `UIColor(sunbayHex:)` convenience with
+        /// hardcoded valid literals (the `?? .systemOrange` fallback is unreachable for these).
         private func makeAppearance() -> Appearance {
             var appearance = Appearance()
 
             switch settings.appearancePreset {
             case .brandDefault:
                 // Brand orange #ff6000; leave built-in corner radius / express-top / comfortable.
-                appearance.colors.primary = UIColor(sunbayDemoHex: "ff6000")
+                appearance.colors.primary = UIColor(sunbayHex: "#ff6000") ?? .systemOrange
             case .sharpBlueExpressBottom:
-                appearance.colors.primary = UIColor(sunbayDemoHex: "2563eb")
+                appearance.colors.primary = UIColor(sunbayHex: "#2563eb") ?? .systemBlue
                 appearance.cornerRadius = 3
                 appearance.expressPosition = .bottom
                 appearance.density = .compact
             case .roundGreenDark:
-                appearance.colors.primary = UIColor(sunbayDemoHex: "16a34a")
+                appearance.colors.primary = UIColor(sunbayHex: "#16a34a") ?? .systemGreen
                 appearance.cornerRadius = 20
                 appearance.colorScheme = .dark
             }

@@ -28,10 +28,11 @@
     /// - `seam` is an `async` closure that receives a `CheckoutContext` (containing the loaded
     ///   session and the listed saved cards) and returns the user-selected `UserAction` (confirm
     ///   new card / select saved card / wallet / cancel).
-    /// - `present(from:)` is just a thin UIKit wrapper: it constructs and presents a
-    ///   `PaymentSheetViewController`, bridges the VC's user actions into that `seam`, then
-    ///   `await`s `runCheckout` to get the `CheckoutOutcome` from the same logic, and finally
-    ///   dismisses the VC.
+    /// - `present(from:)` is just a thin UIKit wrapper: it builds a
+    ///   `CheckoutContentViewController` (render + state machine) hosted in a
+    ///   `PaymentSheetContainerViewController` (bottom sheet), bridges the content's user actions
+    ///   into that `seam`, then `await`s `runCheckout` to get the `CheckoutOutcome` from the same
+    ///   logic, and finally dismisses the sheet.
     ///
     /// Unit tests inject a mock controller through the internal initializer, call
     /// `runCheckout(seam:)` directly, and trigger the target action via `seam`, thereby verifying

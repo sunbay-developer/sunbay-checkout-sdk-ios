@@ -81,7 +81,7 @@ public struct CheckoutConfiguration {
     /// Apple Pay merchant id, host-provided. When nil, the id delivered by the
     /// session is used (two merchant-id models, same code path; host config wins).
     public let applePayMerchantId: String?
-    public let appearance: Appearance?       // theme / color scheme
+    public let appearance: Appearance?       // theme / colors / dark-light; CONSUMED by the UI layer
     public let locale: String?
 }
 
@@ -89,6 +89,112 @@ public final class SunbayCheckout {
     public init(configuration: CheckoutConfiguration)
 }
 ```
+
+#### `Appearance`(Stripe 风格嵌套;UI 层已消费)
+
+`Appearance` 不再是「只存不用」的惰性数据包:UI 层会把它解析为具体的 `UIColor`/`CGFloat`/`UIFont`
+并注入每个组件(见 UI 重设计设计文档
+`docs/superpowers/specs/2026-11-03-checkout-sdk-ui-redesign-design.md` §4)。整个类型置于
+`#if canImport(UIKit)`,`CheckoutConfiguration.appearance` 相应 `#if` 包裹(Core 不消费外观)。
+
+```swift
+public struct Appearance: Sendable, Equatable {
+    public static let `default` = Appearance()
+    public init() {}
+
+    public var colors: Colors = .init()
+    public var font: Font = .init()
+    public var primaryButton: PrimaryButton = .init()
+    public var cornerRadius: CGFloat = 10
+    public var borderWidth: CGFloat = 1              // 0 → borderless (hairline divider)
+    public var shadow: Shadow = .none
+    public var colorScheme: ColorScheme = .automatic // drives overrideUserInterfaceStyle (light/dark/follow-system)
+    public var density: Density = .comfortable
+    public var expressPosition: ExpressPosition = .top
+    public var billingAddressMode: AddressCollectionMode = .simple
+    public var shippingAddressMode: AddressCollectionMode = .simple
+
+    public enum ColorScheme: Sendable { case light, dark, automatic }
+    public enum Density: Sendable { case comfortable, compact }
+    public enum ExpressPosition: Sendable { case top, bottom, off }
+    public enum AddressCollectionMode: Sendable { case simple, full }
+
+    public struct Colors: Sendable, Equatable {       // primary/background/componentBackground/text/
+        public init() {}                              // textSecondary/border/danger/success,全部 UIColor?,
+        public var primary: UIColor?                  // nil → 内置语义默认(含成对 light/dark 品牌色)
+        public var background: UIColor?
+        public var componentBackground: UIColor?
+        public var text: UIColor?
+        public var textSecondary: UIColor?
+        public var border: UIColor?
+        public var danger: UIColor?
+        public var success: UIColor?
+    }
+    public struct Font: Sendable, Equatable {
+        public init() {}
+        public var base: UIFont?
+        public var sizeScaleFactor: CGFloat = 1.0
+    }
+    public struct PrimaryButton: Sendable, Equatable {
+        public init() {}
+        public var backgroundColor: UIColor?          // nil → colors.primary
+        public var textColor: UIColor?                // nil → white(对比度校验)
+        public var cornerRadius: CGFloat?             // nil → 继承 Appearance.cornerRadius
+    }
+    public struct Shadow: Sendable, Equatable {
+        public let color: UIColor; public let opacity: Float
+        public let offset: CGSize; public let radius: CGFloat
+        public static let none: Shadow
+        public static let soft: Shadow
+        public static let medium: Shadow
+    }
+}
+
+/// Hex-oriented merchants: a public convenience `UIColor(sunbayHex:)`,容忍 `#RGB` / `#RRGGBB` /
+/// `#RRGGBBAA`(`#` 可选、大小写不敏感),非法输入返回 `nil`(调用方决定回退)。
+public extension UIColor { convenience init?(sunbayHex: String) }
+```
+
+- `Appearance.default` 即全默认构造;所有 `UIColor?` 为 `nil` 时走内置动态默认色(结构色用系统语义
+  `.systemBackground`/`.label`/`.separator`,品牌/危险/成功用成对 light/dark 品牌 token)。
+- `colorScheme` 驱动容器与内容根视图的 `overrideUserInterfaceStyle`(`.automatic`→跟随系统,
+  `.light`/`.dark` 锁定),实现 dark/light/跟随系统。
+- 这是相对旧「扁平 `String?` 外观」的破坏性重构,属发布前可接受,文档随之更新。
+
+#### 页内状态机(in-sheet state machine)
+
+PaymentSheet 不再把所有终态都「关页后才回传」:页内有一个可见状态机
+`editing → processing →（succeeded | failed）`(详见 UI 设计文档 §3):
+
+- `editing`——选方式/填表,完全可交互。
+- `processing`——confirm 进行中,表单禁用、CTA 转圈、禁止下拉关闭。
+- `succeeded`——CTA 环形→对勾动画,随后自动关闭(终态)。
+- `failed(reason)`——CTA 上方红色内联告警块,页面保持打开可重试。
+- `pending` / `unknown` **不是可见状态**:收到后回到 `editing`,通过中性信息条
+  (`InlineNoticeView(.info)`)提示一行,不自动关闭;对账仍由宿主 `retrievePayment()` 负责。
+- 字段级错误(卡号/有效期/CVC)不属于该状态机,是 `CardFormView` 自身的内部状态。
+
+状态变化通过 `PaymentSheet.onStateChange` 暴露为公开的 `CheckoutPresentationState`(见 §2.2)。
+
+#### 内容/容器分层(content/container split)
+
+UI 层拆成两层,单向依赖 `Container → Content → Theme`:
+
+- **Container 层**——「如何被托管」。首版 L1 为 `PaymentSheetContainerViewController`(系统
+  `UISheetPresentationController` 底部弹窗;iOS 16+ 自适应高度,iOS 15 降级 `.medium/.large`)。
+- **Content 层**——host-agnostic、可复用的支付 UI(`CheckoutContentViewController` + 各组件),
+  只通过 `CheckoutContentDelegate` 回报,不依赖容器。这正是 **L2 内嵌零返工**的接缝:将来加一个
+  内嵌容器复用同一 Content 即可。
+
+#### 地址收集模式(address collection modes)
+
+由 `Appearance.billingAddressMode` / `shippingAddressMode` 决定(SDK 配置决定「怎么收」,后端只决定
+「是否收」):
+
+- `.simple`(默认,零网络)——仅 3 个字段:国家 / 地址行 1(line1)/ 邮编(postalCode)。
+- `.full`——后端布局驱动的动态地址表单,数据来自注入的 `AddressMetadataService` 协议
+  (Core/AddressMetadata,无 UIKit)。**本阶段仅建到 protocol + UI + cache,不接真实数据**
+  (`HTTPAddressMetadataService` 适配器已备但未接线,demo/tests 用注入的 mock double)。
 
 ### 2.2 L1 — 黑盒支付页 `PaymentSheet`
 
@@ -102,9 +208,14 @@ public final class PaymentSheet {
     )
     @MainActor
     public func present(from presenter: UIViewController) async -> CheckoutOutcome
+    /// Observe the in-sheet presentation state (see §2.1); default nil, does not change auto-close.
+    public var onStateChange: ((CheckoutPresentationState) -> Void)?
     /// Query status independent of the UI (crash/kill recovery).
     public func retrievePayment() async throws -> PaymentSnapshot
 }
+
+/// The host-visible presentation state surfaced by `onStateChange` (maps the in-sheet state machine).
+public enum CheckoutPresentationState: Sendable { case editing, processing, succeeded, failed }
 ```
 
 - **COF 自动纳入**:传 `customerAccessSecret` 且 session `cofEnabled=true` → 页内自动显示已绑卡列表
@@ -333,9 +444,14 @@ checkout-sdk-native/ios/
 ├── Sources/SunbayCheckout/
 │   ├── Public/                        # SunbayCheckout / CheckoutConfiguration / CheckoutOutcome / CheckoutError
 │   ├── UI/
-│   │   ├── PaymentSheet/               # L1 [首版]
+│   │   ├── Theme/                      # ResolvedAppearance / ColorHex / AppearanceDefaults
+│   │   ├── Content/                    # CheckoutContentViewController + delegate + state
+│   │   │   └── Components/             # CardFormView / SavedCardList / ExpressCheckout / ConfirmButton /
+│   │   │                               #   InlineNotice / Simple+DynamicAddressForm / Footer / SheetHeader
+│   │   ├── Container/                  # PaymentSheetContainerViewController (L1 bottom sheet)
+│   │   ├── PaymentSheet/               # L1 public entry [首版]
 │   │   ├── Wallet/                     # L3 ApplePayButton [首版]
-│   │   ├── CardField/                  # 卡输入控件 + 安全规格
+│   │   ├── CardField/                  # CardFieldSecurity(PCI 键盘/自动填充硬化,保留复用)
 │   │   └── Embedded/                   # L2 [预留,首版空占位]
 │   ├── Core/
 │   │   ├── CheckoutController.swift    # actor 编排 + 状态机
@@ -345,6 +461,7 @@ checkout-sdk-native/ios/
 │   │   ├── WalletAuthorizer.swift      # PassKit
 │   │   ├── ActionHandler.swift         # redirect/qrCode 分发
 │   │   ├── CredentialStore.swift       # 内存持有 secret,终态即清
+│   │   ├── AddressMetadata/            # AddressMetadataService 协议 + 模型 + cache + HTTP 适配器(无 UIKit;本阶段未接真实数据)
 │   │   ├── Localization/               # i18n subsystem [见 §9]
 │   │   └── Models/
 │   └── Resources/Localizations/        # {en,zh-Hans}.lproj/Localizable.strings

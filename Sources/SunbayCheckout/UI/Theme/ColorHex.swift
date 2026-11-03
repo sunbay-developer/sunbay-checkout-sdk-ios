@@ -15,7 +15,7 @@
     ///
     /// iOS-only: `UIColor` belongs to UIKit, so this is gated by `#if canImport(UIKit)` and does
     /// not compile under the macOS host (`swift test`). RED/GREEN is verified on the iOS Simulator.
-    extension UIColor {
+    public extension UIColor {
         /// Creates a color from a tolerant hex string, or returns `nil` if the string is not a
         /// valid `#RGB` / `#RRGGBB` / `#RRGGBBAA` value.
         ///

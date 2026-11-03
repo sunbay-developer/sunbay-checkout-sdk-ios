@@ -11,8 +11,9 @@
     /// In a headless xctest without a host app, actually driving UIKit presentation (`presenter.present(...)`) is both
     /// fragile and non-deterministic. For that reason `PaymentSheet` collapses the controller-driven logic of
     /// "start → (list, per COF decision) → await user action → confirm → outcome" into one **internal, testable**
-    /// method `runCheckout(seam:)`; `present(from:)` is just a thin UIKit wrapper: it constructs and presents
-    /// `PaymentSheetViewController`, bridges its "user actions" into `runCheckout`'s `seam`, and awaits the same
+    /// method `runCheckout(seam:)`; `present(from:)` is just a thin UIKit wrapper: it builds a
+    /// `CheckoutContentViewController` hosted in a `PaymentSheetContainerViewController`, bridges its
+    /// "user actions" into `runCheckout`'s `seam`, and awaits the same
     /// logic to get a `CheckoutOutcome`.
     ///
     /// These tests inject a real `CheckoutController` assembled from a mock backend via the **internal initializer**,

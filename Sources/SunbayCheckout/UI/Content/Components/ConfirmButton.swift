@@ -136,13 +136,9 @@
                 titleLabel.isHidden = true
                 backgroundColor = appearance.primaryButtonBackground
                 alpha = 1.0
-                if !UIAccessibility.isReduceMotionEnabled {
-                    spinner.startAnimating()
-                } else {
-                    // Reduced motion: show the indicator without spinning where possible; it still
-                    // signals the in-flight state visually.
-                    spinner.startAnimating()
-                }
+                // Always show the spinner: it is the in-flight affordance. Reduced motion does not
+                // suppress it (the indicator still signals processing); only decorative motion elsewhere honors it.
+                spinner.startAnimating()
             case .succeeded:
                 isEnabled = false
                 spinner.stopAnimating()
