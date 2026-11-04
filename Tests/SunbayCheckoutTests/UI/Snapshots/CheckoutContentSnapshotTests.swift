@@ -103,6 +103,8 @@
         func test_snapshot_newCard_noSavedCards() throws {
             try requireOptIn()
             let vc = makeVC(savedCards: [])
+            vc.loadViewIfNeeded()
+            vc.openNewCardForTest()
             try verifySnapshot(of: vc, named: "newCard_noSavedCards")
         }
 
@@ -121,6 +123,7 @@
             try requireOptIn()
             let vc = makeVC(savedCards: [])
             vc.loadViewIfNeeded()
+            vc.openNewCardForTest()
             vc.simulateTapPay()
             try verifySnapshot(of: vc, named: "newCard_fieldError")
         }
@@ -130,6 +133,7 @@
             try requireOptIn()
             let vc = makeVC(savedCards: [])
             vc.loadViewIfNeeded()
+            vc.openNewCardForTest()
             vc.fillCardForTest()
             vc.simulateTapPay()
             try verifySnapshot(of: vc, named: "processing")

@@ -33,5 +33,22 @@
             let r = ResolvedAppearance.resolve(a)
             XCTAssertEqual(r.primaryButtonCornerRadius, 4)
         }
+
+        func test_sheetSizingDefaultsAndOverrideThreadThrough() {
+            // Default: adaptive, 0.9 cap, no min.
+            let d = ResolvedAppearance.resolve(.default)
+            XCTAssertEqual(d.sheetSizing.mode, .adaptive)
+            XCTAssertEqual(d.sheetSizing.maxHeightFraction, 0.9)
+            XCTAssertNil(d.sheetSizing.minHeight)
+
+            // Merchant override is threaded through unchanged.
+            var a = Appearance()
+            a.sheetSizing = Appearance.SheetSizing(
+                minHeight: 320, maxHeightFraction: 0.75, mode: .fixedFraction(0.6))
+            let r = ResolvedAppearance.resolve(a)
+            XCTAssertEqual(r.sheetSizing.minHeight, 320)
+            XCTAssertEqual(r.sheetSizing.maxHeightFraction, 0.75)
+            XCTAssertEqual(r.sheetSizing.mode, .fixedFraction(0.6))
+        }
     }
 #endif

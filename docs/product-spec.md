@@ -219,7 +219,7 @@ public enum CheckoutPresentationState: Sendable { case editing, processing, succ
 ```
 
 - **COF 自动纳入**:传 `customerAccessSecret` 且 session `cofEnabled=true` → 页内自动显示已绑卡列表
-  (选卡即付,零验证)+ 新卡可勾选保存。宿主零额外代码。COF 可用性裁决权在后端(`cofEnabled` 下发),
+  (选中已绑卡后点 Pay 即付 / select a saved card, then tap Pay to pay,零验证)+ 新卡可勾选保存。宿主零额外代码。COF 可用性裁决权在后端(`cofEnabled` 下发),
   客户端自动跟随,避免"客户端以为能用但后端拒绝"的错位。
 - `present` 返回单次展示结果;`pending/unknown` 需配合 `retrievePayment` 或服务端 webhook 对账。
 
@@ -321,8 +321,8 @@ Controller → CredentialStore.hold(customerAccessSecret)   # 仅内存
 Controller → PaymentService.loadSession → Session{ cofEnabled=true }
 Controller → CofService.listPaymentMethods(customerAccessSecret)  # 直连 PSP, Bearer
           ← [ SavedCard{ id(已绑定本 session), brand, last4, exp } ]   # 脱敏
-UI → 渲染已绑卡列表(选卡即付,无 CVC / 无 3DS)
-User → 选卡 → Controller.confirmSavedCard(paymentMethodId)
+UI → 渲染已绑卡列表(选卡后点 Pay 即付,无 CVC / 无 3DS)
+User → 选卡 → 点 Pay → Controller.confirmSavedCard(paymentMethodId)
 Controller → 生成 attemptId
 Controller → PaymentService.submit({ paymentMethodId, sessionId, attemptId })
           ├─ 后端风控放行 → 四态

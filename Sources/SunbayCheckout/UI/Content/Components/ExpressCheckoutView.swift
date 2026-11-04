@@ -16,6 +16,14 @@
     /// iOS-only: gated by `#if canImport(UIKit)`. The Apple Pay button additionally requires PassKit; on
     /// a platform without PassKit the view degrades to just the divider (the caller would not show it).
     final class ExpressCheckoutView: UIView {
+        /// Where the "Or pay using" divider sits relative to the Apple Pay button.
+        enum DividerPlacement {
+            /// Button on top, divider below it (the row sits ABOVE the content that follows).
+            case below
+            /// Divider on top, button below it (the row sits BELOW the content that precedes it).
+            case above
+        }
+
         /// Invoked when the Apple Pay button is tapped.
         var onApplePayTapped: (() -> Void)?
 
@@ -24,13 +32,17 @@
         private let dividerLabel = UILabel()
         private let leftRule = UIView()
         private let rightRule = UIView()
+        private let dividerPlacement: DividerPlacement
 
         /// Creates the express row with resolved appearance tokens.
         ///
-        /// - Parameter appearance: The resolved appearance providing the secondary text color, body
-        ///   font, and corner radius for the Apple Pay button.
-        init(appearance: ResolvedAppearance) {
+        /// - Parameters:
+        ///   - appearance: The resolved appearance providing the secondary text color, body font, and
+        ///     corner radius for the Apple Pay button.
+        ///   - dividerPlacement: Whether the divider sits below (default) or above the button.
+        init(appearance: ResolvedAppearance, dividerPlacement: DividerPlacement = .below) {
             self.appearance = appearance
+            self.dividerPlacement = dividerPlacement
             super.init(frame: .zero)
             configureSubviews()
         }
@@ -57,9 +69,15 @@
             let payButton = makeApplePayButton()
             payButton.translatesAutoresizingMaskIntoConstraints = false
             payButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 48).isActive = true
-            stack.addArrangedSubview(payButton)
-
-            stack.addArrangedSubview(makeDivider())
+            let divider = makeDivider()
+            switch dividerPlacement {
+            case .below:
+                stack.addArrangedSubview(payButton)
+                stack.addArrangedSubview(divider)
+            case .above:
+                stack.addArrangedSubview(divider)
+                stack.addArrangedSubview(payButton)
+            }
         }
 
         /// Builds the "Or pay using" divider: a centered caption flanked by two hairline rules.

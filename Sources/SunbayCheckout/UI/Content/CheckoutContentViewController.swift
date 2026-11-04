@@ -5,16 +5,21 @@
     /// scrolling column, owns the visible `CheckoutStateMachine`, and talks to the outside world only
     /// through `CheckoutContentDelegate`. It never references the container or `CheckoutController`.
     ///
-    /// ## Composition (top → bottom)
-    /// header · [express row if `.top`] · (saved-card list OR new-card subpage) · [express row if
-    /// `.bottom`] · confirm button · inline notice · footer. The new-card subpage carries the card
-    /// form, an optional "Save this card" toggle (COF), and the billing / shipping address forms.
+    /// ## Composition (fixed header · scrolling middle · fixed bottom bar)
+    /// A fixed `header` is pinned to the top; a scroll view holds the middle (express row on the home
+    /// page only, then either the saved-card list or the new-card subpage with its card form, "Save
+    /// this card" toggle, and billing/shipping address); a fixed bottom bar holds the inline notice,
+    /// the Pay button, and the powered-by footer (hugging the bottom). Only the middle scrolls.
     ///
     /// ## Navigation (option A — self-managed)
-    /// When saved cards exist the root shows the list; tapping "New card" switches to the new-card
-    /// subpage and makes the header back button visible; back returns to the list. With no saved cards
-    /// the new-card subpage is the root (no back button). All of this lives inside this VC; the
-    /// container is never consulted.
+    /// The home page is always the root (express · saved-card list, if any · standalone "New card"
+    /// entry row, ordered by `expressPosition`). Tapping "New card" switches to the independent
+    /// new-card subpage and shows the header back button; back returns home. The express (wallet)
+    /// row is a home-page affordance: hidden on the subpage. Selecting a saved card does NOT submit —
+    /// it only enables the Pay button. On the home page the Pay button is hidden while no saved card
+    /// is selected; on the new-card subpage it is always visible, dimmed (but still tappable, so a
+    /// tap surfaces the field error) until the form is complete. Navigation and the entry row are
+    /// locked while a confirm is in flight.
     ///
     /// ## State wiring (spec §3.2)
     /// A confirm (pay with new card / tap a saved card / Apple Pay authorized) moves the machine to
@@ -65,6 +70,7 @@
 
         private var savedCardList: SavedCardListView?
         private var expressView: ExpressCheckoutView?
+        private var newCardEntryRow: UIView?
 
         /// The "Save this card" (COF consent) toggle, shown only when COF is enabled on the session.
         private var saveCardSwitch: UISwitch?
@@ -76,14 +82,26 @@
 
         // MARK: - Layout containers
 
+        /// Fixed top chrome (merchant title + back/close). Pinned above the scroll area.
+        private let headerContainer = UIView()
+        /// The scrollable middle: express (home only) + saved-card list OR new-card subpage.
         private let scrollView = UIScrollView()
         private let rootStack = UIStackView()
+        /// The HOME page column: express (if available) + saved-card list (if any) + "New card"
+        /// entry row. Always present; shown when not on the new-card subpage.
+        private let homeStack = UIStackView()
         /// The subpage that holds new-card entry (card form + save toggle + address). Hidden while the
-        /// saved-card list is shown.
+        /// home page is shown.
         private let newCardStack = UIStackView()
+        /// Fixed bottom chrome: inline notice (above the CTA) + Pay button + powered-by footer.
+        private let bottomBar = UIStackView()
 
-        /// Whether the saved-card list (vs the new-card subpage) is currently visible.
-        private var isShowingSavedList = false
+        /// Whether the new-card subpage (vs the home page) is currently visible.
+        private var isShowingNewCard = false
+
+        /// The saved card the user has selected on the home page (nil = none selected). Selecting a
+        /// row does NOT submit; the user must tap the Pay button (which this enables).
+        private var selectedSavedCardId: String?
 
         private var lastReportedHeight: CGFloat = 0
 
@@ -131,7 +149,6 @@
             buildLayout()
             configureHeader()
             configureConfirmButton()
-            configureExpressIfNeeded()
             configureInitialNavigation()
             refreshConfirmButtonState()
         }
@@ -145,6 +162,21 @@
 
         /// The current internal view state (test / introspection readout).
         var currentViewState: CheckoutViewState { stateMachine.state }
+
+        // MARK: Layout readouts (internal, tests only)
+
+        /// Test readout: the fixed header container view.
+        var headerContainerForTest: UIView { headerContainer }
+        /// Test readout: the scrollable middle area.
+        var scrollViewForTest: UIScrollView { scrollView }
+        /// Test readout: the fixed bottom bar.
+        var bottomBarForTest: UIView { bottomBar }
+        /// Test readout: the home-page "New card" entry row.
+        var newCardEntryRowForTest: UIView? { newCardEntryRow }
+        /// Test readout: the express checkout view, when present.
+        var expressViewForTest: UIView? { expressView }
+        /// Test readout: the saved-card list view, when present.
+        var savedCardListViewForTest: UIView? { savedCardList }
 
         /// Test readout: whether the card form is currently interactive (re-enabled after a failure).
         var isCardFormInteractiveForTest: Bool { cardForm.isUserInteractionEnabled }
@@ -181,6 +213,9 @@
 
             switch result {
             case let .autoClose(finalOutcome):
+                // This path never goes through `returnToEditing`; keep ✕ locked during the animation.
+                header.setCloseEnabled(false)
+                confirmButton.isHidden = false
                 confirmButton.update(status: .succeeded, animated: true) { [weak self] in
                     guard let self else { return }
                     self.delegate?.content(self, didFinishWith: finalOutcome)
@@ -189,10 +224,12 @@
             case let .showError(message):
                 notice.show(message: message, severity: .error)
                 returnToEditing()
+                reportContentHeightIfChanged()
 
             case .showInfoNotice:
                 notice.show(message: localize("sunbay.notice.pending"), severity: .info)
                 returnToEditing()
+                reportContentHeightIfChanged()
 
             case .stay:
                 // e.g. canceled: let the caller handle dismissal; no visible change here.
@@ -208,9 +245,104 @@
             refreshConfirmButtonState()
         }
 
-        /// Simulates a confirm tap on the primary CTA (pay with the new card).
+        /// Simulates a confirm tap on the primary CTA (routes by page / selection).
         func simulateTapPay() {
-            handleConfirmNewCard()
+            handlePayTapped()
+        }
+
+        /// Test seam: select a saved card as if the user tapped its row (does NOT submit).
+        func selectSavedCardForTest(_ paymentMethodId: String) {
+            selectedSavedCardId = paymentMethodId
+            refreshConfirmButtonState()
+        }
+
+        /// Test seam: taps a saved-card row through the REAL `SavedCardListView` wiring
+        /// (row tap → list selection → `onSelect`), unlike `selectSavedCardForTest`.
+        func tapSavedCardRowForTest(_ paymentMethodId: String) {
+            savedCardList?.tapRowForTest(paymentMethodId)
+        }
+
+        /// Test seam: taps the "New card" entry row's action.
+        func tapNewCardEntryForTest() {
+            handleNewCardEntryTap()
+        }
+
+        /// Test seam: taps the header back button's action.
+        func tapBackForTest() {
+            header.onBack?()
+        }
+
+        /// Test seam: delivers a touch to the Pay button (only if it is an enabled, tappable control).
+        func sendTouchOnPayButtonForTest() {
+            confirmButton.simulateTouchUpInsideForTest()
+        }
+
+        /// Test seam: simulates the Apple Pay row tap.
+        func tapExpressForTest() {
+            handleApplePayTapped()
+        }
+
+        /// Test readout: the saved list's visually highlighted payment method id.
+        var highlightedSavedCardIdForTest: String? { savedCardList?.selectedPaymentMethodId }
+
+        /// Test readout: whether the Pay button is dimmed (appears disabled) yet still tappable.
+        var isConfirmButtonAppearsDisabledForTest: Bool { confirmButton.appearsDisabled }
+
+        /// Test readout: the Pay button's accessibility traits.
+        var confirmButtonTraitsForTest: UIAccessibilityTraits { confirmButton.accessibilityTraitsForTest }
+
+        /// Test readout: whether the card form currently shows a field error.
+        var isCardFieldErrorShownForTest: Bool { cardForm.hasFieldErrorForTest }
+
+        /// Test readout: whether the inline notice (error / info) is currently shown.
+        var isNoticeVisibleForTest: Bool { !notice.isHidden }
+
+        /// Test readout: whether the home page (express, list, "New card" entry) accepts touches.
+        var isHomeInteractiveForTest: Bool { homeStack.isUserInteractionEnabled }
+
+        /// Test readout: whether the header back button is interactive.
+        var isBackInteractiveForTest: Bool { header.isBackEnabledForTest }
+
+        /// Test readout: whether the header ✕ is interactive.
+        var isCloseInteractiveForTest: Bool { header.isCloseEnabledForTest }
+
+        /// Test readout: whether the header ✕ exposes the `.notEnabled` accessibility trait.
+        var closeHasNotEnabledTraitForTest: Bool { header.closeHasNotEnabledTraitForTest }
+
+        /// Test seam: invokes the header's close action directly (as a programmatic / accessibility
+        /// activation would), bypassing the button's enabled state.
+        func invokeHeaderCloseForTest() { header.onClose?() }
+
+        /// Test readout: the visible home-page order, as `"express"`, `"savedCards"`, `"newCardEntry"`.
+        var homeOrderForTest: [String] {
+            homeStack.arrangedSubviews.compactMap { view in
+                if view === expressView { return "express" }
+                if view === savedCardList { return "savedCards" }
+                if view === newCardEntryRow { return "newCardEntry" }
+                return nil
+            }
+        }
+
+        /// Test seam: open the independent new-card subpage (as if the user tapped the "New card"
+        /// entry on the home page).
+        func openNewCardForTest() {
+            showNewCardSubpage(animated: false)
+        }
+
+        /// Test readout: whether the primary CTA is currently visible (shown only when submittable).
+        var isConfirmButtonVisibleForTest: Bool { !confirmButton.isHidden }
+
+        /// Test readout: whether the HOME page (express + saved cards + "New card" entry) is visible.
+        var isHomeVisibleForTest: Bool { !homeStack.isHidden }
+
+        /// Test readout: whether the independent new-card subpage (card form) is visible.
+        var isNewCardSubpageVisibleForTest: Bool { !newCardStack.isHidden }
+
+        /// Test readout: whether the express (wallet) row exists AND is currently visible. It lives in
+        /// the home page, so it is visible only while the home page is shown.
+        var isExpressVisibleForTest: Bool {
+            guard let express = expressView else { return false }
+            return !express.isHidden && !homeStack.isHidden
         }
 
         // MARK: - Confirm handling
@@ -226,7 +358,7 @@
             delegate?.content(self, didRequest: .confirmNewCard(input, save: save))
         }
 
-        /// Pay with a selected saved card (COF one-tap).
+        /// Pay with a selected saved card (COF; the user selected the card, then tapped Pay).
         private func handleConfirmSavedCard(paymentMethodId: String) {
             beginProcessing()
             delegate?.content(self, didRequest: .confirmSavedCard(paymentMethodId: paymentMethodId))
@@ -247,10 +379,15 @@
             cardForm.showFieldError(.number, message: nil)
             processingStartedAt = Date()
             stateMachine.beginProcessing()
+            // Visible on every page: a wallet confirm on the home page (nothing selected) must still
+            // show the spinner. `refreshConfirmButtonState` re-applies page visibility afterwards.
+            confirmButton.isHidden = false
             confirmButton.update(status: .processing, animated: false)
             setInputsEnabled(false)
             delegate?.content(self, didChangeProcessing: true)
             emitStateChange()
+            // The notice was hidden and the Pay button may have just appeared (wallet-only home).
+            reportContentHeightIfChanged()
         }
 
         /// Returns to the editable state after a non-success outcome, re-enabling inputs.
@@ -287,6 +424,11 @@
         /// Enables or disables the editable inputs during / after processing.
         private func setInputsEnabled(_ enabled: Bool) {
             cardForm.isUserInteractionEnabled = enabled
+            // The whole home page (express, saved list, "New card" entry) and the back button: no
+            // navigation while a confirm is in flight. The header ✕ is locked the same way.
+            homeStack.isUserInteractionEnabled = enabled
+            header.setBackEnabled(enabled)
+            header.setCloseEnabled(enabled)
             savedCardList?.isUserInteractionEnabled = enabled
             expressView?.isUserInteractionEnabled = enabled
             saveCardSwitch?.isEnabled = enabled
@@ -294,11 +436,14 @@
             shippingContainer?.isUserInteractionEnabled = enabled
         }
 
-        /// Updates the CTA enabled/disabled status from the current payment submittability.
+        /// Updates the CTA for the current page.
+        ///
+        /// Home page: the Pay button is visible+enabled only when a saved card is selected, and
+        /// hidden otherwise (e.g. a wallet-only home shows no bottom Pay button). New-card subpage:
+        /// always visible; dimmed (`appearsDisabled`, still tappable) until the form is complete.
         ///
         /// Safe to call while the machine is `.editing` **or** `.failed` — both are editable states
-        /// where the user may (re)submit (spec §3.1 "failed … can return to editing for retry", §3.2
-        /// "failed … stay open"). It must not clobber the CTA while a confirm is in flight
+        /// where the user may (re)submit. It must not clobber the CTA while a confirm is in flight
         /// (`.processing`) or during the success animation (`.succeeded`), so those are guarded out.
         private func refreshConfirmButtonState() {
             switch stateMachine.state {
@@ -307,22 +452,45 @@
             case .editing, .failed:
                 break
             }
-            // On the saved-card list the CTA is driven by selection; on the new-card subpage it tracks
-            // card completeness. Keep it enabled on the list page (one-tap happens on row selection).
-            if isShowingSavedList {
-                confirmButton.update(status: .disabled, animated: false)
+
+            let wasHidden = confirmButton.isHidden
+            defer {
+                // The Pay button changes the fixed bottom bar's height: re-report the content height
+                // (guarded by `lastReportedHeight`, so this cannot loop).
+                if confirmButton.isHidden != wasHidden { reportContentHeightIfChanged() }
+            }
+
+            if isShowingNewCard {
+                // Subpage: Pay is always visible. An incomplete form looks disabled but stays
+                // tappable, so a tap runs `handleConfirmNewCard` and surfaces the field error.
+                confirmButton.isHidden = false
+                confirmButton.update(status: .enabled, animated: false)
+                confirmButton.appearsDisabled = cardForm.cardInput == nil
             } else {
-                let complete = cardForm.cardInput != nil
-                confirmButton.update(status: complete ? .enabled : .disabled, animated: false)
+                // Home: Pay is hidden unless a saved card is selected.
+                let submittable = selectedSavedCardId != nil
+                confirmButton.appearsDisabled = false
+                confirmButton.isHidden = !submittable
+                confirmButton.update(status: submittable ? .enabled : .disabled, animated: false)
             }
         }
 
         // MARK: - Layout construction
 
         private func buildLayout() {
+            headerContainer.translatesAutoresizingMaskIntoConstraints = false
             scrollView.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(scrollView)
+            bottomBar.translatesAutoresizingMaskIntoConstraints = false
 
+            view.addSubview(headerContainer)
+            view.addSubview(scrollView)
+            view.addSubview(bottomBar)
+
+            // Fixed header.
+            header.translatesAutoresizingMaskIntoConstraints = false
+            headerContainer.addSubview(header)
+
+            // Scrollable middle.
             rootStack.axis = .vertical
             rootStack.spacing = 16
             rootStack.translatesAutoresizingMaskIntoConstraints = false
@@ -332,45 +500,86 @@
             newCardStack.spacing = 16
             newCardStack.translatesAutoresizingMaskIntoConstraints = false
 
+            // Fixed bottom bar: notice → Pay → footer (powered-by hugs the bottom).
+            bottomBar.axis = .vertical
+            bottomBar.spacing = 12
+            bottomBar.addArrangedSubview(notice)
+            bottomBar.addArrangedSubview(confirmButton)
+            bottomBar.addArrangedSubview(footer)
+
             NSLayoutConstraint.activate([
-                scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+                // Header pinned to the top safe area.
+                headerContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+                headerContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                headerContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                header.topAnchor.constraint(equalTo: headerContainer.topAnchor, constant: 8),
+                header.leadingAnchor.constraint(equalTo: headerContainer.leadingAnchor, constant: 16),
+                header.trailingAnchor.constraint(equalTo: headerContainer.trailingAnchor, constant: -16),
+                header.bottomAnchor.constraint(equalTo: headerContainer.bottomAnchor, constant: -8),
+
+                // Scroll area between header and bottom bar.
+                scrollView.topAnchor.constraint(equalTo: headerContainer.bottomAnchor),
                 scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                 scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                scrollView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+                scrollView.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
 
                 rootStack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor, constant: 16),
                 rootStack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor, constant: -16),
-                rootStack.leadingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.leadingAnchor, constant: 16),
-                rootStack.trailingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.trailingAnchor, constant: -16),
+                rootStack.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor, constant: 16),
+                rootStack.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor, constant: -16),
+                // Content width follows the frame width (vertical-only scrolling); also pins the
+                // content guide's horizontal extent, which would otherwise be ambiguous.
+                rootStack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor, constant: -32),
+
+                // Bottom bar pinned to the bottom safe area (footer hugs the bottom).
+                bottomBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+                bottomBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+                bottomBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -4),
             ])
 
             assembleRootStack()
         }
 
-        /// Assembles the ordered column into `rootStack`.
+        /// Assembles the ordered scroll column into `rootStack`: the home page then the new-card
+        /// subpage (only one visible at a time; navigation toggles `isHidden`).
+        ///
+        /// Home page (`homeStack`): express (if available) · saved-card list (if any) · "New card"
+        /// entry row — always present so a card can be added even with no saved cards. New-card
+        /// subpage (`newCardStack`): card form · "Save this card" · address. The CTA / notice /
+        /// footer live in the fixed `bottomBar`, not here.
         private func assembleRootStack() {
-            rootStack.addArrangedSubview(header)
+            homeStack.axis = .vertical
+            homeStack.spacing = 16
+            buildHomeStack()
+            rootStack.addArrangedSubview(homeStack)
 
-            if appearance.expressPosition == .top {
-                addExpressPlaceholder()
+            buildNewCardStack()
+            rootStack.addArrangedSubview(newCardStack)
+        }
+
+        /// Builds the home page: saved-card list (if any) + "New card" entry, with the express row
+        /// (if available) first for `.top` and last for `.bottom`.
+        private func buildHomeStack() {
+            let express = makeExpressView()
+            expressView = express
+
+            if appearance.expressPosition != .bottom, let express {
+                homeStack.addArrangedSubview(express)
             }
 
             if !savedCards.isEmpty {
                 let list = makeSavedCardList()
                 savedCardList = list
-                rootStack.addArrangedSubview(list)
+                homeStack.addArrangedSubview(list)
             }
 
-            buildNewCardStack()
-            rootStack.addArrangedSubview(newCardStack)
+            let entry = makeNewCardEntryRow()
+            newCardEntryRow = entry
+            homeStack.addArrangedSubview(entry)
 
-            if appearance.expressPosition == .bottom {
-                addExpressPlaceholder()
+            if appearance.expressPosition == .bottom, let express {
+                homeStack.addArrangedSubview(express)
             }
-
-            rootStack.addArrangedSubview(confirmButton)
-            rootStack.addArrangedSubview(notice)
-            rootStack.addArrangedSubview(footer)
         }
 
         /// Builds the new-card subpage: card form + optional save toggle + address forms.
@@ -395,25 +604,91 @@
         // MARK: - Component factories
 
         private func makeSavedCardList() -> SavedCardListView {
-            let list = SavedCardListView(appearance: appearance, localize: localize, cards: savedCards)
+            let list = SavedCardListView(appearance: appearance, cards: savedCards)
             list.onSelect = { [weak self] paymentMethodId in
-                self?.handleConfirmSavedCard(paymentMethodId: paymentMethodId)
-            }
-            list.onTapNewCard = { [weak self] in
-                self?.showNewCardSubpage()
+                // Selecting a saved card does NOT submit; record it, highlight it, and enable Pay.
+                guard let self else { return }
+                self.selectedSavedCardId = paymentMethodId
+                self.refreshConfirmButtonState()
             }
             return list
         }
 
-        private func addExpressPlaceholder() {
-            guard appearance.expressPosition != .off, session.methods.contains(.applePay) else { return }
-            let express = ExpressCheckoutView(appearance: appearance)
+        /// Builds the express (wallet) view for the home page, or nil when unavailable.
+        ///
+        /// Shown only when the session allows Apple Pay and `expressPosition != .off`. It lives in the
+        /// home page's `homeStack` (first for `.top`, last for `.bottom`), so it never appears on the
+        /// new-card subpage.
+        private func makeExpressView() -> ExpressCheckoutView? {
+            guard appearance.expressPosition != .off, session.methods.contains(.applePay) else {
+                return nil
+            }
+            let express = ExpressCheckoutView(
+                appearance: appearance,
+                // `.bottom`: the row follows the "New card" entry, so the divider sits above the button.
+                dividerPlacement: appearance.expressPosition == .bottom ? .above : .below)
             express.setOrPayUsingText(localize("sunbay.sheet.orPayUsing"))
             express.onApplePayTapped = { [weak self] in
                 self?.handleApplePayTapped()
             }
-            expressView = express
-            rootStack.addArrangedSubview(express)
+            return express
+        }
+
+        /// Builds the "New card" entry row for the home page: a card icon + localized title + chevron
+        /// that opens the independent new-card subpage. Always present on the home page (so a card can
+        /// be added even with no saved cards).
+        private func makeNewCardEntryRow() -> UIView {
+            let container = UIView()
+            container.backgroundColor = appearance.componentBackground
+            container.layer.cornerRadius = appearance.cornerRadius
+            container.layer.borderWidth = max(appearance.borderWidth, 1)
+            container.layer.borderColor = appearance.border.cgColor
+
+            let icon = UIImageView(image: UIImage(systemName: "creditcard"))
+            icon.tintColor = appearance.primary
+            icon.contentMode = .scaleAspectFit
+            icon.setContentHuggingPriority(.required, for: .horizontal)
+            icon.translatesAutoresizingMaskIntoConstraints = false
+
+            let title = UILabel()
+            title.text = localize("sunbay.cof.newPaymentMethod")
+            title.font = appearance.cardFieldFont
+            title.textColor = appearance.text
+            title.translatesAutoresizingMaskIntoConstraints = false
+
+            let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
+            chevron.tintColor = appearance.textSecondary
+            chevron.contentMode = .scaleAspectFit
+            chevron.setContentHuggingPriority(.required, for: .horizontal)
+            chevron.translatesAutoresizingMaskIntoConstraints = false
+
+            let stack = UIStackView(arrangedSubviews: [icon, title, chevron])
+            stack.axis = .horizontal
+            stack.alignment = .center
+            stack.spacing = 12
+            stack.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(stack)
+
+            NSLayoutConstraint.activate([
+                stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
+                stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
+                stack.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
+                stack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
+                icon.widthAnchor.constraint(equalToConstant: 24),
+                icon.heightAnchor.constraint(equalToConstant: 18),
+                container.heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
+            ])
+
+            container.isAccessibilityElement = true
+            container.accessibilityTraits = .button
+            container.accessibilityLabel = title.text
+            container.addGestureRecognizer(
+                UITapGestureRecognizer(target: self, action: #selector(handleNewCardEntryTap)))
+            return container
+        }
+
+        @objc private func handleNewCardEntryTap() {
+            showNewCardSubpage()
         }
 
         /// The Apple Pay row forwards a tap. When a token has already been staged (by the container /
@@ -510,39 +785,54 @@
             header.setTitle(localize("sunbay.sheet.payTitle"))
             header.onClose = { [weak self] in
                 guard let self else { return }
+                // Belt and braces: ignore programmatic / accessibility activation while a payment is
+                // in flight or succeeding (the button itself is also disabled then).
+                switch self.stateMachine.state {
+                case .processing, .succeeded: return
+                default: break
+                }
                 self.delegate?.contentDidRequestCancel(self)
             }
             header.onBack = { [weak self] in
-                self?.showSavedList()
+                self?.showHome()
             }
         }
 
         private func configureInitialNavigation() {
-            if savedCards.isEmpty {
-                showNewCardSubpage(animated: false)
-            } else {
-                showSavedList(animated: false)
-            }
+            // The home page is always the root; the new-card form is reached by tapping "New card".
+            showHome(animated: false)
         }
 
-        private func showSavedList(animated: Bool = true) {
-            guard !savedCards.isEmpty else { return }
-            isShowingSavedList = true
-            savedCardList?.isHidden = false
+        /// Shows the home page (express + saved-card list + "New card" entry); hides the new-card
+        /// subpage. No back button (home is the root). The title returns to the pay title.
+        private func showHome(animated: Bool = true) {
+            guard stateMachine.state != .processing else { return }
+            isShowingNewCard = false
+            homeStack.isHidden = false
             newCardStack.isHidden = true
             header.setBackVisible(false)
+            header.setTitle(localize("sunbay.sheet.payTitle"))
             notice.hide()
             refreshConfirmButtonState()
+            reportContentHeightIfChanged()
         }
 
+        /// Shows the independent new-card subpage (card form + address + Pay; no express). A back
+        /// button returns to the home page. Entering clears any saved-card selection.
         private func showNewCardSubpage(animated: Bool = true) {
-            isShowingSavedList = false
-            savedCardList?.isHidden = true
+            guard stateMachine.state != .processing else { return }
+            isShowingNewCard = true
+            homeStack.isHidden = true
             newCardStack.isHidden = false
-            // Back button only when there is a list to return to.
-            header.setBackVisible(!savedCards.isEmpty)
+            // Clear both the selection state and the list's visual radio, so returning home does not
+            // show a highlighted row while Pay is hidden.
+            selectedSavedCardId = nil
+            savedCardList?.selectedPaymentMethodId = nil
+            header.setBackVisible(true)
+            header.setTitle(localize("sunbay.sheet.newCard"))
             notice.hide()
             refreshConfirmButtonState()
+            reportContentHeightIfChanged()
         }
 
         // MARK: - Confirm button wiring
@@ -550,10 +840,24 @@
         private func configureConfirmButton() {
             confirmButton.setTitle(payTitle())
             confirmButton.onTap = { [weak self] in
-                self?.handleConfirmNewCard()
+                self?.handlePayTapped()
             }
             cardForm.onEditingChanged = { [weak self] in
                 self?.refreshConfirmButtonState()
+            }
+        }
+
+        /// Routes a Pay tap to the right confirm path based on the current page / selection.
+        ///
+        /// On the home page with a selected saved card → confirm that saved card. On the new-card
+        /// subpage → confirm the entered card. (The button is only visible/enabled when one of these
+        /// is submittable, per `refreshConfirmButtonState`.)
+        private func handlePayTapped() {
+            if isShowingNewCard {
+                handleConfirmNewCard()
+            } else {
+                guard let id = selectedSavedCardId else { return }
+                handleConfirmSavedCard(paymentMethodId: id)
             }
         }
 
@@ -568,18 +872,35 @@
             return "\(localize("sunbay.sheet.pay")) \(amountString)"
         }
 
-        private func configureExpressIfNeeded() {
-            // Express is composed during `assembleRootStack`; nothing extra required here. Kept as a
-            // hook so later availability gating (design §7.4) can live in one place.
-        }
-
         // MARK: - Content height reporting
 
-        /// Reports the preferred content height to the delegate when it changes (reserved for L2).
+        /// Reports the preferred TOTAL sheet content height to the delegate when it changes.
+        ///
+        /// Sums the real chrome so the container's adaptive detent (iOS 16+) fits the whole sheet:
+        /// the top safe-area inset, the fixed header (full width), the scroll content (`rootStack`,
+        /// measured at `width - 32` plus its 16 + 16 scroll insets), the fixed bottom bar (measured
+        /// at `width - 32` plus its 4 pt bottom constant), and the bottom safe-area inset. The result
+        /// is clamped by `Appearance.sheetSizing`; any overflow is absorbed by the scroll area.
+        /// Called from `viewDidLayoutSubviews` and explicitly after page navigation.
         private func reportContentHeightIfChanged() {
-            let height = rootStack.systemLayoutSizeFitting(
-                CGSize(width: view.bounds.width, height: UIView.layoutFittingCompressedSize.height)
-            ).height
+            let width = view.bounds.width
+            guard width > 0 else { return }
+            let inset: CGFloat = 16
+            let fitting = UIView.layoutFittingCompressedSize.height
+            func fit(_ target: UIView, width: CGFloat) -> CGFloat {
+                target.systemLayoutSizeFitting(
+                    CGSize(width: width, height: fitting),
+                    withHorizontalFittingPriority: .required,
+                    verticalFittingPriority: .fittingSizeLevel
+                ).height
+            }
+            let headerHeight = fit(headerContainer, width: width)
+            let contentHeight = fit(rootStack, width: width - 2 * inset)
+            let bottomHeight = fit(bottomBar, width: width - 2 * inset)
+            let scrollInsets: CGFloat = 16 + 16
+            let bottomBarMargin: CGFloat = 4
+            let height = view.safeAreaInsets.top + headerHeight + scrollInsets + contentHeight
+                + bottomHeight + bottomBarMargin + view.safeAreaInsets.bottom
             guard abs(height - lastReportedHeight) > 0.5 else { return }
             lastReportedHeight = height
             delegate?.content(self, didUpdateContentHeight: height)

@@ -301,9 +301,10 @@ read `Appearance` themselves. `ResolvedAppearance.resolve(_:)` is a pure functio
   formatting: 4-digit grouping, auto `/` in expiry, CVC length cap, major-brand prefix for
   the card icon (no large brand DB).
 - **SavedCardListView / SavedCardRow** — design 2: "Saved" title + radio rows (selected =
-  orange border + tint), brand badge + `•••• 4242` + `08/28`; plus a "New card" row (`›`).
-  From `SavedCard` (brand/last4/expMonth/expYear). Emits `onSelectSavedCard(id)` /
-  `onTapNewCard`.
+  orange border + tint), brand badge + `•••• 4242` + `08/28`. From `SavedCard`
+  (brand/last4/expMonth/expYear). Emits `onSelect(id)` (selection only; Pay submits). The
+  "New card" row (`›`) is NOT part of this view: it is a standalone entry row on the home
+  page (shown even with no saved cards) that opens the new-card subpage.
 - **ExpressCheckoutView** — official `PKPaymentButton` + "Or pay using" divider; position by
   `expressPosition` (.top/.bottom/.off); shown only when `session.methods` has Apple Pay and
   the device is capable. Tap → PassKit authorize (existing `WalletAuthorizer`) → token →
@@ -336,8 +337,9 @@ toggle.
 
 ### 5.1 List ↔ new-card navigation (option A, Stripe-style self-managed)
 
-Single content VC switches sub-views (list ↔ new-card), self-manages the `‹` back; it does
-NOT embed a `UINavigationController`. The system edge-swipe back gesture does not exist in a
+Single content VC switches between the home page (express · saved cards · "New card" entry
+row; always the root, even with no saved cards) and the independent new-card subpage,
+self-manages the `‹` back; it does NOT embed a `UINavigationController`. The system edge-swipe back gesture does not exist in a
 modal sheet, so nothing is lost. Interactive dismissal (pull-down) is handled: `editing` →
 cancel (`.canceled`); `processing` → blocked (`isModalInPresentation = true`); pulling down
 on the new-card subpage closes the whole sheet (cancel), while `‹` is page-level back.

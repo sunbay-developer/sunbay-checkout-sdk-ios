@@ -53,7 +53,7 @@
         enum UserAction: Sendable {
             /// Confirm a new card (optionally checked to save + consent).
             case confirmNewCard(CardInput, save: Bool)
-            /// Select a saved card (COF one-tap pay).
+            /// Pay with a selected saved card (COF; the user selects a card then taps Pay).
             case confirmSavedCard(paymentMethodId: String)
             /// The Apple Pay wallet token has been obtained; confirm the wallet payment.
             case confirmWallet(token: Data)
