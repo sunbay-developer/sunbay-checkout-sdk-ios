@@ -36,12 +36,15 @@
         public var colorScheme: ColorScheme = .automatic
         /// Vertical rhythm / spacing density.
         public var density: Density = .comfortable
-        /// Where the express-checkout (wallet) row is placed relative to the card form.
+        /// Where the express-checkout (wallet) row is placed on the home page (top / bottom / off).
         public var expressPosition: ExpressPosition = .top
         /// Billing address collection mode.
         public var billingAddressMode: AddressCollectionMode = .simple
         /// Shipping address collection mode.
         public var shippingAddressMode: AddressCollectionMode = .simple
+
+        /// Bottom-sheet sizing: minimum height, maximum height fraction of the maximum sheet height, and mode.
+        public var sheetSizing: SheetSizing = .init()
 
         /// Color scheme preference.
         public enum ColorScheme: Sendable {
@@ -61,11 +64,12 @@
             case compact
         }
 
-        /// Placement of the express-checkout (wallet) row.
+        /// Placement of the express-checkout (wallet) row on the home page. The express row never
+        /// appears on the new-card subpage.
         public enum ExpressPosition: Sendable {
-            /// Above the card form.
+            /// First on the home page, above the saved cards and the "New card" entry.
             case top
-            /// Below the card form.
+            /// Last on the home page, below the saved cards and the "New card" entry.
             case bottom
             /// Hidden.
             case off
@@ -77,6 +81,57 @@
             case simple
             /// Backend-layout-driven full address form.
             case full
+        }
+
+        /// Bottom-sheet sizing policy.
+        ///
+        /// `mode` chooses the sheet's default (initial) height, which is then clamped between
+        /// `minHeight` and `maximumSheetHeight × maxHeightFraction`:
+        /// - `.adaptive` (default): the default height fits the content, so a short form yields a
+        ///   short sheet and a long form grows up to the cap (the middle area then scrolls).
+        /// - `.fixedFraction(f)`: the default height is `maximumSheetHeight × f` (clamped to `0...1`, then by
+        ///   `minHeight` and `maxHeightFraction`).
+        /// - `.large`: only the system large detent (near-full-height) is used.
+        ///
+        /// For `.adaptive` / `.fixedFraction` the system large detent is also kept available, so
+        /// `maxHeightFraction` bounds the default height but the user can still drag the sheet up to
+        /// the system large height. Out-of-range inputs are sanitized (fractions clamped to `0...1`,
+        /// a NaN or negative `minHeight` is ignored). "Maximum sheet height" is the system's maximum
+        /// detent value (the system large height). On iOS 15 (no custom detents) the sheet falls
+        /// back to the system medium/large detents and these values are ignored.
+        public struct SheetSizing: Sendable, Equatable {
+            /// Sizing mode.
+            public enum Mode: Sendable, Equatable {
+                /// Fit the content height, clamped to `[minHeight, maximumSheetHeight × maxHeightFraction]`.
+                case adaptive
+                /// Always `maximumSheetHeight × fraction` (clamped by `minHeight` / `maxHeightFraction`).
+                case fixedFraction(CGFloat)
+                /// Use the system large detent.
+                case large
+            }
+
+            /// Minimum sheet height in points. `nil` lets the content fit without a floor.
+            public var minHeight: CGFloat?
+            /// Maximum default sheet height as a fraction of the maximum sheet height (0...1). Default `0.9`.
+            public var maxHeightFraction: CGFloat
+            /// How the target height is derived. Default `.adaptive`.
+            public var mode: Mode
+
+            /// Creates a sizing policy.
+            ///
+            /// - Parameters:
+            ///   - minHeight: Minimum height in points; `nil` for no floor.
+            ///   - maxHeightFraction: Maximum fraction of the maximum sheet height (default `0.9`).
+            ///   - mode: Sizing mode (default `.adaptive`).
+            public init(
+                minHeight: CGFloat? = nil,
+                maxHeightFraction: CGFloat = 0.9,
+                mode: Mode = .adaptive
+            ) {
+                self.minHeight = minHeight
+                self.maxHeightFraction = maxHeightFraction
+                self.mode = mode
+            }
         }
 
         /// Color overrides. A `nil` value falls back to the built-in semantic default.

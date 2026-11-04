@@ -124,13 +124,22 @@
         // MARK: - Sheet presentation
 
         /// Configures the `UISheetPresentationController`: grabber on, corner radius from appearance,
-        /// and detents (iOS 16+ adaptive `.custom`, iOS 15 `.medium()`/`.large()` + internal scroll).
+        /// and detents derived from `appearance.sheetSizing`.
+        ///
+        /// iOS 16+: a single `.custom` detent computed from the sizing policy (adaptive content
+        /// height / fixed fraction / large), clamped to `[minHeight, maxDetent × maxHeightFraction]`,
+        /// plus `.large()` so an overlong form can still expand by scrolling. iOS 15: `.medium()`/
+        /// `.large()` fallback (custom detents unavailable), content scrolls internally.
         private func configurePresentationDetents() {
             guard let sheet = sheetPresentationController else { return }
             sheet.prefersGrabberVisible = true
             sheet.preferredCornerRadius = appearance.cornerRadius
             if #available(iOS 16.0, *) {
-                sheet.detents = [adaptiveDetent(), .large()]
+                if case .large = appearance.sheetSizing.mode {
+                    sheet.detents = [.large()]
+                } else {
+                    sheet.detents = [adaptiveDetent(), .large()]
+                }
                 sheet.prefersScrollingExpandsWhenScrolledToEdge = false
             } else {
                 // iOS 15 fallback: fixed detents; the content VC's own scroll view handles overflow.
@@ -138,15 +147,27 @@
             }
         }
 
-        /// Builds the iOS 16+ adaptive `.custom` detent from the reported content height, clamped to
-        /// the sheet's maximum so an overlong form still expands to `.large` via scrolling.
+        /// Builds the iOS 16+ `.custom` detent from `appearance.sheetSizing`.
+        ///
+        /// The target height is the content height (`.adaptive`) or `maxDetent × fraction`
+        /// (`.fixedFraction`), clamped (with sanitized inputs) to `[minHeight ?? 0, maxDetent ×
+        /// maxHeightFraction]` by `SheetSizingMath`. `maxDetent` is the sheet's maximum available
+        /// height (`context.maximumDetentValue`). `.large()` is installed alongside, so this custom
+        /// detent is the sheet's default height, not a hard cap on how far the user can drag it.
+        /// (`.large` mode never builds this detent; see `configurePresentationDetents`.)
         @available(iOS 16.0, *)
         private func adaptiveDetent() -> UISheetPresentationController.Detent {
             .custom(identifier: .init("sunbay.adaptive")) { [weak self] context in
-                guard let self, self.preferredContentHeight > 0 else {
-                    return context.maximumDetentValue * 0.5
-                }
-                return min(self.preferredContentHeight, context.maximumDetentValue)
+                guard let self else { return context.maximumDetentValue * 0.5 }
+                let sizing = self.appearance.sheetSizing
+                let maxDetent = context.maximumDetentValue
+                var fixedFraction: CGFloat?
+                if case let .fixedFraction(fraction) = sizing.mode { fixedFraction = fraction }
+                let target = SheetSizingMath.targetHeight(
+                    fixedFraction: fixedFraction, contentHeight: self.preferredContentHeight, maxDetent: maxDetent)
+                return SheetSizingMath.clampedHeight(
+                    target: target, minHeight: sizing.minHeight, maxDetent: maxDetent,
+                    maxFraction: sizing.maxHeightFraction)
             }
         }
 

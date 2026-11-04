@@ -114,6 +114,9 @@
             refreshGroupBorder()
         }
 
+        /// Test readout: whether a field error (red group + message) is currently shown.
+        var hasFieldErrorForTest: Bool { hasFieldError && !errorLabel.isHidden }
+
         /// Test seam: sets the three fields' text directly (bypassing formatting), so unit tests can
         /// assert `cardInput` assembly without simulating keystrokes.
         ///

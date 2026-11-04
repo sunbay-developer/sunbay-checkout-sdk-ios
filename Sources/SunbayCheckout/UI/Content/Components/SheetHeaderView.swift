@@ -44,6 +44,32 @@
             titleLabel.text = title
         }
 
+        /// Enables or disables the back button (locked while a confirm is in flight).
+        ///
+        /// - Parameter enabled: Whether the back button is interactive.
+        func setBackEnabled(_ enabled: Bool) {
+            backButton.isEnabled = enabled
+        }
+
+        /// Test readout: whether the back button is interactive.
+        var isBackEnabledForTest: Bool { backButton.isEnabled }
+
+        /// Enables or disables the close (✕) button (locked while a confirm is in flight and during the
+        /// success animation, so a tap cannot report `.canceled` for a payment that may succeed).
+        ///
+        /// - Parameter enabled: Whether the close button is interactive.
+        func setCloseEnabled(_ enabled: Bool) {
+            closeButton.isEnabled = enabled
+            closeButton.alpha = enabled ? 1.0 : 0.4
+            closeButton.accessibilityTraits = enabled ? .button : [.button, .notEnabled]
+        }
+
+        /// Test readout: whether the close button is interactive.
+        var isCloseEnabledForTest: Bool { closeButton.isEnabled }
+
+        /// Test readout: whether the close button exposes the `.notEnabled` accessibility trait.
+        var closeHasNotEnabledTraitForTest: Bool { closeButton.accessibilityTraits.contains(.notEnabled) }
+
         /// Shows or hides the leading back button.
         ///
         /// - Parameter visible: Whether the back button is visible.
@@ -90,7 +116,10 @@
                 titleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: backButton.trailingAnchor, constant: 8),
                 titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -8),
 
-                heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+                // Deterministic row height (the 44pt hit-target of the buttons). An open-ended `>= 44`
+                // left the header/scroll split of the parent's vertical chain ambiguous, so the header
+                // could absorb all spare height. The title is single-line and truncates instead of growing.
+                heightAnchor.constraint(equalToConstant: 44),
             ])
         }
 

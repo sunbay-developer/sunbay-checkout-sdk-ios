@@ -44,6 +44,19 @@
         /// Invoked when the button is tapped while `enabled`.
         var onTap: (() -> Void)?
 
+        /// Whether the `enabled` status is rendered dimmed with the `.notEnabled` accessibility trait
+        /// while STILL delivering taps.
+        ///
+        /// Used for an incomplete form: the button looks disabled, yet a tap must reach `onTap` so the
+        /// owner can surface the field error (a truly disabled control receives no touches). Has no
+        /// effect on the other statuses.
+        var appearsDisabled = false {
+            didSet {
+                guard appearsDisabled != oldValue, status == .enabled else { return }
+                apply(status: .enabled)
+            }
+        }
+
         // MARK: - Private state
 
         private let appearance: ResolvedAppearance
@@ -81,6 +94,17 @@
         }
 
         // MARK: - Public API
+
+        /// Test seam: delivers a tap the way UIKit would (only when the control is enabled), running
+        /// the same handler as a real `.touchUpInside`. Needs no `UIApplication`, so it works in
+        /// host-less unit tests.
+        func simulateTouchUpInsideForTest() {
+            guard isEnabled else { return }
+            handleTap()
+        }
+
+        /// Test readout: the current accessibility traits.
+        var accessibilityTraitsForTest: UIAccessibilityTraits { accessibilityTraits }
 
         /// Sets the button's title (e.g. the localized `Pay %@` amount string).
         ///
@@ -121,7 +145,8 @@
                 titleLabel.isHidden = false
                 backgroundColor = appearance.primaryButtonBackground
                 titleLabel.textColor = appearance.primaryButtonText
-                alpha = 1.0
+                alpha = appearsDisabled ? 0.4 : 1.0
+                accessibilityTraits = appearsDisabled ? [.button, .notEnabled] : .button
             case .disabled:
                 isEnabled = false
                 spinner.stopAnimating()
@@ -130,12 +155,14 @@
                 backgroundColor = appearance.primaryButtonBackground
                 titleLabel.textColor = appearance.primaryButtonText
                 alpha = 0.4
+                accessibilityTraits = [.button, .notEnabled]
             case .processing:
                 isEnabled = false
                 removeSuccessLayer()
                 titleLabel.isHidden = true
                 backgroundColor = appearance.primaryButtonBackground
                 alpha = 1.0
+                accessibilityTraits = .button
                 // Always show the spinner: it is the in-flight affordance. Reduced motion does not
                 // suppress it (the indicator still signals processing); only decorative motion elsewhere honors it.
                 spinner.startAnimating()
@@ -145,6 +172,7 @@
                 titleLabel.isHidden = true
                 backgroundColor = appearance.primaryButtonBackground
                 alpha = 1.0
+                accessibilityTraits = .button
             }
         }
 
@@ -262,7 +290,8 @@
             }
         }
 
-        /// Fires `onTap` when the button is tapped while interactive.
+        /// Fires `onTap` when the button is tapped while interactive (including the dimmed
+        /// `appearsDisabled` presentation, which still reports taps).
         @objc private func handleTap() {
             guard status == .enabled else { return }
             onTap?()

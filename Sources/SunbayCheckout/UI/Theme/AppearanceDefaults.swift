@@ -44,8 +44,14 @@
         /// The primary surface color (screen / sheet background).
         static var background: UIColor { .systemBackground }
 
-        /// The background for grouped components layered on top of `background`.
-        static var componentBackground: UIColor { .secondarySystemBackground }
+        /// The background for grouped components (inputs, rows) layered on top of `background`.
+        ///
+        /// Defaults to `.systemBackground` (white in light, near-black in dark) rather than the
+        /// grey `.secondarySystemBackground`, so inputs read as clean white/transparent surfaces by
+        /// default. Merchants override via `Appearance.colors.componentBackground`. Because it equals
+        /// `background` by default, a merchant who only sets `colors.background` should also set
+        /// `componentBackground` if they want the grouped components to contrast with the sheet.
+        static var componentBackground: UIColor { .systemBackground }
 
         /// The primary text / label color.
         static var text: UIColor { .label }

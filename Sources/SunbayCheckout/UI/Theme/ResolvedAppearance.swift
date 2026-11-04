@@ -58,6 +58,8 @@
         let density: Appearance.Density
         /// Placement of the express-checkout (wallet) row.
         let expressPosition: Appearance.ExpressPosition
+        /// Bottom-sheet sizing policy (min height, max fraction, mode).
+        let sheetSizing: Appearance.SheetSizing
 
         // MARK: - Primary button
 
@@ -122,6 +124,7 @@
                 shadow: appearance.shadow,
                 density: appearance.density,
                 expressPosition: appearance.expressPosition,
+                sheetSizing: appearance.sheetSizing,
                 primaryButtonBackground: primaryButtonBackground,
                 primaryButtonText: primaryButtonText,
                 primaryButtonCornerRadius: primaryButtonCornerRadius

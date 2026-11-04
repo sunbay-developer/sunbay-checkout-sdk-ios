@@ -48,7 +48,7 @@ component. Every color is an optional `UIColor` — leave it `nil` to use the bu
 var appearance = Appearance()                 // or Appearance.default
 appearance.colors.primary = UIColor(sunbayHex: "#ff6000")  // public hex convenience; nil on invalid input
 appearance.cornerRadius = 10
-appearance.expressPosition = .top             // Apple Pay row position: .top / .bottom / .off
+appearance.expressPosition = .top             // Apple Pay row on the home page: .top / .bottom / .off
 appearance.density = .comfortable             // .comfortable / .compact
 appearance.colorScheme = .automatic           // .automatic (follow system) / .light / .dark
 

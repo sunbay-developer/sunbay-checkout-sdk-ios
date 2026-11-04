@@ -151,7 +151,9 @@
             container.onStateChange = { observed = $0 }
 
             // The container is the content's delegate; drive a confirm so the content emits a state.
+            // The new-card form is a subpage now, so open it before filling/tapping Pay.
             content.loadViewIfNeeded()
+            content.openNewCardForTest()
             content.fillCardForTest()
             content.simulateTapPay()
 
