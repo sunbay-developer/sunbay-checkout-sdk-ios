@@ -180,8 +180,10 @@ PaymentSheet 不再把所有终态都「关页后才回传」:页内有一个可
 
 UI 层拆成两层,单向依赖 `Container → Content → Theme`:
 
-- **Container 层**——「如何被托管」。首版 L1 为 `PaymentSheetContainerViewController`(系统
-  `UISheetPresentationController` 底部弹窗;iOS 16+ 自适应高度,iOS 15 降级 `.medium/.large`)。
+- **Container 层**——「如何被托管」。首版 L1 为 `PaymentSheetContainerViewController`
+  (English: custom bottom-sheet presentation on iPhone, built on `UIPresentationController`;
+  `Appearance.sheetSizing` is honored on all iOS 15+ versions, with a hard `maxHeightFraction` cap;
+  iPad / Mac / visionOS use the system form sheet. 自定义底部弹窗,不再依赖系统 `UISheetPresentationController`)。
 - **Content 层**——host-agnostic、可复用的支付 UI(`CheckoutContentViewController` + 各组件),
   只通过 `CheckoutContentDelegate` 回报,不依赖容器。这正是 **L2 内嵌零返工**的接缝:将来加一个
   内嵌容器复用同一 Content 即可。

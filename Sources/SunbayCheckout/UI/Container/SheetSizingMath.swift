@@ -1,10 +1,10 @@
 import CoreGraphics
 
-/// Pure sizing arithmetic for the bottom-sheet adaptive detent (no UIKit, host-testable).
+/// Pure sizing arithmetic for the bottom sheet (no UIKit, host-testable); used by `BottomSheetGeometry`.
 ///
 /// Merchant-supplied `Appearance.SheetSizing` values are untrusted input: fractions can be NaN or
 /// outside 0...1 and `minHeight` can be NaN, negative, or larger than the sheet can ever be. All of
-/// that is sanitized here so the detent callback always returns a finite, in-range height.
+/// that is sanitized here so the sheet height is always finite and in range.
 enum SheetSizingMath {
     /// Fraction used when a supplied fraction is NaN.
     static let fallbackFraction: CGFloat = 0.9
@@ -18,8 +18,8 @@ enum SheetSizingMath {
     /// The target height before clamping: `maxDetent × fixedFraction` when a fixed fraction is
     /// given, otherwise the measured content height (or half the sheet while no measurement exists).
     ///
-    /// `.large` mode never reaches the custom detent (the container installs only the system large
-    /// detent for it), so it needs no representation here.
+    /// `.large` mode is handled by `BottomSheetGeometry` (it does not call this), so it needs no
+    /// representation here.
     static func targetHeight(
         fixedFraction: CGFloat?, contentHeight: CGFloat, maxDetent: CGFloat
     ) -> CGFloat {

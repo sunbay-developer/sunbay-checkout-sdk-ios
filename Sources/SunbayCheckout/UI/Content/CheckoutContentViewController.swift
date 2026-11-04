@@ -151,6 +151,41 @@
             configureConfirmButton()
             configureInitialNavigation()
             refreshConfirmButtonState()
+            observeFieldFocus()
+        }
+
+        // MARK: - Keyboard focus
+
+        /// Keeps the focused field visible: the container shrinks the sheet above the keyboard, so the
+        /// scroll area gets shorter and the field may sit outside it.
+        private func observeFieldFocus() {
+            let center = NotificationCenter.default
+            center.addObserver(
+                self, selector: #selector(fieldDidBeginEditing(_:)),
+                name: UITextField.textDidBeginEditingNotification, object: nil)
+            center.addObserver(
+                self, selector: #selector(fieldDidBeginEditing(_:)),
+                name: UITextView.textDidBeginEditingNotification, object: nil)
+        }
+
+        @objc private func fieldDidBeginEditing(_ note: Notification) {
+            guard let field = note.object as? UIView, field.isDescendant(of: scrollView) else { return }
+            DispatchQueue.main.async { [weak self] in self?.scrollFocusedFieldIntoView() }
+        }
+
+        /// Scrolls the current first responder inside the scroll area into view (with a 16 pt margin).
+        func scrollFocusedFieldIntoView() {
+            guard let responder = Self.firstResponder(in: scrollView) else { return }
+            let rect = scrollView.convert(responder.bounds, from: responder)
+            scrollView.scrollRectToVisible(rect.insetBy(dx: 0, dy: -16), animated: true)
+        }
+
+        private static func firstResponder(in root: UIView) -> UIView? {
+            if root.isFirstResponder { return root }
+            for subview in root.subviews {
+                if let found = firstResponder(in: subview) { return found }
+            }
+            return nil
         }
 
         override func viewDidLayoutSubviews() {
@@ -480,6 +515,8 @@
         private func buildLayout() {
             headerContainer.translatesAutoresizingMaskIntoConstraints = false
             scrollView.translatesAutoresizingMaskIntoConstraints = false
+            // Dragging the form dismisses the keyboard (Stripe parity).
+            scrollView.keyboardDismissMode = .onDrag
             bottomBar.translatesAutoresizingMaskIntoConstraints = false
 
             view.addSubview(headerContainer)
@@ -876,7 +913,7 @@
 
         /// Reports the preferred TOTAL sheet content height to the delegate when it changes.
         ///
-        /// Sums the real chrome so the container's adaptive detent (iOS 16+) fits the whole sheet:
+        /// Sums the real chrome so the container's explicit sheet height fits the whole sheet:
         /// the top safe-area inset, the fixed header (full width), the scroll content (`rootStack`,
         /// measured at `width - 32` plus its 16 + 16 scroll insets), the fixed bottom bar (measured
         /// at `width - 32` plus its 4 pt bottom constant), and the bottom safe-area inset. The result

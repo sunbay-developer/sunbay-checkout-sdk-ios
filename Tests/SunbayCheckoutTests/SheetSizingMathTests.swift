@@ -3,7 +3,7 @@ import XCTest
 
 @testable import SunbayCheckout
 
-/// Pure tests for the bottom-sheet detent arithmetic (host-runnable, no UIKit).
+/// Pure tests for the bottom-sheet sizing arithmetic (host-runnable, no UIKit).
 final class SheetSizingMathTests: XCTestCase {
     func test_clampedHeight_withinRange_passesThrough() {
         XCTAssertEqual(

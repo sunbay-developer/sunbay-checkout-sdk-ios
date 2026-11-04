@@ -39,3 +39,8 @@ Code references:
 
 Proposed fix when scheduled: after `.pending`/`.unknown`, lock Pay and clear the saved-card selection (or
 force `retrievePayment()` first), and let the user retry only after a confirmed non-terminal result.
+
+## Custom bottom sheet — optional follow-ups
+
+- Optional: drag-to-dismiss gesture on the sheet header (Stripe has none).
+- Optional: XCUITest in the Demo covering present → tap backdrop → dismissed.
