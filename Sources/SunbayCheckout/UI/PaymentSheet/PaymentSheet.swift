@@ -400,6 +400,7 @@
                 resumeAction(.cancel)
                 return
             }
+            PaymentSheet.resignFirstResponder(in: presenter)
             presenter.present(containerVC, animated: true)
         }
 
@@ -464,6 +465,18 @@
         /// Dismisses the sheet (if still presented).
         func dismiss() async {
             container?.dismiss(animated: true)
+        }
+    }
+
+    extension PaymentSheet {
+        /// Dismisses any keyboard owned by the presenting screen before the sheet is presented.
+        ///
+        /// The sheet's presentation controller only learns about the keyboard from change
+        /// notifications, which never fire for a keyboard that is already up at present time (the
+        /// sheet would then render under it). Resigning first responder up front, as most modal UIs
+        /// do, makes that state impossible: the keyboard is hidden and the overlap starts at zero.
+        static func resignFirstResponder(in presenter: UIViewController) {
+            presenter.view.endEditing(true)
         }
     }
 #endif

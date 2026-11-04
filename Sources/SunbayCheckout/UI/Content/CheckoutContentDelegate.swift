@@ -14,8 +14,8 @@
     /// the existing `PaymentSheet.runCheckout` seam, drives `CheckoutController`, and feeds the
     /// resulting `CheckoutOutcome` back via `applyOutcome(_:)`. `didChangeProcessing` lets it block
     /// dismissal, and `didChangeState` is mapped to the public `CheckoutPresentationState` surfaced on
-    /// `PaymentSheet.onStateChange`. `didUpdateContentHeight` is wired now but mostly ignored by the
-    /// sheet (adaptive detent); it is the zero-rework seam for the L2 embedded height animation.
+    /// `PaymentSheet.onStateChange`. `didUpdateContentHeight` drives the custom bottom sheet's height and is
+    /// the zero-rework seam for the L2 embedded height animation.
     ///
     /// `@MainActor`: every callback is invoked on the main actor (UIKit affinity).
     ///
@@ -54,9 +54,9 @@
         ///   - isProcessing: `true` when a confirm is in flight; `false` when editable again.
         func content(_ content: CheckoutContentViewController, didChangeProcessing isProcessing: Bool)
 
-        /// The preferred content height changed (reserved for the L2 embedded container).
+        /// The preferred total content height changed.
         ///
-        /// The bottom sheet mostly ignores this (adaptive detent); the future embedded container
+        /// The bottom sheet uses this as its explicit height; the future embedded container
         /// animates its own height from it.
         ///
         /// - Parameters:

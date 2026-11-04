@@ -43,7 +43,7 @@
         /// Shipping address collection mode.
         public var shippingAddressMode: AddressCollectionMode = .simple
 
-        /// Bottom-sheet sizing: minimum height, maximum height fraction of the maximum sheet height, and mode.
+        /// Bottom-sheet sizing: minimum height, maximum height fraction of the screen height, and mode.
         public var sheetSizing: SheetSizing = .init()
 
         /// Color scheme preference.
@@ -85,34 +85,39 @@
 
         /// Bottom-sheet sizing policy.
         ///
-        /// `mode` chooses the sheet's default (initial) height, which is then clamped between
-        /// `minHeight` and `maximumSheetHeight × maxHeightFraction`:
-        /// - `.adaptive` (default): the default height fits the content, so a short form yields a
-        ///   short sheet and a long form grows up to the cap (the middle area then scrolls).
-        /// - `.fixedFraction(f)`: the default height is `maximumSheetHeight × f` (clamped to `0...1`, then by
+        /// `mode` chooses the sheet's height, which is then clamped between `minHeight` and
+        /// `screenHeight × maxHeightFraction`. "Screen height" is the height of the presentation
+        /// container (the full window); the sheet can never exceed the *available* height, i.e. the
+        /// screen height minus the top safe-area inset minus any keyboard overlap:
+        /// - `.adaptive` (default): the height fits the content, so a short form yields a short sheet
+        ///   and a long form grows up to the cap (the middle area then scrolls).
+        /// - `.fixedFraction(f)`: the height is `screenHeight × f` (`f` clamped to `0...1`, then by
         ///   `minHeight` and `maxHeightFraction`).
-        /// - `.large`: only the system large detent (near-full-height) is used.
+        /// - `.large`: fills the whole available height. Bypasses `maxHeightFraction` by design.
         ///
-        /// For `.adaptive` / `.fixedFraction` the system large detent is also kept available, so
-        /// `maxHeightFraction` bounds the default height but the user can still drag the sheet up to
-        /// the system large height. Out-of-range inputs are sanitized (fractions clamped to `0...1`,
-        /// a NaN or negative `minHeight` is ignored). "Maximum sheet height" is the system's maximum
-        /// detent value (the system large height). On iOS 15 (no custom detents) the sheet falls
-        /// back to the system medium/large detents and these values are ignored.
+        /// This sizing applies to the custom iPhone bottom sheet on **all** supported iOS versions
+        /// (15+). `maxHeightFraction` is a **hard cap**: the sheet never grows past it, and there is
+        /// no pull-up gesture or system large detent. Out-of-range inputs are sanitized (fractions
+        /// clamped to `0...1`, a NaN or negative `minHeight` is ignored; if `minHeight` exceeds the
+        /// cap it wins, but never exceeds the available height). The height is re-evaluated when the
+        /// content changes, on rotation, and when the keyboard shows or hides.
+        ///
+        /// iPad, Mac (Catalyst) and visionOS present the sheet as a system form sheet instead (Stripe
+        /// parity); the system sizes that sheet, so `sheetSizing` does **not** apply there.
         public struct SheetSizing: Sendable, Equatable {
             /// Sizing mode.
             public enum Mode: Sendable, Equatable {
-                /// Fit the content height, clamped to `[minHeight, maximumSheetHeight × maxHeightFraction]`.
+                /// Fit the content height, clamped to `[minHeight, screenHeight × maxHeightFraction]`.
                 case adaptive
-                /// Always `maximumSheetHeight × fraction` (clamped by `minHeight` / `maxHeightFraction`).
+                /// Always `screenHeight × fraction` (clamped by `minHeight` / `maxHeightFraction`).
                 case fixedFraction(CGFloat)
-                /// Use the system large detent.
+                /// Fill the whole available height (screen minus top safe area minus keyboard).
                 case large
             }
 
             /// Minimum sheet height in points. `nil` lets the content fit without a floor.
             public var minHeight: CGFloat?
-            /// Maximum default sheet height as a fraction of the maximum sheet height (0...1). Default `0.9`.
+            /// Hard cap on the sheet height as a fraction of the screen height (0...1). Default `0.9`.
             public var maxHeightFraction: CGFloat
             /// How the target height is derived. Default `.adaptive`.
             public var mode: Mode
@@ -121,7 +126,7 @@
             ///
             /// - Parameters:
             ///   - minHeight: Minimum height in points; `nil` for no floor.
-            ///   - maxHeightFraction: Maximum fraction of the maximum sheet height (default `0.9`).
+            ///   - maxHeightFraction: Hard cap as a fraction of the screen height (default `0.9`).
             ///   - mode: Sizing mode (default `.adaptive`).
             public init(
                 minHeight: CGFloat? = nil,

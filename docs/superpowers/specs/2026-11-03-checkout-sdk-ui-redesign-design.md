@@ -185,10 +185,11 @@ protocol CheckoutContentDelegate: AnyObject {
 
 - `didRequest` reuses the existing `PaymentSheet.UserAction` vocabulary, so `runCheckout`
   barely changes.
-- `didUpdateContentHeight` is wired now; the sheet mostly ignores it (adaptive detent),
-  the future embedded container animates its own height with it — this is the zero-rework
+- `didUpdateContentHeight` drives the custom bottom sheet's explicit height (see §6.1); the
+  future embedded container animates its own height with it — this is the zero-rework
   seam for L2.
-- `didChangeProcessing` → container sets `isModalInPresentation` (Stripe's `isDismissable`).
+- `didChangeProcessing` → the container blocks backdrop-tap / Escape cancels while a confirm is
+  in flight (Stripe's `isDismissable`).
 - `didChangeState` → mapped to a public `CheckoutPresentationState` and surfaced on
   `PaymentSheet.onStateChange`.
 
@@ -340,9 +341,9 @@ toggle.
 Single content VC switches between the home page (express · saved cards · "New card" entry
 row; always the root, even with no saved cards) and the independent new-card subpage,
 self-manages the `‹` back; it does NOT embed a `UINavigationController`. The system edge-swipe back gesture does not exist in a
-modal sheet, so nothing is lost. Interactive dismissal (pull-down) is handled: `editing` →
-cancel (`.canceled`); `processing` → blocked (`isModalInPresentation = true`); pulling down
-on the new-card subpage closes the whole sheet (cancel), while `‹` is page-level back.
+modal sheet, so nothing is lost. Dismissal is a backdrop tap or the ✕ (no pull-down): `editing` →
+cancel (`.canceled`); `processing` / `succeeded` → blocked; a backdrop tap on the new-card subpage
+closes the whole sheet (cancel), while `‹` is page-level back.
 
 ---
 
@@ -350,15 +351,40 @@ on the new-card subpage closes the whole sheet (cancel), while `‹` is page-lev
 
 ### 6.1 PaymentSheetContainerViewController (L1)
 
-- Hosts via system `UISheetPresentationController` (iOS 15+).
-  - Height: iOS 16+ adaptive via `.custom` detent + `invalidateDetents()` (driven by
-    `didUpdateContentHeight`); iOS 15 falls back to `.medium()/.large()` + internal scroll.
-    (Guiding principle: free-control, default adaptive, downgrade on old OS.)
-  - `prefersGrabberVisible = true`; `preferredCornerRadius` from `ResolvedAppearance`.
+- **Custom presentation, Stripe parity** (replaces the system `.pageSheet` / detents, which on
+  iOS 26 floats with 8 pt side insets and large system corners and offers no per-sheet opt-out).
+  - iPhone (any non-pad/mac/vision idiom): `modalPresentationStyle = .custom` with a retained
+    `BottomSheetTransitioningDelegate` → `BottomSheetPresentationController` +
+    `BottomSheetPresentationAnimator`. The presented view is full width (leading/trailing on the
+    container safe-area guide), pinned to the container bottom (under the home indicator; the content
+    adds the bottom safe-area inset itself), top corners only, radius `max(cornerRadius + 12, 14)`
+    (design token `--sr`). Own dimming view: black, alpha 0.4. No grabber, no drag-to-dismiss, no
+    scaling of the presenting view. The choice is `BottomSheetPresentationStyle.resolve(idiom:)`.
+  - Height: an explicit required-priority height constraint = `BottomSheetGeometry.sheetHeight`
+    (pure; reuses `SheetSizingMath`) of the content's reported total height against the available
+    height (`container − top safe area − keyboard overlap`). `Appearance.sheetSizing` is honored on
+    all iOS versions: `.adaptive` = content height, `.fixedFraction(f)` = `f ×` container height,
+    `.large` = full available height, `minHeight` floor, `maxHeightFraction` (of container height) a
+    hard cap. Re-evaluated, animated with the transition spring (Reduce Motion: no animation), on
+    new content height, rotation and keyboard changes.
+  - Transition: slide up / down with a spring `UIViewPropertyAnimator` (0.5 s); cross-dissolve when
+    Reduce Motion is on. Programmatic `dismiss(animated:)` (success auto-close) uses the same animator.
+  - Keyboard: the bottom constant becomes `−overlap` and the available height shrinks by the overlap,
+    animated with the keyboard's duration/curve; the form's scroll view uses
+    `keyboardDismissMode = .onDrag`, and the focused field is scrolled into view (on focus and after
+    the keyboard animation settles).
+  - Dismissal: a backdrop tap (and VoiceOver Escape) is a cancel of the whole sheet, allowed only when
+    editable — blocked while `processing` and once `succeeded`, and ignored while a transition
+    animation runs. It resolves exactly like ✕ (`.canceled`, once).
+  - Accessibility: presented view `accessibilityViewIsModal`; the backdrop is not an accessibility
+    element (✕ and Escape are the accessible dismissals).
+  - iPad / Mac (Catalyst) / visionOS: the system `.formSheet`, `isModalInPresentation = true`;
+    outside-tap attempts run the same allowed-or-blocked cancel rule via the presentation delegate.
+    `sheetSizing` does not apply there (the system sizes the form sheet).
 - `addChild(contentVC)`; container implements `CheckoutContentDelegate`:
-  `didRequest` → `runCheckout` seam; `didChangeProcessing` → `isModalInPresentation`;
-  cancel/pull-down (editing) → `.canceled`; `didFinishWith` → dismiss then return outcome;
-  `didUpdateContentHeight` → `invalidateDetents()` on iOS 16+; `didChangeState` → public
+  `didRequest` → `runCheckout` seam; `didChangeProcessing` / `didChangeState(.succeeded)` → block
+  cancel; cancel (editing) → `.canceled`; `didFinishWith` → dismiss then return outcome;
+  `didUpdateContentHeight` → presentation controller height update; `didChangeState` → public
   `onStateChange`.
 - Header `SheetHeaderView`. Root `overrideUserInterfaceStyle` from `colorScheme`.
 
@@ -494,9 +520,14 @@ tests.
    autocomplete, no postal→state lookup.
 5. Collection mode (simple/full) is decided by SDK configuration; the backend only decides
    whether each of the two addresses is collected.
-6. Height: iOS 16+ adaptive, iOS 15 downgraded to `.medium/.large` (free-control, default
-   adaptive, downgrade on old OS).
+6. Height: custom presentation with an explicit height on all iOS versions (15+); no system
+   detents (see §6.1).
 7. `Appearance` breaking refactor (flat `String?` → Stripe-style nested `UIColor`/`CGFloat`,
    under `#if canImport(UIKit)`) — pre-release; docs updated.
 8. In-sheet result states (processing/success/failed/field-error) are new; previously all
    terminal states were returned to the host as `CheckoutOutcome` after dismissal.
+9. The design-export grab handle is intentionally NOT shown: the sheet has no drag gesture, which
+   matches Stripe.
+10. iPad / Mac / visionOS use the system form sheet, like Stripe, instead of the bottom sheet.
+11. No pull-down-to-dismiss on iPhone: dismissal is a backdrop tap or ✕ only, and `processing` /
+    `succeeded` block dismissal.
