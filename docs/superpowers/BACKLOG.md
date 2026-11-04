@@ -1,46 +1,44 @@
 # Backlog
 
-## Checkout UI — home-page polish (deferred by request)
-
-With no saved cards, the home page shows only the express (Apple Pay) button and a single
-"New card" entry, which can look sparse. This is intentionally left as-is for now: with
-`Appearance.sheetSizing.mode == .adaptive` the sheet shrinks to fit its content, so no large empty
-area is left hanging. Revisit before adding more payment methods:
-
-1. Make the "New card" entry a richer card: icon, "Credit or debit card" title, a subtitle, and
-   small supported-brand marks (VISA / MC / AMEX).
-2. Add an amount / merchant summary at the top of the home page (`session.merchantName` plus a large
-   `session.amount`). Home page only; sub-pages keep their own title (e.g. "New card").
-3. Replace the plain "Or pay using" divider with section titles such as "Express checkout" and
-   "Pay another way".
-
 ## Payment safety: no blind resubmit after pending/unknown
 
-Status: deferred by user decision. Behavior is intentionally unchanged for now.
+Status: FIXED on branch `fix/no-resubmit-after-unknown` (Core reconciliation-first confirm + UI lock).
 
-Risk: after a `.pending` / `.unknown` outcome the saved-card selection survives, the Pay button stays
-visible, and a second tap goes through the `present()` loop to `CheckoutController.confirmSavedCard`
-with a NEW `attemptId`, without querying the session result first. This conflicts with AGENTS.md hard
-rule 5 (on timeout / unknown, query by session/transaction first; never blindly resubmit). The behavior
-is pre-existing; the select-then-Pay flow makes it easier to trigger.
+The gap (now closed): after a `.pending` / `.unknown` outcome the Pay button re-enabled and a second tap
+minted a NEW `attemptId` and called `confirm*` again with no query-first across attempts, risking a
+duplicate charge if the first attempt had actually succeeded server-side (AGENTS.md hard rule 5).
 
-Code references:
+What changed:
 
-- `PaymentSheet.swift:206-228` — after `.pending`/`.unknown` the loop awaits the next confirm; `applyOutcome`
-  (`PaymentSheet.swift` ~:456-459) returns false, so the sheet stays open.
-- `CheckoutContentViewController.swift` ~:365-370 / ~:425 — `returnToEditing` -> `refreshConfirmButtonState`
-  keeps `selectedSavedCardId`, so Pay stays visible.
-- `PaymentSheet.swift:283-289` — the second tap emits `.confirmSavedCard` -> `controller.confirmSavedCard`.
-- `CheckoutController.swift:226-246` and `:285-290` — `beginAttempt()` generates a new UUID `attemptId` and
-  submits again. The only "query first" is inside a single attempt after a submit throw
-  (`CheckoutController.swift:309-314`), not across attempts.
-- `PaymentSheet.swift:261` re-runs `controller.start` on every loop pass, and `terminalCleanupIfTerminal`
-  clears credentials on `.unknown` (`CheckoutController.swift:375-381`).
+- Core (the safety boundary): `CheckoutController` records the session whose last confirm ended
+  `.pending` / `.unknown`. The next `confirmNewCard` / `confirmSavedCard` / `confirmWallet` for that session
+  makes ONE bounded `getResult` instead of minting an `attemptId` and submitting: terminal `S` ->
+  `.succeeded`, terminal `F` -> `.failed` (marker cleared, so the user's next tap is a clean fresh attempt),
+  still non-terminal or the query throws -> `.unknown` (marker stays). It never submits in those cases.
+- UI (belt and suspenders): `pending` / `unknown` enter a locked `.reconciling` content state (Pay hidden,
+  inputs and navigation locked, "Confirming your payment. Please don't try again." notice, only the header
+  X stays available). `.failed` still returns to an interactive state.
+- `present()` now returns the last `.pending` / `.unknown` outcome (not `.canceled`) when the user closes
+  the sheet, so the host knows to call `retrievePayment()`.
 
-Proposed fix when scheduled: after `.pending`/`.unknown`, lock Pay and clear the saved-card selection (or
-force `retrievePayment()` first), and let the user retry only after a confirmed non-terminal result.
+Deferred follow-up:
+
+- Once the backend idempotency contract on `attemptId` is confirmed (docs/product-spec.md P0 item), consider
+  reusing the SAME attemptId across the reconciliation-triggered retry (today a fresh attemptId is minted only
+  after a confirmed `.failed`, which is correct; revisit if the backend wants attemptId-level retry linkage
+  instead of relying purely on server-side getResult reconciliation).
+- Session-level `F` assumption: the reconciliation gate disarms on any session-level terminal `F` because
+  `PaymentSnapshot` has no attemptId (assumption: a new attempt moves the session off a previous `F`;
+  documented in docs/product-spec.md §8 item 3). Possible mitigation once the backend contract is known:
+  compare `snapshot.txnId` to the last attempt's txnId before disarming.
+- Reconciling sheet has no in-sheet "check again" action: the user can only wait or close. Consider a
+  low-frequency background re-check or a "Check again" button that drives the Core reconciliation.
 
 ## Custom bottom sheet — optional follow-ups
 
 - Optional: drag-to-dismiss gesture on the sheet header (Stripe has none).
 - Optional: XCUITest in the Demo covering present → tap backdrop → dismissed.
+
+## Apple Pay gate — UX follow-up
+
+- ApplePayButton currently lets the user authenticate in the Apple Pay sheet before the reconciliation gate refuses/reconciles an unresolved session (UX follow-up: check the gate before presenting the wallet sheet).

@@ -27,8 +27,10 @@
     /// `delegate.didChangeProcessing(true)` + `didChangeState(.processing)`, then emits
     /// `delegate.content(didRequest:)`. The container drives the controller and feeds the result back
     /// via `applyOutcome(_:)`, which runs the machine and reacts: `.autoClose` animates success then
-    /// `didFinishWith`; `.showError` shows the inline error and re-enables; `.showInfoNotice` shows a
-    /// neutral notice and returns to editing. The processing phase is held for at least
+    /// `didFinishWith`; `.showError` shows the inline error and re-enables; `.showInfoNotice`
+    /// (`pending` / `unknown`) enters the locked `.reconciling` state: Pay hidden, inputs locked, a
+    /// "confirming your payment, please don't try again" notice, only ✕ available (never back to an
+    /// interactive state, so a second tap cannot resubmit; Core also refuses — defense in depth). The processing phase is held for at least
     /// `ConfirmButton.minimumFlightTime` before the terminal UI is applied, to avoid a flicker.
     ///
     /// iOS-only: gated by `#if canImport(UIKit)`; does not compile under the macOS host (`swift test`).
@@ -198,46 +200,68 @@
         /// The current internal view state (test / introspection readout).
         var currentViewState: CheckoutViewState { stateMachine.state }
 
-        // MARK: Layout readouts (internal, tests only)
+        /// Swaps the reconciling notice copy to the "still confirming" message, without leaving the
+        /// locked `.reconciling` state.
+        ///
+        /// Called by the coordinator when an auto-reconcile attempt (F1) comes back still `.unknown`:
+        /// the sheet stays exactly as locked as before (Pay hidden, inputs disabled, only ✕ available),
+        /// only the notice text changes to tell the user it is safe to close and that we will not charge
+        /// them twice. A no-op outside `.reconciling` (defensive; the coordinator only calls this while
+        /// reconciling).
+        func showStillReconcilingNotice() {
+            guard case .reconciling = stateMachine.state else { return }
+            notice.show(message: localize("sunbay.notice.stillReconciling"), severity: .info)
+            reportContentHeightIfChanged()
+        }
 
-        /// Test readout: the fixed header container view.
-        var headerContainerForTest: UIView { headerContainer }
-        /// Test readout: the scrollable middle area.
-        var scrollViewForTest: UIScrollView { scrollView }
-        /// Test readout: the fixed bottom bar.
-        var bottomBarForTest: UIView { bottomBar }
-        /// Test readout: the home-page "New card" entry row.
-        var newCardEntryRowForTest: UIView? { newCardEntryRow }
-        /// Test readout: the express checkout view, when present.
-        var expressViewForTest: UIView? { expressView }
-        /// Test readout: the saved-card list view, when present.
-        var savedCardListViewForTest: UIView? { savedCardList }
+        #if DEBUG
+            // MARK: Layout readouts (internal, tests only)
 
-        /// Test readout: whether the card form is currently interactive (re-enabled after a failure).
-        var isCardFormInteractiveForTest: Bool { cardForm.isUserInteractionEnabled }
+            /// Test readout: the fixed header container view.
+            var headerContainerForTest: UIView { headerContainer }
+            /// Test readout: the scrollable middle area.
+            var scrollViewForTest: UIScrollView { scrollView }
+            /// Test readout: the fixed bottom bar.
+            var bottomBarForTest: UIView { bottomBar }
+            /// Test readout: the home-page "New card" entry row.
+            var newCardEntryRowForTest: UIView? { newCardEntryRow }
+            /// Test readout: the express checkout view, when present.
+            var expressViewForTest: UIView? { expressView }
+            /// Test readout: the saved-card list view, when present.
+            var savedCardListViewForTest: UIView? { savedCardList }
 
-        /// Test readout: whether the primary CTA is interactive (enabled) right now. After a `.failed`
-        /// outcome with a complete form this must be `true` so the user can retry (spec §3.1/§3.2) —
-        /// the button is `isEnabled` only in its `.enabled` status, so this reflects the fix that moves
-        /// the CTA off `.processing` on the `.failed`→editing transition.
-        var isConfirmButtonEnabledForTest: Bool { confirmButton.isEnabled }
+            /// Test readout: whether the card form is currently interactive (re-enabled after a failure).
+            var isCardFormInteractiveForTest: Bool { cardForm.isUserInteractionEnabled }
+
+            /// Test readout: whether the primary CTA is interactive (enabled) right now. After a `.failed`
+            /// outcome with a complete form this must be `true` so the user can retry (spec §3.1/§3.2) —
+            /// the button is `isEnabled` only in its `.enabled` status, so this reflects the fix that moves
+            /// the CTA off `.processing` on the `.failed`→editing transition.
+            var isConfirmButtonEnabledForTest: Bool { confirmButton.isEnabled }
+        #endif
 
         /// Applies a confirm outcome: runs the state machine and drives the UI per spec §3.2.
         ///
         /// The processing phase is held for at least `ConfirmButton.minimumFlightTime` from the confirm
         /// tap before the terminal UI is applied, so a fast backend does not cause a spinner flicker.
         ///
-        /// - Parameter outcome: The terminal / intermediate outcome from the confirm dispatch.
-        func applyOutcome(_ outcome: CheckoutOutcome) {
+        /// - Parameters:
+        ///   - outcome: The terminal / intermediate outcome from the confirm dispatch.
+        ///   - completion: Called on the main thread right after the outcome's UI has been applied
+        ///     (possibly deferred by the minimum processing time). Lets the caller sequence work (e.g.
+        ///     starting an auto-reconcile) strictly after the sheet has locked.
+        func applyOutcome(_ outcome: CheckoutOutcome, completion: (() -> Void)? = nil) {
             let elapsed = processingStartedAt.map { Date().timeIntervalSince($0) } ?? 0
             let remaining = max(0, ConfirmButton.minimumFlightTime - elapsed)
 
             guard remaining > 0 else {
                 performApply(outcome)
+                completion?()
                 return
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + remaining) { [weak self] in
                 self?.performApply(outcome)
+                completion?()
             }
         }
 
@@ -262,8 +286,8 @@
                 reportContentHeightIfChanged()
 
             case .showInfoNotice:
-                notice.show(message: localize("sunbay.notice.pending"), severity: .info)
-                returnToEditing()
+                notice.show(message: localize("sunbay.notice.reconciling"), severity: .info)
+                enterReconciling()
                 reportContentHeightIfChanged()
 
             case .stay:
@@ -272,113 +296,118 @@
             }
         }
 
-        // MARK: - Test seams
+        #if DEBUG
+            // MARK: - Test seams
 
-        /// Fills the card form with a valid test card (bypasses keystrokes).
-        func fillCardForTest() {
-            cardForm.setFieldsForTest(pan: "4242424242424242", expiry: "08/28", cvv: "123")
-            refreshConfirmButtonState()
-        }
-
-        /// Simulates a confirm tap on the primary CTA (routes by page / selection).
-        func simulateTapPay() {
-            handlePayTapped()
-        }
-
-        /// Test seam: select a saved card as if the user tapped its row (does NOT submit).
-        func selectSavedCardForTest(_ paymentMethodId: String) {
-            selectedSavedCardId = paymentMethodId
-            refreshConfirmButtonState()
-        }
-
-        /// Test seam: taps a saved-card row through the REAL `SavedCardListView` wiring
-        /// (row tap → list selection → `onSelect`), unlike `selectSavedCardForTest`.
-        func tapSavedCardRowForTest(_ paymentMethodId: String) {
-            savedCardList?.tapRowForTest(paymentMethodId)
-        }
-
-        /// Test seam: taps the "New card" entry row's action.
-        func tapNewCardEntryForTest() {
-            handleNewCardEntryTap()
-        }
-
-        /// Test seam: taps the header back button's action.
-        func tapBackForTest() {
-            header.onBack?()
-        }
-
-        /// Test seam: delivers a touch to the Pay button (only if it is an enabled, tappable control).
-        func sendTouchOnPayButtonForTest() {
-            confirmButton.simulateTouchUpInsideForTest()
-        }
-
-        /// Test seam: simulates the Apple Pay row tap.
-        func tapExpressForTest() {
-            handleApplePayTapped()
-        }
-
-        /// Test readout: the saved list's visually highlighted payment method id.
-        var highlightedSavedCardIdForTest: String? { savedCardList?.selectedPaymentMethodId }
-
-        /// Test readout: whether the Pay button is dimmed (appears disabled) yet still tappable.
-        var isConfirmButtonAppearsDisabledForTest: Bool { confirmButton.appearsDisabled }
-
-        /// Test readout: the Pay button's accessibility traits.
-        var confirmButtonTraitsForTest: UIAccessibilityTraits { confirmButton.accessibilityTraitsForTest }
-
-        /// Test readout: whether the card form currently shows a field error.
-        var isCardFieldErrorShownForTest: Bool { cardForm.hasFieldErrorForTest }
-
-        /// Test readout: whether the inline notice (error / info) is currently shown.
-        var isNoticeVisibleForTest: Bool { !notice.isHidden }
-
-        /// Test readout: whether the home page (express, list, "New card" entry) accepts touches.
-        var isHomeInteractiveForTest: Bool { homeStack.isUserInteractionEnabled }
-
-        /// Test readout: whether the header back button is interactive.
-        var isBackInteractiveForTest: Bool { header.isBackEnabledForTest }
-
-        /// Test readout: whether the header ✕ is interactive.
-        var isCloseInteractiveForTest: Bool { header.isCloseEnabledForTest }
-
-        /// Test readout: whether the header ✕ exposes the `.notEnabled` accessibility trait.
-        var closeHasNotEnabledTraitForTest: Bool { header.closeHasNotEnabledTraitForTest }
-
-        /// Test seam: invokes the header's close action directly (as a programmatic / accessibility
-        /// activation would), bypassing the button's enabled state.
-        func invokeHeaderCloseForTest() { header.onClose?() }
-
-        /// Test readout: the visible home-page order, as `"express"`, `"savedCards"`, `"newCardEntry"`.
-        var homeOrderForTest: [String] {
-            homeStack.arrangedSubviews.compactMap { view in
-                if view === expressView { return "express" }
-                if view === savedCardList { return "savedCards" }
-                if view === newCardEntryRow { return "newCardEntry" }
-                return nil
+            /// Fills the card form with a valid test card (bypasses keystrokes).
+            func fillCardForTest() {
+                cardForm.setFieldsForTest(pan: "4242424242424242", expiry: "08/28", cvv: "123")
+                refreshConfirmButtonState()
             }
-        }
 
-        /// Test seam: open the independent new-card subpage (as if the user tapped the "New card"
-        /// entry on the home page).
-        func openNewCardForTest() {
-            showNewCardSubpage(animated: false)
-        }
+            /// Simulates a confirm tap on the primary CTA (routes by page / selection).
+            func simulateTapPay() {
+                handlePayTapped()
+            }
 
-        /// Test readout: whether the primary CTA is currently visible (shown only when submittable).
-        var isConfirmButtonVisibleForTest: Bool { !confirmButton.isHidden }
+            /// Test seam: select a saved card as if the user tapped its row (does NOT submit).
+            func selectSavedCardForTest(_ paymentMethodId: String) {
+                selectedSavedCardId = paymentMethodId
+                refreshConfirmButtonState()
+            }
 
-        /// Test readout: whether the HOME page (express + saved cards + "New card" entry) is visible.
-        var isHomeVisibleForTest: Bool { !homeStack.isHidden }
+            /// Test seam: taps a saved-card row through the REAL `SavedCardListView` wiring
+            /// (row tap → list selection → `onSelect`), unlike `selectSavedCardForTest`.
+            func tapSavedCardRowForTest(_ paymentMethodId: String) {
+                savedCardList?.tapRowForTest(paymentMethodId)
+            }
 
-        /// Test readout: whether the independent new-card subpage (card form) is visible.
-        var isNewCardSubpageVisibleForTest: Bool { !newCardStack.isHidden }
+            /// Test seam: taps the "New card" entry row's action.
+            func tapNewCardEntryForTest() {
+                handleNewCardEntryTap()
+            }
 
-        /// Test readout: whether the express (wallet) row exists AND is currently visible. It lives in
-        /// the home page, so it is visible only while the home page is shown.
-        var isExpressVisibleForTest: Bool {
-            guard let express = expressView else { return false }
-            return !express.isHidden && !homeStack.isHidden
-        }
+            /// Test seam: taps the header back button's action.
+            func tapBackForTest() {
+                header.onBack?()
+            }
+
+            /// Test seam: delivers a touch to the Pay button (only if it is an enabled, tappable control).
+            func sendTouchOnPayButtonForTest() {
+                confirmButton.simulateTouchUpInsideForTest()
+            }
+
+            /// Test seam: simulates the Apple Pay row tap.
+            func tapExpressForTest() {
+                handleApplePayTapped()
+            }
+
+            /// Test readout: the saved list's visually highlighted payment method id.
+            var highlightedSavedCardIdForTest: String? { savedCardList?.selectedPaymentMethodId }
+
+            /// Test readout: whether the Pay button is dimmed (appears disabled) yet still tappable.
+            var isConfirmButtonAppearsDisabledForTest: Bool { confirmButton.appearsDisabled }
+
+            /// Test readout: the Pay button's accessibility traits.
+            var confirmButtonTraitsForTest: UIAccessibilityTraits { confirmButton.accessibilityTraitsForTest }
+
+            /// Test readout: whether the card form currently shows a field error.
+            var isCardFieldErrorShownForTest: Bool { cardForm.hasFieldErrorForTest }
+
+            /// Test readout: whether the inline notice (error / info) is currently shown.
+            var isNoticeVisibleForTest: Bool { !notice.isHidden }
+
+            /// Test readout: the inline notice's current message text (nil when hidden).
+            var noticeMessageForTest: String? { notice.isHidden ? nil : notice.messageForTest }
+
+            /// Test readout: whether the home page (express, list, "New card" entry) accepts touches.
+            var isHomeInteractiveForTest: Bool { homeStack.isUserInteractionEnabled }
+
+            /// Test readout: whether the header back button is interactive.
+            var isBackInteractiveForTest: Bool { header.isBackEnabledForTest }
+
+            /// Test readout: whether the header ✕ is interactive.
+            var isCloseInteractiveForTest: Bool { header.isCloseEnabledForTest }
+
+            /// Test readout: whether the header ✕ exposes the `.notEnabled` accessibility trait.
+            var closeHasNotEnabledTraitForTest: Bool { header.closeHasNotEnabledTraitForTest }
+
+            /// Test seam: invokes the header's close action directly (as a programmatic / accessibility
+            /// activation would), bypassing the button's enabled state.
+            func invokeHeaderCloseForTest() { header.onClose?() }
+
+            /// Test readout: the visible home-page order, as `"express"`, `"savedCards"`, `"newCardEntry"`.
+            var homeOrderForTest: [String] {
+                homeStack.arrangedSubviews.compactMap { view in
+                    if view === expressView { return "express" }
+                    if view === savedCardList { return "savedCards" }
+                    if view === newCardEntryRow { return "newCardEntry" }
+                    return nil
+                }
+            }
+
+            /// Test seam: open the independent new-card subpage (as if the user tapped the "New card"
+            /// entry on the home page).
+            func openNewCardForTest() {
+                showNewCardSubpage(animated: false)
+            }
+
+            /// Test readout: whether the primary CTA is currently visible (shown only when submittable).
+            var isConfirmButtonVisibleForTest: Bool { !confirmButton.isHidden }
+
+            /// Test readout: whether the HOME page (express + saved cards + "New card" entry) is visible.
+            var isHomeVisibleForTest: Bool { !homeStack.isHidden }
+
+            /// Test readout: whether the independent new-card subpage (card form) is visible.
+            var isNewCardSubpageVisibleForTest: Bool { !newCardStack.isHidden }
+
+            /// Test readout: whether the express (wallet) row exists AND is currently visible. It lives in
+            /// the home page, so it is visible only while the home page is shown.
+            var isExpressVisibleForTest: Bool {
+                guard let express = expressView else { return false }
+                return !express.isHidden && !homeStack.isHidden
+            }
+        #endif
 
         // MARK: - Confirm handling
 
@@ -389,27 +418,33 @@
                 return
             }
             let save = saveCardSwitch?.isOn ?? false
-            beginProcessing()
+            guard beginProcessing() else { return }
             delegate?.content(self, didRequest: .confirmNewCard(input, save: save))
         }
 
         /// Pay with a selected saved card (COF; the user selected the card, then tapped Pay).
         private func handleConfirmSavedCard(paymentMethodId: String) {
-            beginProcessing()
+            guard beginProcessing() else { return }
             delegate?.content(self, didRequest: .confirmSavedCard(paymentMethodId: paymentMethodId))
         }
 
         /// Confirm a wallet payment once a token has been obtained.
         private func handleConfirmWallet(token: Data) {
-            beginProcessing()
+            guard beginProcessing() else { return }
             delegate?.content(self, didRequest: .confirmWallet(token: token))
         }
 
         /// Moves to the processing phase: machine, CTA spinner, disabled inputs, delegate notices.
-        private func beginProcessing() {
+        ///
+        /// - Returns: `false` (and changes nothing) when a confirm must not start: one is already in
+        ///   flight, or an earlier attempt is unsettled (`.reconciling`). Callers must NOT emit a
+        ///   `didRequest` in that case.
+        @discardableResult
+        private func beginProcessing() -> Bool {
             // Re-entrancy guard: a confirm already in flight must not be fired again, independent of the
             // UI enabled-state (a double-tap or a programmatic re-trigger).
-            guard stateMachine.state != .processing else { return }
+            // Also refuse while reconciling: an unsettled earlier attempt must not be re-submitted.
+            guard !stateMachine.state.isLockedAgainstNewConfirm else { return false }
             notice.hide()
             cardForm.showFieldError(.number, message: nil)
             processingStartedAt = Date()
@@ -423,6 +458,7 @@
             emitStateChange()
             // The notice was hidden and the Pay button may have just appeared (wallet-only home).
             reportContentHeightIfChanged()
+            return true
         }
 
         /// Returns to the editable state after a non-success outcome, re-enabling inputs.
@@ -435,6 +471,21 @@
             processingStartedAt = nil
             setInputsEnabled(true)
             refreshConfirmButtonState()
+            delegate?.content(self, didChangeProcessing: false)
+        }
+
+        /// Enters the locked `.reconciling` presentation after `pending` / `unknown`.
+        ///
+        /// Unlike `returnToEditing`, nothing becomes interactive again: Pay is hidden and every input
+        /// stays disabled (a second tap could duplicate the charge if the first attempt actually
+        /// succeeded). Only the header ✕ is re-enabled so the user can leave; the sheet then returns the
+        /// `.pending` / `.unknown` outcome and the host reconciles via `retrievePayment()`.
+        private func enterReconciling() {
+            processingStartedAt = nil
+            setInputsEnabled(false)
+            header.setCloseEnabled(true)
+            confirmButton.update(status: .disabled, animated: false)
+            confirmButton.isHidden = true
             delegate?.content(self, didChangeProcessing: false)
         }
 
@@ -479,10 +530,11 @@
         ///
         /// Safe to call while the machine is `.editing` **or** `.failed` — both are editable states
         /// where the user may (re)submit. It must not clobber the CTA while a confirm is in flight
-        /// (`.processing`) or during the success animation (`.succeeded`), so those are guarded out.
+        /// (`.processing`), during the success animation (`.succeeded`), or while reconciling an unsettled
+        /// outcome (`.reconciling`: Pay must stay hidden), so those are guarded out.
         private func refreshConfirmButtonState() {
             switch stateMachine.state {
-            case .processing, .succeeded:
+            case .processing, .succeeded, .reconciling:
                 return
             case .editing, .failed:
                 break
@@ -843,7 +895,7 @@
         /// Shows the home page (express + saved-card list + "New card" entry); hides the new-card
         /// subpage. No back button (home is the root). The title returns to the pay title.
         private func showHome(animated: Bool = true) {
-            guard stateMachine.state != .processing else { return }
+            guard !stateMachine.state.isLockedAgainstNewConfirm else { return }
             isShowingNewCard = false
             homeStack.isHidden = false
             newCardStack.isHidden = true
@@ -857,7 +909,7 @@
         /// Shows the independent new-card subpage (card form + address + Pay; no express). A back
         /// button returns to the home page. Entering clears any saved-card selection.
         private func showNewCardSubpage(animated: Bool = true) {
-            guard stateMachine.state != .processing else { return }
+            guard !stateMachine.state.isLockedAgainstNewConfirm else { return }
             isShowingNewCard = true
             homeStack.isHidden = true
             newCardStack.isHidden = false

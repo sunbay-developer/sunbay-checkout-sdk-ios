@@ -60,11 +60,14 @@ The tree also now includes:
 - `Sources/SunbayCheckout/UI/{Theme, Content, Content/Components, Container}/` — the redesigned UI layer:
   `Theme/` (ResolvedAppearance / ColorHex / AppearanceDefaults), the host-agnostic `Content/` layer
   (`CheckoutContentViewController` + the `Content/Components/` views) and the `Container/` layer
-  (`PaymentSheetContainerViewController`, L1 bottom sheet). Dependency is one-way
+  (`PaymentSheetContainerViewController`, L1 bottom sheet, plus the custom bottom-sheet presentation
+  stack `BottomSheet{Geometry,Layout,PresentationAnimator,PresentationController,PresentationStyle,TransitioningDelegate}.swift`
+  and the pure sizing helper `SheetSizingMath.swift`). Dependency is one-way
   `Container → Content → Theme`; this split is what makes L2 embedded a zero-rework addition.
   See `docs/superpowers/specs/2026-11-03-checkout-sdk-ui-redesign-design.md`.
 - `Sources/SunbayCheckout/Core/AddressMetadata/` — the `AddressMetadataService` protocol + models +
-  TTL/dedup cache + HTTP adapter (no UIKit; full-mode address, protocol + UI + cache only this phase,
+  TTL/dedup cache (`AddressMetadataCache`) + HTTP adapter (`HTTPAddressMetadataService`) + the fail-soft
+  `EmptyAddressMetadataService` default (no UIKit; full-mode address, protocol + UI + cache only this phase,
   not wired to real data).
 - `Sources/SunbayCheckout/Core/Localization/` + `Sources/SunbayCheckout/Resources/Localizations/{en,zh-Hans}.lproj/` —
   the i18n subsystem and its string resources (v1 ships en-US + zh-CN). See `docs/product-spec.md` §9.

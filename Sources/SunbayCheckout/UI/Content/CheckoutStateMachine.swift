@@ -13,7 +13,8 @@ struct CheckoutStateMachine {
         case autoClose(CheckoutOutcome)
         /// Show an inline error block with this localized reason; stay open for retry.
         case showError(String)
-        /// Show a neutral info notice (`pending` / `unknown`) and return to editing; no auto-close.
+        /// Show a neutral "confirming your payment" notice (`pending` / `unknown`) and stay LOCKED in
+        /// `.reconciling` (no Pay, no inputs); no auto-close.
         case showInfoNotice
         /// No visible change (e.g. `canceled`); let the caller handle dismissal.
         case stay
@@ -52,7 +53,8 @@ struct CheckoutStateMachine {
             return .showError(reason)
 
         case .pending, .unknown:
-            state = .editing
+            // Not settled: lock (never return to an interactive state), a resubmit could double-charge.
+            state = .reconciling
             return .showInfoNotice
 
         case .canceled:
@@ -67,6 +69,8 @@ struct CheckoutStateMachine {
         case .processing: return .processing
         case .succeeded: return .succeeded
         case .failed: return .failed
+        // No new public case (additive-only API): hosts keep seeing `.editing` for pending/unknown.
+        case .reconciling: return .editing
         }
     }
 }

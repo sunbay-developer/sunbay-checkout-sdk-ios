@@ -21,6 +21,14 @@ import Foundation
 ///   it does not conflict with this entry **class** of the same name (different file name,
 ///   different symbol).
 ///
+/// ## Unresolved-payment marker (shared per instance)
+/// This instance keeps ONE in-memory record of the sessions whose payment outcome is unresolved, shared
+/// by every payment component it creates. After a `.pending` / `.unknown` outcome, any later
+/// `PaymentSheet` / `ApplePayButton` built from the SAME `SunbayCheckout` for the same session queries
+/// the server for the result before it will submit again. Different `SunbayCheckout` instances do NOT share this state, so keep one instance per
+/// app / session. The marker is never persisted: after a process restart recovery is the host's
+/// `retrievePayment` (spec §4.3).
+///
 /// The factory that constructs a `CheckoutController` (`makeController`) is an **internal**
 /// seam, used by the in-module UI shell to assemble the controller by `sessionId` and inject
 /// services; it is not exposed externally.
@@ -40,6 +48,9 @@ public final class SunbayCheckout {
     /// shell (`PaymentSheet`) reads this to build the content VC's `addressService`. internal: not
     /// exposed externally. UI-agnostic (Core type; never imports UIKit).
     let addressMetadataService: any AddressMetadataService
+
+    /// The sessions with an unresolved outcome, shared by every controller this instance creates. internal.
+    let pendingReconciliationStore = PendingReconciliationStore()
 
     /// Creates the entry point from a configuration (plain init, source compatible).
     ///
@@ -135,7 +146,8 @@ public final class SunbayCheckout {
             paymentService: paymentService,
             cofService: cofService,
             credentials: credentials,
-            actionHandler: actionHandler
+            actionHandler: actionHandler,
+            pendingStore: pendingReconciliationStore
         )
     }
 }

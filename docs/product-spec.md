@@ -620,6 +620,12 @@ AddressInfo { country, state?, city, line1, line2?, postalCode, district?,
 1. [P0] RSA 加密 **padding / 算法**与后端解密一致(§7.2)——**写 CardEncryptor 前必须确认**。
 2. [P0] Apple Pay merchant ID 两种模式的证书/网关对应。
 3. [P0] Native session 鉴权、attemptId/幂等契约、结果查询/服务端通知。
+   - Backend-contract TBD (reconciliation gate): `PaymentSnapshot` is SESSION-level and carries no
+     attemptId. The Core reconciliation gate (`CheckoutController.resolveReconciled`) therefore trusts a
+     terminal `F` as the verdict of the LATEST attempt. ASSUMPTION to confirm with the backend: "a new
+     attempt moves the session off a previous `F`, and `getResult` reflects the latest attempt". If the
+     backend can keep returning an older attempt's `F`, the SDK could release the gate (and allow a
+     resubmit) while a newer attempt is still live.
 4. [P0] COF 历史卡交易风控覆盖 + paymentMethodId 交易级校验(零验证前提)。
 5. [P0] 目标 SAQ 档位向收单行/QSA 确认。
 6. [P1] 钱包 token 提交字段格式(复用 cardEncryptedData 还是单列)。

@@ -529,9 +529,10 @@
             }
         }
 
-        /// After `.pending` / `.unknown` the sheet unlocks (inputs + home navigation interactive) and
-        /// shows the neutral info notice.
-        func test_pendingAndUnknown_unlockInputs_andShowInfoNotice() {
+        /// After `.pending` / `.unknown` the sheet enters the LOCKED reconciling state (unlike `.failed`):
+        /// Pay stays hidden, inputs and navigation stay non-interactive, and the info notice is shown, so
+        /// a second tap cannot resubmit while the earlier attempt is unsettled. Only ✕ stays available.
+        func test_pendingAndUnknown_stayLocked_payHidden_andShowInfoNotice() {
             let outcomes: [CheckoutOutcome] = [.pending(txnId: "t"), .unknown(sessionId: "sess_1")]
             for outcome in outcomes {
                 let vc = makeVC(savedCards: sampleSavedCards())
@@ -544,16 +545,97 @@
                 XCTAssertFalse(vc.isNoticeVisibleForTest)
 
                 vc.applyOutcome(outcome)
-                let deadline = Date().addingTimeInterval(3.0)
-                while !vc.isHomeInteractiveForTest, Date() < deadline {
-                    RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02))
-                }
+                waitUntil { vc.currentViewState == .reconciling }
 
-                XCTAssertTrue(vc.isHomeInteractiveForTest, "Home navigation must unlock after \(outcome).")
-                XCTAssertTrue(vc.isBackInteractiveForTest, "Back must unlock after \(outcome).")
+                XCTAssertEqual(vc.currentViewState, .reconciling, "(\(outcome))")
                 XCTAssertTrue(vc.isNoticeVisibleForTest, "Info notice must be shown after \(outcome).")
+                XCTAssertFalse(vc.isConfirmButtonVisibleForTest, "Pay must stay hidden after \(outcome).")
+                XCTAssertFalse(vc.isHomeInteractiveForTest, "Home must stay locked after \(outcome).")
+                XCTAssertFalse(vc.isBackInteractiveForTest, "Back must stay locked after \(outcome).")
                 XCTAssertNil(delegate.finishedOutcome, "Pending/unknown must not close the sheet.")
             }
+        }
+
+        /// New-card subpage: after `.unknown` the card form is non-interactive and Pay is hidden (the
+        /// subpage normally always shows Pay), and a programmatic Pay tap / re-trigger emits NOTHING.
+        func test_unknown_onNewCardSubpage_lockedAndNoSecondRequest() {
+            let vc = makeVC(savedCards: [])
+            vc.loadViewIfNeeded()
+            vc.openNewCardForTest()
+            vc.fillCardForTest()
+            let delegate = MockContentDelegate()
+            vc.delegate = delegate
+
+            vc.simulateTapPay()
+            guard case .confirmNewCard = delegate.lastRequestedAction else {
+                return XCTFail("precondition: first tap should request a confirm")
+            }
+            delegate.lastRequestedAction = nil
+            vc.applyOutcome(.unknown(sessionId: "sess_1"))
+            waitUntil { vc.currentViewState == .reconciling }
+
+            XCTAssertFalse(vc.isCardFormInteractiveForTest, "Card form must stay locked after unknown.")
+            XCTAssertFalse(vc.isConfirmButtonVisibleForTest, "Pay must be hidden after unknown.")
+
+            vc.simulateTapPay()
+            vc.sendTouchOnPayButtonForTest()
+            XCTAssertNil(delegate.lastRequestedAction, "No second confirm may be emitted while reconciling.")
+        }
+
+        /// Saved-card selection survives `.unknown`, but a programmatic Pay tap still emits nothing, and
+        /// page navigation (New card / back) is ignored while reconciling.
+        func test_unknown_savedCardPayTapAndNavigationAreIgnored() {
+            let vc = makeVC(savedCards: sampleSavedCards())
+            vc.loadViewIfNeeded()
+            let delegate = MockContentDelegate()
+            vc.delegate = delegate
+            vc.tapSavedCardRowForTest("pm_1")
+            vc.simulateTapPay()
+            delegate.lastRequestedAction = nil
+            vc.applyOutcome(.unknown(sessionId: "sess_1"))
+            waitUntil { vc.currentViewState == .reconciling }
+
+            vc.simulateTapPay()
+            XCTAssertNil(delegate.lastRequestedAction, "Re-tapping Pay after unknown must not request a confirm.")
+            vc.tapNewCardEntryForTest()
+            XCTAssertTrue(vc.isHomeVisibleForTest, "Navigation must be ignored while reconciling.")
+            XCTAssertTrue(vc.isNoticeVisibleForTest, "The reconciling notice must not be cleared by navigation.")
+            XCTAssertFalse(vc.isConfirmButtonVisibleForTest)
+        }
+
+        /// `.failed` keeps today's behavior: inputs interactive again and Pay usable (only pending/unknown lock).
+        func test_failed_stillUnlocksInputs_unlikeUnknown() {
+            let vc = makeVC(savedCards: sampleSavedCards())
+            vc.loadViewIfNeeded()
+            let delegate = MockContentDelegate()
+            vc.delegate = delegate
+            vc.tapSavedCardRowForTest("pm_1")
+            vc.simulateTapPay()
+            vc.applyOutcome(.failed(txnId: nil, error: CheckoutErrors.paymentFailed()))
+            waitUntil { vc.isHomeInteractiveForTest }
+
+            XCTAssertTrue(vc.isHomeInteractiveForTest)
+            XCTAssertTrue(vc.isConfirmButtonVisibleForTest)
+            XCTAssertTrue(vc.isConfirmButtonEnabledForTest)
+        }
+
+        /// A reconciling sheet still accepts a NEW outcome: e.g. a reconciled success auto-closes.
+        func test_reconciling_thenSucceeded_autoCloses() {
+            let vc = makeVC(savedCards: sampleSavedCards())
+            vc.loadViewIfNeeded()
+            let delegate = MockContentDelegate()
+            vc.delegate = delegate
+            vc.tapSavedCardRowForTest("pm_1")
+            vc.simulateTapPay()
+            vc.applyOutcome(.unknown(sessionId: "sess_1"))
+            waitUntil { vc.currentViewState == .reconciling }
+
+            vc.applyOutcome(.succeeded(txnId: "t_late"))
+            let deadline = Date().addingTimeInterval(5.0)
+            while delegate.finishedOutcome == nil, Date() < deadline {
+                RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02))
+            }
+            XCTAssertEqual(delegate.finishedOutcome, .succeeded(txnId: "t_late"))
         }
 
         // MARK: - Header ✕ close availability
@@ -630,6 +712,80 @@
                 XCTAssertFalse(vc.closeHasNotEnabledTraitForTest)
                 vc.invokeHeaderCloseForTest()
                 XCTAssertEqual(delegate.cancelCount, 1, "✕ must cancel after \(outcome).")
+            }
+        }
+
+        /// While `.reconciling` the ✕ is interactive (it is the only way out of the locked sheet), exposes
+        /// no `.notEnabled` trait, and cancels once.
+        func test_close_whileReconciling_isInteractive_andCancels() {
+            for outcome in [CheckoutOutcome.pending(txnId: "t"), .unknown(sessionId: "sess_1")] {
+                let vc = makeVC(savedCards: sampleSavedCards())
+                vc.loadViewIfNeeded()
+                let delegate = MockContentDelegate()
+                vc.delegate = delegate
+                vc.tapSavedCardRowForTest("pm_1")
+                vc.simulateTapPay()
+                vc.applyOutcome(outcome)
+                waitUntil { vc.currentViewState == .reconciling }
+
+                XCTAssertEqual(vc.currentViewState, .reconciling, "(\(outcome))")
+                XCTAssertTrue(vc.isCloseInteractiveForTest, "✕ must be interactive while reconciling (\(outcome)).")
+                XCTAssertFalse(vc.closeHasNotEnabledTraitForTest)
+                vc.invokeHeaderCloseForTest()
+                XCTAssertEqual(delegate.cancelCount, 1, "✕ must cancel while reconciling (\(outcome)).")
+            }
+        }
+
+        /// New-card page: `.pending` and `.unknown` both enter the locked reconciling state (Pay hidden,
+        /// card form locked, ✕ available, no second request).
+        func test_pendingAndUnknown_onNewCardPage_enterReconciling() {
+            for outcome in [CheckoutOutcome.pending(txnId: "t"), .unknown(sessionId: "sess_1")] {
+                let vc = makeVC(savedCards: [])
+                vc.loadViewIfNeeded()
+                vc.openNewCardForTest()
+                vc.fillCardForTest()
+                let delegate = MockContentDelegate()
+                vc.delegate = delegate
+                vc.simulateTapPay()
+                delegate.lastRequestedAction = nil
+
+                vc.applyOutcome(outcome)
+                waitUntil { vc.currentViewState == .reconciling }
+
+                XCTAssertEqual(vc.currentViewState, .reconciling, "(\(outcome))")
+                XCTAssertFalse(vc.isCardFormInteractiveForTest, "Card form must stay locked (\(outcome)).")
+                XCTAssertFalse(vc.isConfirmButtonVisibleForTest, "Pay must be hidden (\(outcome)).")
+                XCTAssertTrue(vc.isCloseInteractiveForTest, "✕ must stay available (\(outcome)).")
+                XCTAssertTrue(vc.isNoticeVisibleForTest)
+                vc.simulateTapPay()
+                XCTAssertNil(delegate.lastRequestedAction, "No second confirm while reconciling (\(outcome)).")
+            }
+        }
+
+        /// Wallet path: `.pending` and `.unknown` after an Apple Pay confirm enter the locked reconciling
+        /// state; a further Apple Pay tap (token still staged) emits nothing.
+        func test_pendingAndUnknown_afterWalletConfirm_enterReconciling() {
+            for outcome in [CheckoutOutcome.pending(txnId: "t"), .unknown(sessionId: "sess_1")] {
+                let vc = makeVC(savedCards: [], methods: [.card, .applePay])
+                vc.loadViewIfNeeded()
+                let delegate = MockContentDelegate()
+                vc.delegate = delegate
+                vc.stageWalletToken(Data([1, 2, 3]))
+                vc.tapExpressForTest()
+                guard case .confirmWallet = delegate.lastRequestedAction else {
+                    return XCTFail("precondition: Expected .confirmWallet, got \(String(describing: delegate.lastRequestedAction))")
+                }
+                delegate.lastRequestedAction = nil
+
+                vc.applyOutcome(outcome)
+                waitUntil { vc.currentViewState == .reconciling }
+
+                XCTAssertEqual(vc.currentViewState, .reconciling, "(\(outcome))")
+                XCTAssertFalse(vc.isConfirmButtonVisibleForTest, "Pay/spinner must be hidden (\(outcome)).")
+                XCTAssertFalse(vc.isHomeInteractiveForTest, "Home (incl. the Apple Pay row) must be locked (\(outcome)).")
+                XCTAssertTrue(vc.isCloseInteractiveForTest, "✕ must stay available (\(outcome)).")
+                vc.tapExpressForTest()
+                XCTAssertNil(delegate.lastRequestedAction, "No second wallet confirm while reconciling (\(outcome)).")
             }
         }
 

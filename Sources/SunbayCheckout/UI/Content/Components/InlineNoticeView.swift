@@ -108,14 +108,19 @@
             refreshDynamicLayerColors()
         }
 
-        /// Test seam: runs the same color re-resolution path as `traitCollectionDidChange(_:)` without
-        /// requiring a live trait environment.
-        ///
-        /// - Parameter trait: The trait collection to resolve against (callers typically pair this with
-        ///   `overrideUserInterfaceStyle` so `UIColor.resolvedColor(with:)` returns the matching value).
-        func traitCollectionDidChangeForTest(_ trait: UITraitCollection) {
-            refreshDynamicLayerColors(trait: trait)
-        }
+        #if DEBUG
+            /// Test readout: the notice's current message text.
+            var messageForTest: String? { messageLabel.text }
+
+            /// Test seam: runs the same color re-resolution path as `traitCollectionDidChange(_:)` without
+            /// requiring a live trait environment.
+            ///
+            /// - Parameter trait: The trait collection to resolve against (callers typically pair this with
+            ///   `overrideUserInterfaceStyle` so `UIColor.resolvedColor(with:)` returns the matching value).
+            func traitCollectionDidChangeForTest(_ trait: UITraitCollection) {
+                refreshDynamicLayerColors(trait: trait)
+            }
+        #endif
 
         /// Re-resolves and re-applies the border color (and width) from the dynamic border color against
         /// a trait collection, so the layer's `cgColor` snapshot tracks the active light/dark scheme.
