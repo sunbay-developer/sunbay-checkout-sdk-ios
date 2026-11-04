@@ -124,3 +124,31 @@ final class ResultPollerTests: XCTestCase {
         XCTAssertGreaterThan(payment.getResultCallCount, 1, "should keep polling after a throw")
     }
 }
+
+// MARK: - Cancellation (F1): the loop honors Task.isCancelled and returns promptly
+
+extension ResultPollerTests {
+    /// A real `Task.sleep`-backed poller must return promptly on cancellation instead of running the
+    /// full backoff ladder out to `overallLimit`. Uses the production default `sleep` (not the zero-wait
+    /// recorder) so this exercises the actual `Task.sleep` → `CancellationError` path.
+    func test_pollUntilTerminal_cancellation_returnsPromptly_withoutRunningOutTheLimit() async {
+        let payment = MockPaymentService()
+        payment.stubGetResult([snapshot(.initial)]) // always non-terminal
+        let poller = ResultPoller(
+            service: payment,
+            config: PollConfig(initial: 10, max: 10, overallLimit: 90) // long enough to prove cancellation, not the limit, ended it
+        )
+
+        let task = Task { await poller.pollUntilTerminal(sessionId: "sess_1") }
+        // Give the loop a moment to enter its first sleep, then cancel.
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        task.cancel()
+
+        let start = Date()
+        let result = await task.value
+        XCTAssertLessThan(
+            Date().timeIntervalSince(start), 2,
+            "cancellation must be honored promptly, not after the 10s backoff / 90s limit")
+        XCTAssertEqual(result.status, .initial, "cancelled while still non-terminal: latest snapshot returned")
+    }
+}

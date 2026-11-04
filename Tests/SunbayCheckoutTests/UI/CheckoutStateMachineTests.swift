@@ -24,19 +24,38 @@ final class CheckoutStateMachineTests: XCTestCase {
         XCTAssertEqual(r, .showError("Insufficient funds."))
     }
 
-    func test_pendingReturnsToEditingWithInfoNotice() {
+    func test_pendingEntersReconcilingWithInfoNotice() {
         var m = CheckoutStateMachine()
         m.beginProcessing()
         let r = m.apply(.pending(txnId: nil), localizedFailure: { _ in "" })
-        XCTAssertEqual(m.state, .editing)
+        XCTAssertEqual(m.state, .reconciling)
         XCTAssertEqual(r, .showInfoNotice)
     }
 
-    func test_unknownReturnsToEditingWithInfoNotice() {
+    func test_unknownEntersReconcilingWithInfoNotice() {
         var m = CheckoutStateMachine()
         m.beginProcessing()
         let r = m.apply(.unknown(sessionId: "s1"), localizedFailure: { _ in "" })
-        XCTAssertEqual(m.state, .editing)
+        XCTAssertEqual(m.state, .reconciling)
         XCTAssertEqual(r, .showInfoNotice)
+    }
+
+    /// The public coarse-grained state is unchanged for hosts: `.reconciling` still reports `.editing`
+    /// (no new public enum case; public API stays additive-only).
+    func test_reconcilingMapsToEditingPublicState() {
+        var m = CheckoutStateMachine()
+        m.beginProcessing()
+        _ = m.apply(.unknown(sessionId: "s1"), localizedFailure: { _ in "" })
+        XCTAssertEqual(m.presentationState, .editing)
+    }
+
+    /// A reconciling session can still receive a NEW outcome (e.g. a reconciled success or failure).
+    func test_reconcilingThenSucceeded_isTerminalSuccess() {
+        var m = CheckoutStateMachine()
+        m.beginProcessing()
+        _ = m.apply(.unknown(sessionId: "s1"), localizedFailure: { _ in "" })
+        let r = m.apply(.succeeded(txnId: "t9"), localizedFailure: { _ in "" })
+        XCTAssertEqual(m.state, .succeeded)
+        XCTAssertEqual(r, .autoClose(.succeeded(txnId: "t9")))
     }
 }

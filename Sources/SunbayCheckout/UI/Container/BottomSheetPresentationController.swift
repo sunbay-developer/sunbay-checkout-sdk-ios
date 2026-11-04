@@ -184,8 +184,16 @@
             guard let containerView,
                 let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
             else { return }
-            let space: UICoordinateSpace = containerView.window?.screen.coordinateSpace ?? UIScreen.main.coordinateSpace
-            let local = containerView.convert(endFrame, from: space)
+            // The keyboard frame is in screen coordinates. Resolve the screen through the window scene;
+            // with no scene yet (not on screen), `from: nil` converts from the view's window/base space,
+            // which equals screen space for the full-screen window the sheet lives in. No process-wide
+            // screen singleton is used (it is deprecated and wrong on multi-scene / external displays).
+            let local: CGRect
+            if let screenSpace = containerView.window?.windowScene?.screen.coordinateSpace {
+                local = containerView.convert(endFrame, from: screenSpace)
+            } else {
+                local = containerView.convert(endFrame, from: nil)
+            }
             let overlap = BottomSheetGeometry.keyboardOverlap(containerBounds: containerView.bounds, keyboardFrame: local)
             applyKeyboardOverlap(overlap, userInfo: notification.userInfo)
         }
@@ -224,7 +232,9 @@
             onBackdropTap?()
         }
 
-        /// Test seam: delivers a backdrop tap exactly as the recognizer would.
-        func simulateBackdropTapForTest() { didTapDimmingView() }
+        #if DEBUG
+            /// Test seam: delivers a backdrop tap exactly as the recognizer would.
+            func simulateBackdropTapForTest() { didTapDimmingView() }
+        #endif
     }
 #endif

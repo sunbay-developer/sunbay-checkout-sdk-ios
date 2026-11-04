@@ -87,6 +87,14 @@ actor ResultPoller {
         var backoff = config.initial
 
         while true {
+            // 0) Cooperative cancellation (e.g. the host closed the sheet mid-reconcile): return the
+            // latest snapshot promptly instead of running out the full backoff ladder. Checked at the
+            // top of every iteration, including the first, so a poll cancelled before its first query
+            // still returns immediately.
+            if Task.isCancelled {
+                return latestNonTerminal
+            }
+
             // 1) Query the result once; a transient error does not abort, it is treated as one non-terminal step.
             if let snapshot = try? await service.getResult(sessionId: sessionId) {
                 if isTerminal(snapshot.status) {
@@ -95,13 +103,26 @@ actor ResultPoller {
                 latestNonTerminal = snapshot
             }
 
+            if Task.isCancelled {
+                return latestNonTerminal
+            }
+
             // 2) If one more backoff would exceed the limit, stop and return the latest non-terminal snapshot.
             if elapsed + backoff > config.overallLimit {
                 return latestNonTerminal
             }
 
-            // 3) Backoff wait (injected sleep); an error in the wait itself is not fatal, continue stepping.
-            try? await sleep(backoff)
+            // 3) Backoff wait (injected sleep). `sleep` throwing `CancellationError` (the production
+            // `Task.sleep` does, on cancellation) must stop the loop promptly rather than being
+            // swallowed as a transient wait failure — only `CancellationError` is treated this way;
+            // any other error from a custom injected `sleep` keeps the previous "not fatal" behavior.
+            do {
+                try await sleep(backoff)
+            } catch is CancellationError {
+                return latestNonTerminal
+            } catch {
+                // Non-cancellation error from the wait itself: not fatal, continue stepping.
+            }
             elapsed += backoff
 
             // 4) Exponential backoff: double and cap at max.

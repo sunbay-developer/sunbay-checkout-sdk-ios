@@ -95,16 +95,18 @@
 
         // MARK: - Public API
 
-        /// Test seam: delivers a tap the way UIKit would (only when the control is enabled), running
-        /// the same handler as a real `.touchUpInside`. Needs no `UIApplication`, so it works in
-        /// host-less unit tests.
-        func simulateTouchUpInsideForTest() {
-            guard isEnabled else { return }
-            handleTap()
-        }
+        #if DEBUG
+            /// Test seam: delivers a tap the way UIKit would (only when the control is enabled), running
+            /// the same handler as a real `.touchUpInside`. Needs no `UIApplication`, so it works in
+            /// host-less unit tests.
+            func simulateTouchUpInsideForTest() {
+                guard isEnabled else { return }
+                handleTap()
+            }
 
-        /// Test readout: the current accessibility traits.
-        var accessibilityTraitsForTest: UIAccessibilityTraits { accessibilityTraits }
+            /// Test readout: the current accessibility traits.
+            var accessibilityTraitsForTest: UIAccessibilityTraits { accessibilityTraits }
+        #endif
 
         /// Sets the button's title (e.g. the localized `Pay %@` amount string).
         ///

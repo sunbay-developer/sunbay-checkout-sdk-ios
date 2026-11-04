@@ -19,6 +19,8 @@ final class MockPaymentService: PaymentService, PaymentActionProviding, @uncheck
 
     private var _session: CheckoutSession?
     private var _loadError: Error?
+    /// Artificial delay before `loadSession` returns (for unlock-window / reload tests).
+    private var _loadDelay: Duration?
 
     /// Scripted snapshot sequence for `submit` (consumed in call order; once exhausted, the last one is reused).
     private var _submitSnapshots: [PaymentSnapshot] = []
@@ -31,6 +33,8 @@ final class MockPaymentService: PaymentService, PaymentActionProviding, @uncheck
     private var _getResultSnapshots: [PaymentSnapshot] = []
     /// Error thrown by `getResult`.
     private var _getResultError: Error?
+    /// Artificial delay before `getResult` returns (for concurrency tests).
+    private var _getResultDelay: Duration?
 
     /// The further action corresponding to an `R` snapshot (seam: queried by the controller).
     private var _nextAction: PaymentAction?
@@ -49,6 +53,11 @@ final class MockPaymentService: PaymentService, PaymentActionProviding, @uncheck
     func stubSession(_ session: CheckoutSession) {
         lock.lock(); defer { lock.unlock() }
         _session = session
+    }
+
+    func stubLoadDelay(_ delay: Duration?) {
+        lock.lock(); defer { lock.unlock() }
+        _loadDelay = delay
     }
 
     func stubLoadError(_ error: Error) {
@@ -81,6 +90,11 @@ final class MockPaymentService: PaymentService, PaymentActionProviding, @uncheck
         _getResultError = error
     }
 
+    func stubGetResultDelay(_ delay: Duration) {
+        lock.lock(); defer { lock.unlock() }
+        _getResultDelay = delay
+    }
+
     func stubNextAction(_ action: PaymentAction) {
         lock.lock(); defer { lock.unlock() }
         _nextAction = action
@@ -89,11 +103,12 @@ final class MockPaymentService: PaymentService, PaymentActionProviding, @uncheck
     // MARK: - PaymentService
 
     func loadSession(_ id: String) async throws -> CheckoutSession {
-        let (session, error): (CheckoutSession?, Error?) = {
+        let (session, error, delay): (CheckoutSession?, Error?, Duration?) = {
             lock.lock(); defer { lock.unlock() }
             loadSessionCallCount += 1
-            return (_session, _loadError)
+            return (_session, _loadError, _loadDelay)
         }()
+        if let delay { try? await Task.sleep(for: delay) }
         if let error { throw error }
         guard let session else {
             throw NSError(domain: "MockPaymentService", code: -1,
@@ -128,7 +143,7 @@ final class MockPaymentService: PaymentService, PaymentActionProviding, @uncheck
     }
 
     func getResult(sessionId: String) async throws -> PaymentSnapshot {
-        let (error, snapshot): (Error?, PaymentSnapshot?) = {
+        let (error, snapshot, delay): (Error?, PaymentSnapshot?, Duration?) = {
             lock.lock(); defer { lock.unlock() }
             getResultCallCount += 1
             let snap: PaymentSnapshot?
@@ -137,8 +152,12 @@ final class MockPaymentService: PaymentService, PaymentActionProviding, @uncheck
             } else {
                 snap = _getResultSnapshots.first
             }
-            return (_getResultError, snap)
+            return (_getResultError, snap, _getResultDelay)
         }()
+
+        if let delay {
+            try? await Task.sleep(for: delay)
+        }
 
         if let error { throw error }
         guard let snapshot else {

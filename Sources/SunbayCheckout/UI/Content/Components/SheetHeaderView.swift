@@ -51,8 +51,10 @@
             backButton.isEnabled = enabled
         }
 
-        /// Test readout: whether the back button is interactive.
-        var isBackEnabledForTest: Bool { backButton.isEnabled }
+        #if DEBUG
+            /// Test readout: whether the back button is interactive.
+            var isBackEnabledForTest: Bool { backButton.isEnabled }
+        #endif
 
         /// Enables or disables the close (✕) button (locked while a confirm is in flight and during the
         /// success animation, so a tap cannot report `.canceled` for a payment that may succeed).
@@ -64,11 +66,13 @@
             closeButton.accessibilityTraits = enabled ? .button : [.button, .notEnabled]
         }
 
-        /// Test readout: whether the close button is interactive.
-        var isCloseEnabledForTest: Bool { closeButton.isEnabled }
+        #if DEBUG
+            /// Test readout: whether the close button is interactive.
+            var isCloseEnabledForTest: Bool { closeButton.isEnabled }
 
-        /// Test readout: whether the close button exposes the `.notEnabled` accessibility trait.
-        var closeHasNotEnabledTraitForTest: Bool { closeButton.accessibilityTraits.contains(.notEnabled) }
+            /// Test readout: whether the close button exposes the `.notEnabled` accessibility trait.
+            var closeHasNotEnabledTraitForTest: Bool { closeButton.accessibilityTraits.contains(.notEnabled) }
+        #endif
 
         /// Shows or hides the leading back button.
         ///

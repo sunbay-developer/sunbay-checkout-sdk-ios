@@ -64,10 +64,12 @@
             }
         }
 
-        /// Test seam: fires the exact closure a real row tap runs (selection + `onSelect`).
-        func tapRowForTest(_ paymentMethodId: String) {
-            rows.first { $0.paymentMethodId == paymentMethodId }?.onTap?()
-        }
+        #if DEBUG
+            /// Test seam: fires the exact closure a real row tap runs (selection + `onSelect`).
+            func tapRowForTest(_ paymentMethodId: String) {
+                rows.first { $0.paymentMethodId == paymentMethodId }?.onTap?()
+            }
+        #endif
 
         private func applySelection() {
             for row in rows {

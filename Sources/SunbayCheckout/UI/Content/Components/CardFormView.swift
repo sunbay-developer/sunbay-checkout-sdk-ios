@@ -114,21 +114,25 @@
             refreshGroupBorder()
         }
 
-        /// Test readout: whether a field error (red group + message) is currently shown.
-        var hasFieldErrorForTest: Bool { hasFieldError && !errorLabel.isHidden }
+        #if DEBUG
+            /// Test readout: whether a field error (red group + message) is currently shown.
+            var hasFieldErrorForTest: Bool { hasFieldError && !errorLabel.isHidden }
+        #endif
 
-        /// Test seam: sets the three fields' text directly (bypassing formatting), so unit tests can
-        /// assert `cardInput` assembly without simulating keystrokes.
-        ///
-        /// - Parameters:
-        ///   - pan: PAN field text.
-        ///   - expiry: Expiry field text (`MM/YY`).
-        ///   - cvv: CVC field text.
-        func setFieldsForTest(pan: String, expiry: String, cvv: String) {
-            panField.text = pan
-            expiryField.text = expiry
-            cvvField.text = cvv
-        }
+        #if DEBUG
+            /// Test seam: sets the three fields' text directly (bypassing formatting), so unit tests can
+            /// assert `cardInput` assembly without simulating keystrokes.
+            ///
+            /// - Parameters:
+            ///   - pan: PAN field text.
+            ///   - expiry: Expiry field text (`MM/YY`).
+            ///   - cvv: CVC field text.
+            func setFieldsForTest(pan: String, expiry: String, cvv: String) {
+                panField.text = pan
+                expiryField.text = expiry
+                cvvField.text = cvv
+            }
+        #endif
 
         // MARK: - Layout
 

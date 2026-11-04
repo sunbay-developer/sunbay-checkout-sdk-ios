@@ -38,6 +38,7 @@ enum SunbayUIStringKeys {
         "sunbay.cof.newPaymentMethod",
         // Common / state
         "sunbay.common.retry",
-        "sunbay.notice.pending"
+        "sunbay.notice.reconciling",
+        "sunbay.notice.stillReconciling"
     ]
 }
