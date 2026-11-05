@@ -12,7 +12,8 @@
     /// iOS-only: gated by `#if canImport(UIKit)`; does not compile under the macOS host (`swift test`).
     final class FieldContainerView: UIView {
         private let appearance: ResolvedAppearance
-        private var isFocused = false
+        // Named `isEditing` (not `isFocused`) to avoid colliding with UIView's own `isFocused`.
+        private var isEditing = false
 
         /// Wraps a control in a bordered field box.
         ///
@@ -55,12 +56,12 @@
         }
 
         @objc private func handleEditingDidBegin() {
-            isFocused = true
+            isEditing = true
             refreshBorder()
         }
 
         @objc private func handleEditingDidEnd() {
-            isFocused = false
+            isEditing = false
             refreshBorder()
         }
 
@@ -72,7 +73,7 @@
         /// Applies the border: `primary` when focused, otherwise the neutral `border`, re-resolving the
         /// `cgColor` against the current trait.
         private func refreshBorder() {
-            let color = (isFocused ? appearance.primary : appearance.border)
+            let color = (isEditing ? appearance.primary : appearance.border)
                 .resolvedColor(with: traitCollection)
             layer.borderWidth = max(appearance.borderWidth, 1)
             layer.borderColor = color.cgColor

@@ -46,6 +46,11 @@
         /// Bottom-sheet sizing: minimum height, maximum height fraction of the screen height, and mode.
         public var sheetSizing: SheetSizing = .init()
 
+        /// Whether page switches inside the sheet (e.g. home ↔ new-card) animate with a
+        /// forward/backward slide. Defaults to `true`. The system "Reduce Motion" setting always
+        /// downgrades the slide to a cross-fade.
+        public var pageTransitionsEnabled: Bool = true
+
         /// Color scheme preference.
         public enum ColorScheme: Sendable {
             /// Force light.

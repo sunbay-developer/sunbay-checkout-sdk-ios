@@ -113,6 +113,7 @@ public struct Appearance: Sendable, Equatable {
     public var expressPosition: ExpressPosition = .top
     public var billingAddressMode: AddressCollectionMode = .simple
     public var shippingAddressMode: AddressCollectionMode = .simple
+    public var pageTransitionsEnabled: Bool = true // forward/back slide between in-sheet pages
 
     public enum ColorScheme: Sendable { case light, dark, automatic }
     public enum Density: Sendable { case comfortable, compact }
