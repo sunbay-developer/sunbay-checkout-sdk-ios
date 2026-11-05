@@ -186,6 +186,62 @@
             func set(_ v: CheckoutOutcome) { lock.lock(); _value = v; lock.unlock() }
         }
 
+        /// A deterministic, wall-clock-free gate for ordering-sensitive races. Code under test calls
+        /// `await wait()` (which suspends until `release()`), and the test can `await untilEntered()` to
+        /// observe that the gate has actually been reached. This replaces time-based `stubLoadDelay`
+        /// windows in races where "the code is parked HERE" must be guaranteed, not merely likely.
+        private final class MockGate: @unchecked Sendable {
+            private let lock = NSLock()
+            private var released = false
+            private var waiters: [CheckedContinuation<Void, Never>] = []
+            private var enteredWaiters: [CheckedContinuation<Void, Never>] = []
+            private var entered = false
+
+            /// Called from code under test: suspends until `release()`, then returns. After release it
+            /// returns immediately. Also signals any `untilEntered()` awaiter that the gate was reached.
+            func wait() async {
+                await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                    lock.lock()
+                    entered = true
+                    let toEnter = enteredWaiters
+                    enteredWaiters.removeAll()
+                    if released {
+                        lock.unlock()
+                        for e in toEnter { e.resume() }
+                        c.resume()
+                        return
+                    }
+                    waiters.append(c)
+                    lock.unlock()
+                    for e in toEnter { e.resume() }
+                }
+            }
+
+            /// Called from the test: suspends until the gate has been entered by code under test.
+            func untilEntered() async {
+                await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                    lock.lock()
+                    if entered {
+                        lock.unlock()
+                        c.resume()
+                        return
+                    }
+                    enteredWaiters.append(c)
+                    lock.unlock()
+                }
+            }
+
+            /// Called from the test: releases all current and future waiters.
+            func release() {
+                lock.lock()
+                released = true
+                let toResume = waiters
+                waiters.removeAll()
+                lock.unlock()
+                for w in toResume { w.resume() }
+            }
+        }
+
         /// Zero-wait poller with a one-query bound (`overallLimit: 0` → exactly one `getResult` per poll),
         /// so call counts are deterministic and nothing sleeps for real.
         private func makeZeroWaitPoller(_ payment: MockPaymentService) -> ResultPoller {
@@ -379,11 +435,27 @@
             let p = try await presentSheet(submit: [failed, ok], getResult: [])
             defer { p.tearDown() }
 
-            p.payment.stubLoadDelay(.milliseconds(500))
+            // Gate the SECOND session (re)load — the one the retry loop performs after the first attempt
+            // fails — so the loop deterministically parks there. (The first load, which presents the
+            // sheet, is let through.) This replaces a wall-clock `stubLoadDelay` window: the race the
+            // test checks is "a close observed while a tap is buffered wins over the buffered tap", and
+            // the gate guarantees the loop is parked (tap buffered) BEFORE the close, with no timing luck.
+            let gate = MockGate()
+            let payment = p.payment
+            payment.stubLoadGate { [weak payment] in
+                // Only hold the reload (2nd+ load); the initial present already loaded once.
+                if (payment?.loadSessionCallCount ?? 0) >= 2 { await gate.wait() }
+            }
+
             payWithSavedCard(p)
             try await waitUntil("failed state") { self.isFailed(p.content.currentViewState) }
-            p.content.simulateTapPay()                // buffered
-            p.container.onFinish?(.canceled)          // the sheet is closed (pull-down) before the loop resumes
+
+            // The loop is now re-entering the gated reload; wait until it is actually parked in the gate.
+            await gate.untilEntered()
+
+            p.content.simulateTapPay()                // buffered (loop is parked in the reload)
+            p.container.onFinish?(.canceled)          // close observed before the loop resumes
+            gate.release()                            // let the loop wake and re-enter awaitEvent
 
             let outcome = await p.outcome(within: 6)
             XCTAssertEqual(outcome, .canceled, "a close must win over a buffered tap")
