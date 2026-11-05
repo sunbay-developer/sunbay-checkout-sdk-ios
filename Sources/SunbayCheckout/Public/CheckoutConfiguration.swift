@@ -49,12 +49,6 @@ public struct CheckoutConfiguration: Sendable, Equatable {
     /// are not configurable.
     public let paymentSheetTitle: String?
 
-    /// Custom description shown as a one-line, de-emphasized subtitle under the home-page title.
-    ///
-    /// When nil, no custom description is shown (the reserved line renders empty). Like
-    /// `paymentSheetTitle`, this only affects the home page and never the new-card or other pages.
-    public let paymentSheetDescription: String?
-
     #if canImport(UIKit)
         /// Creates a configuration.
         ///
@@ -67,21 +61,18 @@ public struct CheckoutConfiguration: Sendable, Equatable {
         ///   - appearance: Appearance configuration; defaults to nil.
         ///   - locale: Locale; defaults to nil.
         ///   - paymentSheetTitle: Custom home-page title; defaults to nil (uses the localized default).
-        ///   - paymentSheetDescription: Custom home-page description; defaults to nil (no subtitle).
         public init(
             environment: Environment = .production,
             applePayMerchantId: String? = nil,
             appearance: Appearance? = nil,
             locale: String? = nil,
-            paymentSheetTitle: String? = nil,
-            paymentSheetDescription: String? = nil
+            paymentSheetTitle: String? = nil
         ) {
             self.environment = environment
             self.applePayMerchantId = applePayMerchantId
             self.appearance = appearance
             self.locale = locale
             self.paymentSheetTitle = paymentSheetTitle
-            self.paymentSheetDescription = paymentSheetDescription
         }
     #else
         /// Creates a configuration.
@@ -94,19 +85,16 @@ public struct CheckoutConfiguration: Sendable, Equatable {
         ///   - applePayMerchantId: Host-configured Apple Pay merchant id; defaults to nil (falls back to the session).
         ///   - locale: Locale; defaults to nil.
         ///   - paymentSheetTitle: Custom home-page title; defaults to nil (uses the localized default).
-        ///   - paymentSheetDescription: Custom home-page description; defaults to nil (no subtitle).
         public init(
             environment: Environment = .production,
             applePayMerchantId: String? = nil,
             locale: String? = nil,
-            paymentSheetTitle: String? = nil,
-            paymentSheetDescription: String? = nil
+            paymentSheetTitle: String? = nil
         ) {
             self.environment = environment
             self.applePayMerchantId = applePayMerchantId
             self.locale = locale
             self.paymentSheetTitle = paymentSheetTitle
-            self.paymentSheetDescription = paymentSheetDescription
         }
     #endif
 }

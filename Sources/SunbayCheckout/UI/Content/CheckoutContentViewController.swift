@@ -107,10 +107,9 @@
 
         private var lastReportedHeight: CGFloat = 0
 
-        /// Custom home-page title / description (both optional). Only the home page reads these; the
-        /// new-card subpage keeps its built-in title and always clears the description line.
+        /// Custom home-page title (optional). Only the home page reads it; the new-card subpage keeps
+        /// its built-in title.
         private let homeTitle: String?
-        private let homeDescription: String?
 
         // MARK: - Init
 
@@ -125,7 +124,6 @@
         ///   - shippingMode: The shipping-address collection mode.
         ///   - addressService: The address-metadata service (for the full address form).
         ///   - homeTitle: Optional custom home-page title (nil → the localized default pay title).
-        ///   - homeDescription: Optional custom home-page description (nil → an empty reserved line).
         init(
             session: CheckoutSession,
             savedCards: [SavedCard],
@@ -134,8 +132,7 @@
             billingMode: Appearance.AddressCollectionMode,
             shippingMode: Appearance.AddressCollectionMode,
             addressService: any AddressMetadataService,
-            homeTitle: String? = nil,
-            homeDescription: String? = nil
+            homeTitle: String? = nil
         ) {
             self.session = session
             self.savedCards = savedCards
@@ -145,7 +142,6 @@
             self.shippingMode = shippingMode
             self.addressService = addressService
             self.homeTitle = homeTitle
-            self.homeDescription = homeDescription
             super.init(nibName: nil, bundle: nil)
         }
 
@@ -615,7 +611,7 @@
                 header.topAnchor.constraint(equalTo: headerContainer.topAnchor, constant: 8),
                 header.leadingAnchor.constraint(equalTo: headerContainer.leadingAnchor, constant: 16),
                 header.trailingAnchor.constraint(equalTo: headerContainer.trailingAnchor, constant: -16),
-                header.bottomAnchor.constraint(equalTo: headerContainer.bottomAnchor, constant: -8),
+                header.bottomAnchor.constraint(equalTo: headerContainer.bottomAnchor),
 
                 // Scroll area between header and bottom bar.
                 scrollView.topAnchor.constraint(equalTo: headerContainer.bottomAnchor),
@@ -684,11 +680,20 @@
 
         /// Builds the new-card subpage: card form + optional save toggle + address forms.
         private func buildNewCardStack() {
+            let topDivider = makeNewCardTopDivider()
+            newCardStack.addArrangedSubview(topDivider)
             newCardStack.addArrangedSubview(makeSectionTitle("sunbay.card.informationTitle"))
             newCardStack.addArrangedSubview(cardForm)
+            // A little more breathing room between the top divider and the first section title.
+            newCardStack.setCustomSpacing(20, after: topDivider)
 
             if session.cofEnabled {
-                newCardStack.addArrangedSubview(makeSaveCardRow())
+                let saveRow = makeSaveCardRow()
+                newCardStack.addArrangedSubview(saveRow)
+                // Pull "Save this card" up close to the card form, and push the Address area below it
+                // further down, so the opt-in reads as belonging to the card (not the address).
+                newCardStack.setCustomSpacing(8, after: cardForm)
+                newCardStack.setCustomSpacing(28, after: saveRow)
             }
 
             if let billing = makeAddressView(mode: billingMode) {
@@ -814,17 +819,43 @@
             label.font = appearance.cardFieldFont
             label.textColor = appearance.text
             label.translatesAutoresizingMaskIntoConstraints = false
+            checkbox.attachLabel(label)
 
-            // Checkbox leads the label (left-aligned), matching the design.
-            let row = UIStackView(arrangedSubviews: [checkbox, label])
-            row.axis = .horizontal
-            row.alignment = .center
-            row.spacing = 10
-            // Trailing spacer so the row hugs the leading edge instead of stretching the label.
+            // Left-aligned: checkbox leads the label, with a trailing spacer so the row hugs the
+            // leading edge instead of stretching the label.
             let spacer = UIView()
             spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-            row.addArrangedSubview(spacer)
+            let row = UIStackView(arrangedSubviews: [checkbox, label, spacer])
+            row.axis = .horizontal
+            row.alignment = .center
+            row.spacing = 8
             return row
+        }
+
+        /// Builds a container holding a full-width hairline for the top of the new-card subpage.
+        ///
+        /// The subpage content is inset 16pt by `rootStack`; this divider escapes that inset by
+        /// extending its line 16pt past each side of its container (back to the sheet edges), so it
+        /// reads like the header separator but belongs to this page only. It references only its own
+        /// subview, so there is no cross-hierarchy constraint timing issue.
+        private func makeNewCardTopDivider() -> UIView {
+            let container = UIView()
+            container.translatesAutoresizingMaskIntoConstraints = false
+
+            let line = UIView()
+            line.backgroundColor = appearance.border
+            line.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(line)
+
+            NSLayoutConstraint.activate([
+                container.heightAnchor.constraint(equalToConstant: 0.5),
+                line.topAnchor.constraint(equalTo: container.topAnchor),
+                line.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+                // Extend 16pt past each side (cancelling rootStack's 16pt inset) to reach the sheet edges.
+                line.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: -16),
+                line.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: 16),
+            ])
+            return container
         }
 
         /// Builds a group section header: uppercased, gray (`textSecondary`), and in the smaller
@@ -869,6 +900,7 @@
             toggleLabel.font = appearance.cardFieldFont
             toggleLabel.textColor = appearance.text
             toggleLabel.setContentHuggingPriority(.required, for: .horizontal)
+            checkbox.attachLabel(toggleLabel)
 
             // Header row: title (left) ... checkbox + label (right), on one line.
             let headerRow = UIStackView(arrangedSubviews: [title, checkbox, toggleLabel])
@@ -933,12 +965,10 @@
             reportContentHeightIfChanged()
         }
 
-        /// Applies the home-page header copy: the custom title (or the localized default) and the
-        /// custom one-line description (or an empty reserved line). Only the home page is configurable.
+        /// Applies the home-page header title: the custom title, or the localized default. Only the
+        /// home page is configurable.
         private func applyHomeHeaderCopy() {
-            let title = homeTitle ?? localize("sunbay.sheet.payTitle")
-            header.setTitle(title)
-            header.setDescription(homeDescription ?? "")
+            header.setTitle(homeTitle ?? localize("sunbay.sheet.payTitle"))
         }
 
         /// Applies a page switch with the shared forward/backward transition (see `PageTransition`).
@@ -973,8 +1003,6 @@
             performHeaderSwitch(animated: animated) {
                 self.header.setBackVisible(true)
                 self.header.setTitle(self.localize("sunbay.sheet.newCard"))
-                // The new-card subpage is not configurable; always clear the description line.
-                self.header.setDescription("")
             }
             notice.hide()
             refreshConfirmButtonState()

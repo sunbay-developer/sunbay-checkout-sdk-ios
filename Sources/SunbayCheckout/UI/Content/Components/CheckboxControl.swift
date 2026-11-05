@@ -3,10 +3,11 @@
 
     /// A square checkbox control (design: the COF "Save card" and "Same as billing" toggles).
     ///
-    /// Replaces `UISwitch` for the sheet's boolean opt-ins: a ~22pt rounded square that renders an
+    /// Replaces `UISwitch` for the sheet's boolean opt-ins: an 18pt rounded square that renders an
     /// empty bordered box when off and a filled `primary` box with a white checkmark when on. Tapping
     /// toggles `isOn` and fires `.valueChanged`, so existing `addTarget(..., for: .valueChanged)` and
-    /// `isOn` read sites keep working unchanged.
+    /// `isOn` read sites keep working unchanged. Call `attachLabel(_:)` to let an adjacent caption
+    /// toggle the box too.
     ///
     /// iOS-only: gated by `#if canImport(UIKit)`; does not compile under the macOS host (`swift test`).
     final class CheckboxControl: UIControl {
@@ -14,7 +15,7 @@
         private let box = UIView()
         private let checkmark = UIImageView()
 
-        private static let side: CGFloat = 22
+        private static let side: CGFloat = 18
 
         /// Whether the checkbox is selected. Setting it updates the visual state (no event fired).
         var isOn: Bool = false {
@@ -42,12 +43,12 @@
             accessibilityTraits = .button
 
             box.isUserInteractionEnabled = false
-            box.layer.cornerRadius = 5
+            box.layer.cornerRadius = 4
             box.layer.borderWidth = 1.5
             box.translatesAutoresizingMaskIntoConstraints = false
             addSubview(box)
 
-            let config = UIImage.SymbolConfiguration(pointSize: 13, weight: .bold)
+            let config = UIImage.SymbolConfiguration(pointSize: 11, weight: .bold)
             checkmark.image = UIImage(systemName: "checkmark", withConfiguration: config)
             checkmark.tintColor = appearance.primaryButtonText
             checkmark.contentMode = .scaleAspectFit
@@ -72,8 +73,28 @@
         }
 
         @objc private func handleTap() {
+            toggle()
+        }
+
+        /// Toggles `isOn` and fires `.valueChanged` (shared by the box tap and an attached label tap).
+        private func toggle() {
+            guard isEnabled else { return }
             isOn.toggle()
             sendActions(for: .valueChanged)
+        }
+
+        /// Makes an adjacent caption label toggle this checkbox when tapped, so the whole
+        /// "checkbox + text" row is a single tap target. The label becomes user-interactive.
+        ///
+        /// - Parameter label: The caption shown next to the checkbox.
+        func attachLabel(_ label: UILabel) {
+            label.isUserInteractionEnabled = true
+            label.addGestureRecognizer(
+                UITapGestureRecognizer(target: self, action: #selector(handleLabelTap)))
+        }
+
+        @objc private func handleLabelTap() {
+            toggle()
         }
 
         override var isEnabled: Bool {
