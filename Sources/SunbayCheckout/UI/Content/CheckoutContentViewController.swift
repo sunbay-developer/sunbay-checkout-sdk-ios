@@ -108,6 +108,11 @@
         /// Whether the new-card subpage (vs the home page) is currently visible.
         private var isShowingNewCard = false
 
+        /// Whether the full saved-card list page ("View more") is currently visible. On this page the
+        /// bottom Pay button is hidden: the page is a pure picker (tap a row to select and return
+        /// home), so there is no in-page confirm — Pay reappears on the home page.
+        private var isShowingAllSavedCards = false
+
         /// The saved card the user has selected on the home page (nil = none selected). Selecting a
         /// row does NOT submit; the user must tap the Pay button (which this enables).
         private var selectedSavedCardId: String?
@@ -578,6 +583,7 @@
         /// Home page: the Pay button is visible+enabled only when a saved card is selected, and
         /// hidden otherwise (e.g. a wallet-only home shows no bottom Pay button). New-card subpage:
         /// always visible; dimmed (`appearsDisabled`, still tappable) until the form is complete.
+        /// Full saved-card list page ("View more"): Pay is hidden — that page is a pure picker.
         ///
         /// Safe to call while the machine is `.editing` **or** `.failed` — both are editable states
         /// where the user may (re)submit. It must not clobber the CTA while a confirm is in flight
@@ -598,7 +604,12 @@
                 if confirmButton.isHidden != wasHidden { reportContentHeightIfChanged() }
             }
 
-            if isShowingNewCard {
+            if isShowingAllSavedCards {
+                // Full list page is a pure picker: no in-page confirm, Pay returns on the home page.
+                confirmButton.appearsDisabled = false
+                confirmButton.isHidden = true
+                confirmButton.update(status: .disabled, animated: false)
+            } else if isShowingNewCard {
                 // Subpage: Pay is always visible. An incomplete form looks disabled but stays
                 // tappable, so a tap runs `handleConfirmNewCard` and surfaces the field error.
                 confirmButton.isHidden = false
@@ -1073,6 +1084,7 @@
             rebuildSavedCardSummary()
             performPageSwitch(direction: .backward, animated: animated) {
                 isShowingNewCard = false
+                isShowingAllSavedCards = false
                 homeStack.isHidden = false
                 newCardStack.isHidden = true
                 allSavedCardsStack.isHidden = true
@@ -1113,6 +1125,7 @@
             savedCardList?.selectedPaymentMethodId = selectedSavedCardId
             performPageSwitch(direction: .forward, animated: true) {
                 isShowingNewCard = false
+                isShowingAllSavedCards = true
                 homeStack.isHidden = true
                 newCardStack.isHidden = true
                 allSavedCardsStack.isHidden = false
@@ -1122,6 +1135,7 @@
                 self.header.setTitle(self.localize("sunbay.sheet.savedCards"))
             }
             notice.hide()
+            refreshConfirmButtonState()
             reportContentHeightIfChanged()
         }
 
@@ -1168,6 +1182,7 @@
             guard !stateMachine.state.isLockedAgainstNewConfirm else { return }
             performPageSwitch(direction: .forward, animated: animated) {
                 isShowingNewCard = true
+                isShowingAllSavedCards = false
                 homeStack.isHidden = true
                 newCardStack.isHidden = false
                 allSavedCardsStack.isHidden = true

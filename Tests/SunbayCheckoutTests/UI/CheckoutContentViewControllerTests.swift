@@ -257,6 +257,29 @@
             XCTAssertEqual(vc.highlightedSavedCardIdForTest, "pm_1")
         }
 
+        /// The full saved-card list page ("View more") is a pure picker: the bottom Pay button is
+        /// hidden while it is visible, and reappears once the user returns home (via back or by
+        /// picking a card).
+        func test_viewMore_hidesPay_restoredOnReturnHome() {
+            let vc = makeVC(savedCards: sampleSavedCards())
+            vc.loadViewIfNeeded()
+            XCTAssertTrue(vc.isConfirmButtonVisibleForTest, "Precondition: Pay is visible on home.")
+
+            vc.tapViewMoreForTest()
+            XCTAssertTrue(vc.isAllSavedCardsVisibleForTest)
+            XCTAssertFalse(vc.isConfirmButtonVisibleForTest, "Pay is hidden on the full list page.")
+
+            vc.tapBackForTest()
+            XCTAssertTrue(vc.isHomeVisibleForTest)
+            XCTAssertTrue(vc.isConfirmButtonVisibleForTest, "Pay returns home via back.")
+
+            vc.tapViewMoreForTest()
+            XCTAssertFalse(vc.isConfirmButtonVisibleForTest)
+            vc.tapFullListRowForTest("pm_2")
+            XCTAssertTrue(vc.isHomeVisibleForTest)
+            XCTAssertTrue(vc.isConfirmButtonVisibleForTest, "Pay returns home when a card is picked.")
+        }
+
         /// Picking a non-first card on the full list selects it and auto-returns home showing that
         /// card; tapping Pay then submits `.confirmSavedCard` for the picked card.
         func test_fullList_pickSelectsAndReturnsHome() {
