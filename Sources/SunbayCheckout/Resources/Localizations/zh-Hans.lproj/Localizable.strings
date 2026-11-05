@@ -27,6 +27,7 @@
 "sunbay.card.expiry" = "月/年";
 "sunbay.card.cvc" = "安全码";
 "sunbay.cof.newPaymentMethod" = "新卡";
+"sunbay.cof.viewMore" = "查看更多";
 "sunbay.common.retry" = "重试";
 "sunbay.sheet.back" = "返回";
 "sunbay.sheet.close" = "关闭";

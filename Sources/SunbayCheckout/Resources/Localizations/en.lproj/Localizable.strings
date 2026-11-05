@@ -27,6 +27,7 @@
 "sunbay.card.expiry" = "MM / YY";
 "sunbay.card.cvc" = "CVC";
 "sunbay.cof.newPaymentMethod" = "New card";
+"sunbay.cof.viewMore" = "View more";
 "sunbay.common.retry" = "Retry";
 "sunbay.sheet.back" = "Back";
 "sunbay.sheet.close" = "Close";
