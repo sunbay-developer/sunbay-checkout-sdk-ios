@@ -14,9 +14,9 @@
     final class SimpleAddressFormView: UIView {
         private let appearance: ResolvedAppearance
 
-        private let countryButton = UIButton(type: .system)
-        private let line1Field = UITextField()
-        private let postalField = UITextField()
+        private let countryField: FloatingLabelMenuField
+        private let line1Field: FloatingLabelTextField
+        private let postalField: FloatingLabelTextField
 
         private var selectedCountryCode: String?
         private let countries: [(code: String, name: String)]
@@ -29,6 +29,10 @@
         init(appearance: ResolvedAppearance, localize: @escaping (String) -> String) {
             self.appearance = appearance
             self.countries = Self.systemCountries()
+            self.countryField = FloatingLabelMenuField(
+                appearance: appearance, title: localize("sunbay.address.country"))
+            self.line1Field = FloatingLabelTextField(appearance: appearance)
+            self.postalField = FloatingLabelTextField(appearance: appearance)
             super.init(frame: .zero)
             configureSubviews(localize: localize)
         }
@@ -66,8 +70,8 @@
         private func configureSubviews(localize: @escaping (String) -> String) {
             configureCountryButton(localize: localize)
 
-            line1Field.placeholder = localize("sunbay.address.line1")
-            postalField.placeholder = localize("sunbay.address.postalCode")
+            line1Field.title = localize("sunbay.address.line1")
+            postalField.title = localize("sunbay.address.postalCode")
             for field in [line1Field, postalField] {
                 field.font = appearance.cardFieldFont
                 field.textColor = appearance.text
@@ -77,11 +81,11 @@
             postalField.keyboardType = .numbersAndPunctuation
 
             // Each control is its own bordered box; text fields highlight their border on focus.
-            let countryField = FieldContainerView(appearance: appearance, control: countryButton)
+            let countryContainer = FieldContainerView(appearance: appearance, control: countryField)
             let line1Container = FieldContainerView(appearance: appearance, control: line1Field)
             let postalContainer = FieldContainerView(appearance: appearance, control: postalField)
 
-            let stack = UIStackView(arrangedSubviews: [countryField, line1Container, postalContainer])
+            let stack = UIStackView(arrangedSubviews: [countryContainer, line1Container, postalContainer])
             stack.axis = .vertical
             stack.spacing = 12
             stack.translatesAutoresizingMaskIntoConstraints = false
@@ -96,22 +100,13 @@
         }
 
         private func configureCountryButton(localize: @escaping (String) -> String) {
-            countryButton.contentHorizontalAlignment = .leading
-            countryButton.tintColor = appearance.text
-            countryButton.setTitleColor(appearance.textSecondary, for: .normal)
-            countryButton.titleLabel?.font = appearance.cardFieldFont
-            countryButton.setTitle(localize("sunbay.address.country"), for: .normal)
-            countryButton.translatesAutoresizingMaskIntoConstraints = false
-
             let actions = countries.map { entry in
                 UIAction(title: entry.name) { [weak self] _ in
                     self?.selectedCountryCode = entry.code
-                    self?.countryButton.setTitle(entry.name, for: .normal)
-                    self?.countryButton.setTitleColor(self?.appearance.text, for: .normal)
+                    self?.countryField.setSelected(title: entry.name)
                 }
             }
-            countryButton.menu = UIMenu(children: actions)
-            countryButton.showsMenuAsPrimaryAction = true
+            countryField.setMenu(UIMenu(children: actions))
         }
     }
 #endif

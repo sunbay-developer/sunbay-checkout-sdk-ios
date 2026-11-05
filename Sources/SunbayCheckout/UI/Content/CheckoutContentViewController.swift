@@ -412,6 +412,9 @@
             /// Test readout: whether the header ✕ is interactive.
             var isCloseInteractiveForTest: Bool { header.isCloseEnabledForTest }
 
+            /// Test readout: whether the header ✕ is visible (shown on home, hidden on sub-pages).
+            var isCloseVisibleForTest: Bool { header.isCloseVisibleForTest }
+
             /// Test readout: whether the header ✕ exposes the `.notEnabled` accessibility trait.
             var closeHasNotEnabledTraitForTest: Bool { header.closeHasNotEnabledTraitForTest }
 
@@ -539,6 +542,10 @@
         private func enterReconciling() {
             processingStartedAt = nil
             setInputsEnabled(false)
+            // ✕ is the only affordance that can leave the locked reconciling state (back is disabled),
+            // and a confirm can be initiated from the new-card subpage where ✕ is normally hidden.
+            // Re-show and enable it here so the user is never trapped, regardless of the current page.
+            header.setCloseVisible(true)
             header.setCloseEnabled(true)
             confirmButton.update(status: .disabled, animated: false)
             confirmButton.isHidden = true
@@ -788,61 +795,22 @@
                 let row = SavedCardRow(appearance: appearance, card: card)
                 row.setSelected(true)
                 row.presentAsStaticSummary()
+                // With more than one saved card, the drill-in lives on the card row itself: the trailing
+                // expiry is replaced by a tappable "View more ›" that opens the full list. With a single
+                // card there is nothing more to see, so the expiry stays.
+                if savedCards.count > 1 {
+                    row.showViewMoreInsteadOfExpiry(title: localize("sunbay.cof.viewMore")) { [weak self] in
+                        self?.showAllSavedCards()
+                    }
+                    viewMoreAffordance = row.viewMoreControl
+                } else {
+                    viewMoreAffordance = nil
+                }
                 stack.addArrangedSubview(row)
-            }
-
-            if savedCards.count > 1 {
-                let viewMore = makeViewMoreRow()
-                viewMoreAffordance = viewMore
-                stack.addArrangedSubview(viewMore)
             } else {
                 viewMoreAffordance = nil
             }
             return stack
-        }
-
-        /// Builds the "View more" affordance: a localized label + trailing chevron that opens the full
-        /// saved-card list page. Styled like the "New card" entry's trailing chevron.
-        private func makeViewMoreRow() -> UIView {
-            let container = UIView()
-
-            let label = UILabel()
-            label.text = localize("sunbay.cof.viewMore")
-            label.font = appearance.cardFieldFont
-            label.textColor = appearance.primary
-            label.setContentHuggingPriority(.defaultLow, for: .horizontal)
-            label.translatesAutoresizingMaskIntoConstraints = false
-
-            let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
-            chevron.tintColor = appearance.primary
-            chevron.contentMode = .scaleAspectFit
-            chevron.setContentHuggingPriority(.required, for: .horizontal)
-            chevron.translatesAutoresizingMaskIntoConstraints = false
-
-            let stack = UIStackView(arrangedSubviews: [label, chevron])
-            stack.axis = .horizontal
-            stack.alignment = .center
-            stack.spacing = 6
-            stack.translatesAutoresizingMaskIntoConstraints = false
-            container.addSubview(stack)
-
-            NSLayoutConstraint.activate([
-                stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
-                stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
-                stack.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
-                stack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -8),
-            ])
-
-            container.isAccessibilityElement = true
-            container.accessibilityTraits = .button
-            container.accessibilityLabel = label.text
-            container.addGestureRecognizer(
-                UITapGestureRecognizer(target: self, action: #selector(handleViewMoreTap)))
-            return container
-        }
-
-        @objc private func handleViewMoreTap() {
-            showAllSavedCards()
         }
 
         /// Builds the express (wallet) view for the home page, or nil when unavailable.
@@ -1091,6 +1059,7 @@
             }
             performHeaderSwitch(animated: animated) {
                 self.header.setBackVisible(false)
+                self.header.setCloseVisible(true)
                 self.applyHomeHeaderCopy()
             }
             notice.hide()
@@ -1132,6 +1101,7 @@
             }
             performHeaderSwitch(animated: true) {
                 self.header.setBackVisible(true)
+                self.header.setCloseVisible(false)
                 self.header.setTitle(self.localize("sunbay.sheet.savedCards"))
             }
             notice.hide()
@@ -1191,6 +1161,7 @@
             selectedSavedCardId = nil
             performHeaderSwitch(animated: animated) {
                 self.header.setBackVisible(true)
+                self.header.setCloseVisible(false)
                 self.header.setTitle(self.localize("sunbay.sheet.newCard"))
             }
             notice.hide()

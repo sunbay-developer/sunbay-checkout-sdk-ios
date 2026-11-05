@@ -51,8 +51,8 @@
 
         // Field controls keyed by type (rebuilt on each render).
         private var textFields: [AddressFieldType: UITextField] = [:]
-        private var countryButton: UIButton?
-        private var stateButton: UIButton?
+        private var countryButton: FloatingLabelMenuField?
+        private var stateButton: FloatingLabelMenuField?
 
         // Test seam: a continuation completed when the in-flight load finishes (success or failure).
         private var loadFinishedForTest: (() -> Void)?
@@ -139,13 +139,13 @@
         /// rebuild), updates the model/title, and reloads that country's config. `state` is the only
         /// country-scoped code in the model; line1/city/postalCode are raw text and reasonably
         /// persist. `reload(locale:)` must NOT clear these — only a country change does.
-        private func selectCountry(_ code: String, title: String, button: UIButton?) {
+        private func selectCountry(_ code: String, title: String, field: FloatingLabelMenuField?) {
             captureFieldValues()
             if model.country != code {
                 model.state = nil
             }
             model.country = code
-            button?.setTitle(title, for: .normal)
+            field?.setSelected(title: title)
             reloadCountryConfig()
         }
 
@@ -207,28 +207,22 @@
         }
 
         private func makeCountryRow() -> UIView {
-            let button = UIButton(type: .system)
-            button.contentHorizontalAlignment = .leading
-            button.titleLabel?.font = appearance.cardFieldFont
-            button.setTitleColor(appearance.text, for: .normal)
-            button.translatesAutoresizingMaskIntoConstraints = false
+            let field = FloatingLabelMenuField(
+                appearance: appearance, title: localize("sunbay.address.country"))
 
             let actions = countries.map { country in
                 UIAction(title: country.name) { [weak self] _ in
                     guard let self else { return }
-                    self.selectCountry(country.code, title: country.name, button: button)
+                    self.selectCountry(country.code, title: country.name, field: field)
                 }
             }
-            button.menu = UIMenu(children: actions)
-            button.showsMenuAsPrimaryAction = true
+            field.setMenu(UIMenu(children: actions))
             if let code = model.country, let name = countries.first(where: { $0.code == code })?.name {
-                button.setTitle(name, for: .normal)
-            } else {
-                button.setTitle(localize("sunbay.address.country"), for: .normal)
+                field.setSelected(title: name)
             }
-            countryButton = button
+            countryButton = field
 
-            return FieldContainerView(appearance: appearance, control: button)
+            return FieldContainerView(appearance: appearance, control: field)
         }
 
         private func makeRow(_ fields: [AddressFieldConfig]) -> UIView {
@@ -246,10 +240,8 @@
             if field.type == .state, let config, !config.subdivisions.isEmpty {
                 return makeStateRow(field, subdivisions: config.subdivisions)
             }
-            let textField = UITextField()
-            textField.placeholder = field.placeholder
-            textField.font = appearance.cardFieldFont
-            textField.textColor = appearance.text
+            let textField = FloatingLabelTextField(appearance: appearance)
+            textField.title = field.placeholder
             textField.autocorrectionType = .no
             textField.translatesAutoresizingMaskIntoConstraints = false
             if field.type == .postalCode {
@@ -260,27 +252,20 @@
         }
 
         private func makeStateRow(_ field: AddressFieldConfig, subdivisions: [AddressSubdivision]) -> UIView {
-            let button = UIButton(type: .system)
-            button.contentHorizontalAlignment = .leading
-            button.titleLabel?.font = appearance.cardFieldFont
-            button.setTitleColor(appearance.text, for: .normal)
-            button.translatesAutoresizingMaskIntoConstraints = false
+            let menuField = FloatingLabelMenuField(appearance: appearance, title: field.placeholder)
 
             let actions = subdivisions.map { subdivision in
                 UIAction(title: subdivision.name) { [weak self] _ in
                     self?.model.state = subdivision.code
-                    button.setTitle(subdivision.name, for: .normal)
+                    menuField.setSelected(title: subdivision.name)
                 }
             }
-            button.menu = UIMenu(children: actions)
-            button.showsMenuAsPrimaryAction = true
+            menuField.setMenu(UIMenu(children: actions))
             if let code = model.state, let name = subdivisions.first(where: { $0.code == code })?.name {
-                button.setTitle(name, for: .normal)
-            } else {
-                button.setTitle(field.placeholder, for: .normal)
+                menuField.setSelected(title: name)
             }
-            stateButton = button
-            return FieldContainerView(appearance: appearance, control: button)
+            stateButton = menuField
+            return FieldContainerView(appearance: appearance, control: menuField)
         }
 
         // MARK: - Value capture / restore (code-based, §7.3)
@@ -397,7 +382,7 @@
         func selectStateForTest(_ code: String) {
             model.state = code
             if let name = config?.subdivisions.first(where: { $0.code == code })?.name {
-                stateButton?.setTitle(name, for: .normal)
+                stateButton?.setSelected(title: name)
             }
         }
 
@@ -405,7 +390,7 @@
         /// code path, including stale-subdivision clearing), then reloads the country config.
         func selectCountryForTest(_ code: String) {
             let title = countries.first(where: { $0.code == code })?.name ?? code
-            selectCountry(code, title: title, button: countryButton)
+            selectCountry(code, title: title, field: countryButton)
         }
     }
 #endif

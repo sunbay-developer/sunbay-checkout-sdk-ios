@@ -83,6 +83,22 @@
             backButton.isHidden = !visible
         }
 
+        /// Shows or hides the trailing close (✕) button.
+        ///
+        /// Visibility is orthogonal to the enabled state controlled by `setCloseEnabled(_:)`: the
+        /// content VC hides close on sub-pages (where back is shown instead) and shows it on the home
+        /// page, while `setCloseEnabled(_:)` independently dims it while a confirm is in flight.
+        ///
+        /// - Parameter visible: Whether the close button is visible.
+        func setCloseVisible(_ visible: Bool) {
+            closeButton.isHidden = !visible
+        }
+
+        #if DEBUG
+            /// Test readout: whether the close button is visible.
+            var isCloseVisibleForTest: Bool { !closeButton.isHidden }
+        #endif
+
         private func configureSubviews(localize: @escaping (String) -> String) {
             let buttonConfig = UIImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
             backButton.setImage(
