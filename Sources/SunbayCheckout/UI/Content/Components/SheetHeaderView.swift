@@ -2,11 +2,15 @@
     import UIKit
 
     /// The sheet header bar (design §5, all screens top): a leading ‹ back button (hidden by default),
-    /// a centered title, and a trailing ✕ close button.
+    /// a centered title with an always-present description line below it, and a trailing ✕ close button.
     ///
-    /// The header is stateless beyond its title/back visibility; navigation decisions belong to the
-    /// content VC (Task 8). Tapping back fires `onBack`; tapping close fires `onClose`. The back button
-    /// is hidden until `setBackVisible(true)` so the root screen shows title + close only.
+    /// The header is stateless beyond its title/description/back visibility; navigation decisions
+    /// belong to the content VC (Task 8). Tapping back fires `onBack`; tapping close fires `onClose`.
+    /// The back button is hidden until `setBackVisible(true)` so the root screen shows title + close
+    /// only. The close button defaults to the secondary (gray) tint.
+    ///
+    /// The description label always reserves exactly one line of height (even when empty), so the
+    /// header does not reflow as pages set or clear their subtitle copy.
     ///
     /// iOS-only: gated by `#if canImport(UIKit)`; does not compile under the macOS host (`swift test`).
     final class SheetHeaderView: UIView {
@@ -20,6 +24,8 @@
         private let backButton = UIButton(type: .system)
         private let closeButton = UIButton(type: .system)
         private let titleLabel = UILabel()
+        private let descriptionLabel = UILabel()
+        private let titleStack = UIStackView()
 
         /// Creates the header with resolved appearance tokens and a localization closure.
         ///
@@ -42,6 +48,17 @@
         /// - Parameter title: The title text (already localized by the caller).
         func setTitle(_ title: String) {
             titleLabel.text = title
+        }
+
+        /// Sets the one-line description shown under the title.
+        ///
+        /// The label always reserves a single line of height; passing an empty string clears the copy
+        /// without collapsing the row (so the header height stays stable across page switches). A
+        /// zero-width space keeps the line laid out when the copy is empty.
+        ///
+        /// - Parameter description: The description text (already localized by the caller), or empty.
+        func setDescription(_ description: String) {
+            descriptionLabel.text = description.isEmpty ? "\u{200B}" : description
         }
 
         /// Enables or disables the back button (locked while a confirm is in flight).
@@ -90,18 +107,33 @@
             backButton.addTarget(self, action: #selector(handleBack), for: .touchUpInside)
 
             closeButton.setImage(UIImage(systemName: "xmark"), for: .normal)
-            closeButton.tintColor = appearance.text
+            closeButton.tintColor = appearance.textSecondary
             closeButton.accessibilityLabel = localize("sunbay.sheet.close")
             closeButton.translatesAutoresizingMaskIntoConstraints = false
             closeButton.addTarget(self, action: #selector(handleClose), for: .touchUpInside)
 
-            titleLabel.font = appearance.sectionTitleFont
+            titleLabel.font = appearance.titleFont
             titleLabel.textColor = appearance.text
             titleLabel.textAlignment = .center
-            titleLabel.translatesAutoresizingMaskIntoConstraints = false
+            titleLabel.numberOfLines = 1
+
+            descriptionLabel.font = appearance.sectionHeaderFont
+            descriptionLabel.textColor = appearance.textSecondary
+            descriptionLabel.textAlignment = .center
+            descriptionLabel.numberOfLines = 1
+            descriptionLabel.lineBreakMode = .byTruncatingTail
+            // Reserve one line even when empty, so the header height is stable across page switches.
+            descriptionLabel.text = "\u{200B}"
+
+            titleStack.axis = .vertical
+            titleStack.alignment = .center
+            titleStack.spacing = 2
+            titleStack.addArrangedSubview(titleLabel)
+            titleStack.addArrangedSubview(descriptionLabel)
+            titleStack.translatesAutoresizingMaskIntoConstraints = false
 
             addSubview(backButton)
-            addSubview(titleLabel)
+            addSubview(titleStack)
             addSubview(closeButton)
 
             NSLayoutConstraint.activate([
@@ -115,15 +147,15 @@
                 closeButton.widthAnchor.constraint(equalToConstant: 44),
                 closeButton.heightAnchor.constraint(equalToConstant: 44),
 
-                titleLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-                titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-                titleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: backButton.trailingAnchor, constant: 8),
-                titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -8),
+                titleStack.centerXAnchor.constraint(equalTo: centerXAnchor),
+                titleStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+                titleStack.leadingAnchor.constraint(greaterThanOrEqualTo: backButton.trailingAnchor, constant: 8),
+                titleStack.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -8),
 
-                // Deterministic row height (the 44pt hit-target of the buttons). An open-ended `>= 44`
-                // left the header/scroll split of the parent's vertical chain ambiguous, so the header
-                // could absorb all spare height. The title is single-line and truncates instead of growing.
-                heightAnchor.constraint(equalToConstant: 44),
+                // Deterministic row height so the header/scroll split of the parent's vertical chain
+                // stays unambiguous. Sized for the title + the always-present one-line description;
+                // both labels are single-line and truncate instead of growing.
+                heightAnchor.constraint(equalToConstant: 60),
             ])
         }
 

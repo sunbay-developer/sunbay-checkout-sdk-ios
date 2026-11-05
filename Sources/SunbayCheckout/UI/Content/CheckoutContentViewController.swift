@@ -107,6 +107,11 @@
 
         private var lastReportedHeight: CGFloat = 0
 
+        /// Custom home-page title / description (both optional). Only the home page reads these; the
+        /// new-card subpage keeps its built-in title and always clears the description line.
+        private let homeTitle: String?
+        private let homeDescription: String?
+
         // MARK: - Init
 
         /// Creates the content VC.
@@ -119,6 +124,8 @@
         ///   - billingMode: The billing-address collection mode.
         ///   - shippingMode: The shipping-address collection mode.
         ///   - addressService: The address-metadata service (for the full address form).
+        ///   - homeTitle: Optional custom home-page title (nil → the localized default pay title).
+        ///   - homeDescription: Optional custom home-page description (nil → an empty reserved line).
         init(
             session: CheckoutSession,
             savedCards: [SavedCard],
@@ -126,7 +133,9 @@
             localize: @escaping (String) -> String,
             billingMode: Appearance.AddressCollectionMode,
             shippingMode: Appearance.AddressCollectionMode,
-            addressService: any AddressMetadataService
+            addressService: any AddressMetadataService,
+            homeTitle: String? = nil,
+            homeDescription: String? = nil
         ) {
             self.session = session
             self.savedCards = savedCards
@@ -135,6 +144,8 @@
             self.billingMode = billingMode
             self.shippingMode = shippingMode
             self.addressService = addressService
+            self.homeTitle = homeTitle
+            self.homeDescription = homeDescription
             super.init(nibName: nil, bundle: nil)
         }
 
@@ -673,6 +684,7 @@
 
         /// Builds the new-card subpage: card form + optional save toggle + address forms.
         private func buildNewCardStack() {
+            newCardStack.addArrangedSubview(makeSectionTitle("sunbay.card.informationTitle"))
             newCardStack.addArrangedSubview(cardForm)
 
             if session.cofEnabled {
@@ -812,11 +824,14 @@
             return row
         }
 
+        /// Builds a group section header: uppercased, gray (`textSecondary`), and in the smaller
+        /// `sectionHeaderFont`, so it reads as a de-emphasized overline distinct from the content.
+        /// Shared by the "Card information", billing, and shipping group titles.
         private func makeSectionTitle(_ key: String) -> UILabel {
             let label = UILabel()
-            label.text = localize(key)
-            label.font = appearance.sectionTitleFont
-            label.textColor = appearance.text
+            label.text = localize(key).uppercased()
+            label.font = appearance.sectionHeaderFont
+            label.textColor = appearance.textSecondary
             return label
         }
 
@@ -871,7 +886,7 @@
         // MARK: - Header / navigation
 
         private func configureHeader() {
-            header.setTitle(localize("sunbay.sheet.payTitle"))
+            applyHomeHeaderCopy()
             header.onClose = { [weak self] in
                 guard let self else { return }
                 // Belt and braces: ignore programmatic / accessibility activation while a payment is
@@ -896,29 +911,63 @@
         /// subpage. No back button (home is the root). The title returns to the pay title.
         private func showHome(animated: Bool = true) {
             guard !stateMachine.state.isLockedAgainstNewConfirm else { return }
-            isShowingNewCard = false
-            homeStack.isHidden = false
-            newCardStack.isHidden = true
-            header.setBackVisible(false)
-            header.setTitle(localize("sunbay.sheet.payTitle"))
+            performPageSwitch(direction: .backward, animated: animated) {
+                isShowingNewCard = false
+                homeStack.isHidden = false
+                newCardStack.isHidden = true
+            }
+            performHeaderSwitch(animated: animated) {
+                self.header.setBackVisible(false)
+                self.applyHomeHeaderCopy()
+            }
             notice.hide()
             refreshConfirmButtonState()
             reportContentHeightIfChanged()
+        }
+
+        /// Applies the home-page header copy: the custom title (or the localized default) and the
+        /// custom one-line description (or an empty reserved line). Only the home page is configurable.
+        private func applyHomeHeaderCopy() {
+            let title = homeTitle ?? localize("sunbay.sheet.payTitle")
+            header.setTitle(title)
+            header.setDescription(homeDescription ?? "")
+        }
+
+        /// Applies a page switch with the shared forward/backward transition (see `PageTransition`).
+        /// Any future in-sheet page change should go through here.
+        private func performPageSwitch(
+            direction: PageDirection, animated: Bool, change: () -> Void
+        ) {
+            PageTransition.perform(
+                in: scrollView, content: rootStack, direction: direction,
+                animated: animated && appearance.pageTransitionsEnabled, change: change)
+        }
+
+        /// Cross-dissolves the header (title + back button) in step with a page switch.
+        private func performHeaderSwitch(animated: Bool, change: @escaping () -> Void) {
+            PageTransition.crossDissolve(
+                header, animated: animated && appearance.pageTransitionsEnabled, change: change)
         }
 
         /// Shows the independent new-card subpage (card form + address + Pay; no express). A back
         /// button returns to the home page. Entering clears any saved-card selection.
         private func showNewCardSubpage(animated: Bool = true) {
             guard !stateMachine.state.isLockedAgainstNewConfirm else { return }
-            isShowingNewCard = true
-            homeStack.isHidden = true
-            newCardStack.isHidden = false
+            performPageSwitch(direction: .forward, animated: animated) {
+                isShowingNewCard = true
+                homeStack.isHidden = true
+                newCardStack.isHidden = false
+            }
             // Clear both the selection state and the list's visual radio, so returning home does not
             // show a highlighted row while Pay is hidden.
             selectedSavedCardId = nil
             savedCardList?.selectedPaymentMethodId = nil
-            header.setBackVisible(true)
-            header.setTitle(localize("sunbay.sheet.newCard"))
+            performHeaderSwitch(animated: animated) {
+                self.header.setBackVisible(true)
+                self.header.setTitle(self.localize("sunbay.sheet.newCard"))
+                // The new-card subpage is not configurable; always clear the description line.
+                self.header.setDescription("")
+            }
             notice.hide()
             refreshConfirmButtonState()
             reportContentHeightIfChanged()

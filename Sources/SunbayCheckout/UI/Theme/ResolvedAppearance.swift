@@ -38,6 +38,11 @@
 
         /// Font for card input fields (body text style).
         let cardFieldFont: UIFont
+        /// Font for the sheet header title (title3, semibold). Larger than a section title.
+        let titleFont: UIFont
+        /// Font for group section headers (caption1, semibold). Smaller than the content, paired
+        /// with `textSecondary` + uppercased copy to read as a de-emphasized overline.
+        let sectionHeaderFont: UIFont
         /// Font for section titles (subheadline, semibold).
         let sectionTitleFont: UIFont
         /// Font for the primary call-to-action button (headline).
@@ -60,6 +65,8 @@
         let expressPosition: Appearance.ExpressPosition
         /// Bottom-sheet sizing policy (min height, max fraction, mode).
         let sheetSizing: Appearance.SheetSizing
+        /// Whether in-sheet page switches animate.
+        let pageTransitionsEnabled: Bool
 
         // MARK: - Primary button
 
@@ -96,6 +103,10 @@
             let scale = appearance.font.sizeScaleFactor
             let cardFieldFont = Self.font(
                 base: appearance.font.base, textStyle: .body, scale: scale, weight: nil)
+            let titleFont = Self.font(
+                base: appearance.font.base, textStyle: .title3, scale: scale, weight: .semibold)
+            let sectionHeaderFont = Self.font(
+                base: appearance.font.base, textStyle: .caption1, scale: scale, weight: .semibold)
             let sectionTitleFont = Self.font(
                 base: appearance.font.base, textStyle: .subheadline, scale: scale, weight: .semibold)
             let ctaFont = Self.font(
@@ -117,6 +128,8 @@
                 danger: danger,
                 success: success,
                 cardFieldFont: cardFieldFont,
+                titleFont: titleFont,
+                sectionHeaderFont: sectionHeaderFont,
                 sectionTitleFont: sectionTitleFont,
                 ctaFont: ctaFont,
                 cornerRadius: appearance.cornerRadius,
@@ -125,6 +138,7 @@
                 density: appearance.density,
                 expressPosition: appearance.expressPosition,
                 sheetSizing: appearance.sheetSizing,
+                pageTransitionsEnabled: appearance.pageTransitionsEnabled,
                 primaryButtonBackground: primaryButtonBackground,
                 primaryButtonText: primaryButtonText,
                 primaryButtonCornerRadius: primaryButtonCornerRadius

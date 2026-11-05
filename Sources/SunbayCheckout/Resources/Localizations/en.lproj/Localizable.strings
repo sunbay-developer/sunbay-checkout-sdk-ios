@@ -22,6 +22,7 @@
 "sunbay.address.line1" = "Address";
 "sunbay.address.postalCode" = "Postal code";
 "sunbay.address.loadError" = "Couldn't load address options.";
+"sunbay.card.informationTitle" = "Card information";
 "sunbay.card.number" = "Card number";
 "sunbay.card.expiry" = "MM / YY";
 "sunbay.card.cvc" = "CVC";

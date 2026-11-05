@@ -105,6 +105,11 @@
         /// configuration's appearance (or `.default`).
         private let appearance: Appearance
 
+        /// Custom home-page title / description forwarded from the host configuration (both optional).
+        /// Only the home page consumes these; the new-card subpage keeps its built-in title.
+        private let paymentSheetTitle: String?
+        private let paymentSheetDescription: String?
+
         /// The address-metadata service threaded in from `SunbayCheckout` (already cache-wrapped),
         /// used to build the content VC's full-mode address form. UI-agnostic (Core type).
         private let addressMetadataService: any AddressMetadataService
@@ -150,6 +155,8 @@
                 customerAccessSecret: customerAccessSecret,
                 localize: LocalizationResolver(explicitLocale: checkout.configuration.locale).localizedNoComment,
                 appearance: checkout.configuration.appearance ?? .default,
+                paymentSheetTitle: checkout.configuration.paymentSheetTitle,
+                paymentSheetDescription: checkout.configuration.paymentSheetDescription,
                 addressMetadataService: checkout.addressMetadataService
             )
         }
@@ -168,6 +175,8 @@
         ///   - appearance: The appearance for the content + container; defaults to `.default` so
         ///     existing internal-init call sites (tests driving `runCheckout` directly) compile
         ///     unchanged.
+        ///   - paymentSheetTitle: Custom home-page title; defaults to nil (uses the localized default).
+        ///   - paymentSheetDescription: Custom home-page description; defaults to nil (no subtitle).
         ///   - addressMetadataService: The address-metadata service for the full-mode address form;
         ///     defaults to a fail-soft empty service so existing call sites compile unchanged.
         init(
@@ -176,6 +185,8 @@
             customerAccessSecret: String? = nil,
             localize: @escaping (String) -> String = LocalizationResolver(explicitLocale: nil).localizedNoComment,
             appearance: Appearance = .default,
+            paymentSheetTitle: String? = nil,
+            paymentSheetDescription: String? = nil,
             addressMetadataService: any AddressMetadataService = EmptyAddressMetadataService()
         ) {
             self.controller = controller
@@ -183,6 +194,8 @@
             self.customerAccessSecret = customerAccessSecret
             self.localize = localize
             self.appearance = appearance
+            self.paymentSheetTitle = paymentSheetTitle
+            self.paymentSheetDescription = paymentSheetDescription
             self.addressMetadataService = addressMetadataService
         }
 
@@ -229,6 +242,8 @@
                 presenter: presenter,
                 appearance: appearance,
                 localize: localize,
+                paymentSheetTitle: paymentSheetTitle,
+                paymentSheetDescription: paymentSheetDescription,
                 addressService: addressMetadataService,
                 onStateChange: { [weak self] state in self?.onStateChange?(state) },
                 reconcile: { [controller, sessionId] in await controller.reconcile(sessionId: sessionId) }
@@ -429,6 +444,8 @@
         private weak var presenter: UIViewController?
         private let appearance: Appearance
         private let localize: (String) -> String
+        private let paymentSheetTitle: String?
+        private let paymentSheetDescription: String?
         private let addressService: any AddressMetadataService
         private let onStateChange: (CheckoutPresentationState) -> Void
         /// Query-only reconcile of the session (Core `CheckoutController.reconcile`); honors cancellation.
@@ -461,6 +478,8 @@
             presenter: UIViewController,
             appearance: Appearance,
             localize: @escaping (String) -> String,
+            paymentSheetTitle: String?,
+            paymentSheetDescription: String?,
             addressService: any AddressMetadataService,
             onStateChange: @escaping (CheckoutPresentationState) -> Void,
             reconcile: @escaping @Sendable () async -> CheckoutOutcome
@@ -469,6 +488,8 @@
             self.presenter = presenter
             self.appearance = appearance
             self.localize = localize
+            self.paymentSheetTitle = paymentSheetTitle
+            self.paymentSheetDescription = paymentSheetDescription
             self.addressService = addressService
             self.onStateChange = onStateChange
         }
@@ -520,7 +541,9 @@
                 localize: localize,
                 billingMode: appearance.billingAddressMode,
                 shippingMode: appearance.shippingAddressMode,
-                addressService: addressService
+                addressService: addressService,
+                homeTitle: paymentSheetTitle,
+                homeDescription: paymentSheetDescription
             )
             let containerVC = PaymentSheetContainerViewController(
                 content: contentVC,
