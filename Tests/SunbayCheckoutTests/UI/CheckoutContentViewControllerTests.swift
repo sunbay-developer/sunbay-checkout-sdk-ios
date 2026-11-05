@@ -939,5 +939,49 @@
             XCTAssertFalse(vc.isHomeVisibleForTest)
             XCTAssertFalse(vc.isExpressVisibleForTest, "Express must not show on the new-card subpage.")
         }
+
+        // MARK: - Contextual close visibility
+
+        /// The ✕ is shown on the home page and hidden on both sub-pages (new-card form and the full
+        /// saved-card "View more" list); returning home restores it.
+        func test_closeVisibleOnHome_hiddenOnSubpages() {
+            let vc = makeVC(savedCards: sampleSavedCards())
+            vc.loadViewIfNeeded()
+            XCTAssertTrue(vc.isCloseVisibleForTest, "✕ must show on the home page.")
+
+            vc.openNewCardForTest()
+            XCTAssertFalse(vc.isCloseVisibleForTest, "✕ must be hidden on the new-card subpage.")
+
+            vc.tapBackForTest()
+            XCTAssertTrue(vc.isCloseVisibleForTest, "✕ must return when back on home.")
+
+            vc.tapViewMoreForTest()
+            XCTAssertFalse(vc.isCloseVisibleForTest, "✕ must be hidden on the saved-card list subpage.")
+
+            vc.tapBackForTest()
+            XCTAssertTrue(vc.isCloseVisibleForTest, "✕ must return when back on home.")
+        }
+
+        /// A confirm started from the new-card subpage that ends in `pending`/`unknown` enters the locked
+        /// reconciling state. ✕ is the only escape (back is disabled), so it must be re-shown even though
+        /// the subpage normally hides it — otherwise the user is trapped.
+        func test_closeReappears_whenReconcilingFromNewCardSubpage() {
+            for outcome in [CheckoutOutcome.pending(txnId: "t"), .unknown(sessionId: "sess_1")] {
+                let vc = makeVC(savedCards: [])
+                vc.loadViewIfNeeded()
+                vc.openNewCardForTest()
+                vc.fillCardForTest()
+                XCTAssertFalse(vc.isCloseVisibleForTest, "precondition: ✕ hidden on the subpage (\(outcome)).")
+                vc.simulateTapPay()
+
+                vc.applyOutcome(outcome)
+                waitUntil { vc.currentViewState == .reconciling }
+
+                XCTAssertEqual(vc.currentViewState, .reconciling, "(\(outcome))")
+                XCTAssertTrue(
+                    vc.isCloseVisibleForTest,
+                    "✕ must be re-shown while reconciling so the user can leave (\(outcome)).")
+            }
+        }
     }
 #endif
