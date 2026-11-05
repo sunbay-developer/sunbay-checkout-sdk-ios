@@ -199,14 +199,41 @@
             XCTAssertEqual(paymentMethodId, "pm_2")
         }
 
-        /// On the saved-card home page with nothing selected, the Pay button is hidden (a wallet-only
-        /// / list home shows no bottom Pay button until a card is selected).
-        func test_payButtonHiddenWhenNothingSelectedOnSavedList() {
+        /// On the saved-card home page, the first card is pre-selected: the Pay button is visible and
+        /// enabled immediately, and nothing is submitted by the pre-selection alone.
+        func test_home_preSelectsFirstSavedCard_payEnabled_noSubmit() {
             let vc = makeVC(savedCards: sampleSavedCards())
             vc.loadViewIfNeeded()
-            XCTAssertFalse(
-                vc.isConfirmButtonVisibleForTest,
-                "With no saved card selected, the Pay button must be hidden on the list home page.")
+            let delegate = MockContentDelegate()
+            vc.delegate = delegate
+            XCTAssertEqual(vc.highlightedSavedCardIdForTest, "pm_1")
+            XCTAssertTrue(vc.isConfirmButtonVisibleForTest)
+            XCTAssertTrue(vc.isConfirmButtonEnabledForTest)
+            XCTAssertNil(delegate.lastRequestedAction)
+        }
+
+        /// "View more" is shown only when there are 2+ saved cards; a single saved card is shown
+        /// (pre-selected) with no "View more".
+        func test_viewMore_visibleOnlyForMultipleCards() {
+            let one = makeVC(savedCards: [sampleSavedCards()[0]])
+            one.loadViewIfNeeded()
+            XCTAssertFalse(one.isViewMoreVisibleForTest)
+            XCTAssertEqual(one.highlightedSavedCardIdForTest, "pm_1")
+
+            let many = makeVC(savedCards: sampleSavedCards())
+            many.loadViewIfNeeded()
+            XCTAssertTrue(many.isViewMoreVisibleForTest)
+        }
+
+        /// home → New card → back re-selects the first saved card (Pay stays valid), not blank.
+        func test_homeToNewCardAndBack_reselectsFirstCard() {
+            let vc = makeVC(savedCards: sampleSavedCards())
+            vc.loadViewIfNeeded()
+            vc.tapNewCardEntryForTest()
+            vc.tapBackForTest()
+            XCTAssertTrue(vc.isHomeVisibleForTest)
+            XCTAssertEqual(vc.highlightedSavedCardIdForTest, "pm_1")
+            XCTAssertTrue(vc.isConfirmButtonVisibleForTest)
         }
 
         /// On the new-card subpage the Pay button is ALWAYS visible. With an incomplete form it looks
@@ -279,8 +306,9 @@
             XCTAssertNil(delegate.lastRequestedAction)
         }
 
-        /// home → select → New card → back: no row stays highlighted and Pay is hidden.
-        func test_homeToNewCardAndBack_clearsHighlight_andHidesPay() {
+        /// home → select pm_2 → New card → back: the first card (pm_1) is re-selected as the default
+        /// (no stale pm_2 highlight), and Pay stays visible because a valid default is selected.
+        func test_homeToNewCardAndBack_resetsToFirstCardDefault() {
             let vc = makeVC(savedCards: sampleSavedCards())
             vc.loadViewIfNeeded()
             vc.tapSavedCardRowForTest("pm_2")
@@ -290,8 +318,8 @@
             vc.tapBackForTest()
 
             XCTAssertTrue(vc.isHomeVisibleForTest)
-            XCTAssertNil(vc.highlightedSavedCardIdForTest, "No saved row may look selected.")
-            XCTAssertFalse(vc.isConfirmButtonVisibleForTest, "Pay hidden with nothing selected.")
+            XCTAssertEqual(vc.highlightedSavedCardIdForTest, "pm_1", "Back resets to the first-card default.")
+            XCTAssertTrue(vc.isConfirmButtonVisibleForTest, "Pay stays visible with the default selected.")
         }
 
         // MARK: - Navigation lock while processing
