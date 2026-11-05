@@ -71,6 +71,10 @@
         private lazy var footer = CheckoutFooterView(appearance: appearance, localize: localize)
 
         private var savedCardList: SavedCardListView?
+        /// The home-page collapsed saved-card summary (one `SavedCardRow` + optional "View more").
+        private var savedCardSummary: UIView?
+        /// The home-page "View more" affordance (present only when there are 2+ saved cards).
+        private var viewMoreAffordance: UIView?
         private var expressView: ExpressCheckoutView?
         private var newCardEntryRow: UIView?
 
@@ -95,11 +99,19 @@
         /// The subpage that holds new-card entry (card form + save toggle + address). Hidden while the
         /// home page is shown.
         private let newCardStack = UIStackView()
+        /// The full saved-card list page ("View more"): the complete `SavedCardListView`. Hidden until
+        /// the user taps "View more"; picking a row selects it and returns home.
+        private let allSavedCardsStack = UIStackView()
         /// Fixed bottom chrome: inline notice (above the CTA) + Pay button + powered-by footer.
         private let bottomBar = UIStackView()
 
         /// Whether the new-card subpage (vs the home page) is currently visible.
         private var isShowingNewCard = false
+
+        /// Whether the full saved-card list page ("View more") is currently visible. On this page the
+        /// bottom Pay button is hidden: the page is a pure picker (tap a row to select and return
+        /// home), so there is no in-page confirm — Pay reappears on the home page.
+        private var isShowingAllSavedCards = false
 
         /// The saved card the user has selected on the home page (nil = none selected). Selecting a
         /// row does NOT submit; the user must tap the Pay button (which this enables).
@@ -234,8 +246,8 @@
             var newCardEntryRowForTest: UIView? { newCardEntryRow }
             /// Test readout: the express checkout view, when present.
             var expressViewForTest: UIView? { expressView }
-            /// Test readout: the saved-card list view, when present.
-            var savedCardListViewForTest: UIView? { savedCardList }
+            /// Test readout: the home-visible saved-card view (the collapsed summary), when present.
+            var savedCardListViewForTest: UIView? { savedCardSummary }
 
             /// Test readout: whether the card form is currently interactive (re-enabled after a failure).
             var isCardFormInteractiveForTest: Bool { cardForm.isUserInteractionEnabled }
@@ -323,10 +335,16 @@
                 refreshConfirmButtonState()
             }
 
-            /// Test seam: taps a saved-card row through the REAL `SavedCardListView` wiring
-            /// (row tap → list selection → `onSelect`), unlike `selectSavedCardForTest`.
+            /// Test seam: selects a saved card as if it were chosen, without any page navigation.
+            /// This is a pure, side-effect-free selection seam — it mirrors what the real selection
+            /// wiring ultimately does (set `selectedSavedCardId`, rebuild the summary, refresh the CTA)
+            /// but deliberately does NOT drive the "View more" drill-in. The full-list open/pick path
+            /// has its own seams (`tapViewMoreForTest` + `tapFullListRowForTest`), so this seam stays
+            /// out of navigation timing for unrelated flow tests.
             func tapSavedCardRowForTest(_ paymentMethodId: String) {
-                savedCardList?.tapRowForTest(paymentMethodId)
+                selectedSavedCardId = paymentMethodId
+                rebuildSavedCardSummary()
+                refreshConfirmButtonState()
             }
 
             /// Test seam: taps the "New card" entry row's action.
@@ -349,8 +367,26 @@
                 handleApplePayTapped()
             }
 
-            /// Test readout: the saved list's visually highlighted payment method id.
-            var highlightedSavedCardIdForTest: String? { savedCardList?.selectedPaymentMethodId }
+            /// Test readout: the currently selected/highlighted saved-card payment method id.
+            var highlightedSavedCardIdForTest: String? { selectedSavedCardId }
+
+            /// Test readout: whether the home "View more" affordance is present and visible (2+ cards).
+            var isViewMoreVisibleForTest: Bool {
+                guard let v = viewMoreAffordance else { return false }
+                return !v.isHidden && !homeStack.isHidden
+            }
+
+            /// Test readout: whether the home summary's saved-card row is announced as a tappable button
+            /// (it must NOT be: the summary body is static; only "View more" navigates).
+            var isSummaryRowButtonForTest: Bool {
+                guard let summary = savedCardSummary else { return false }
+                func find(_ v: UIView) -> SavedCardRow? {
+                    if let row = v as? SavedCardRow { return row }
+                    for sub in v.subviews { if let r = find(sub) { return r } }
+                    return nil
+                }
+                return find(summary)?.accessibilityTraits.contains(.button) ?? false
+            }
 
             /// Test readout: whether the Pay button is dimmed (appears disabled) yet still tappable.
             var isConfirmButtonAppearsDisabledForTest: Bool { confirmButton.appearsDisabled }
@@ -387,7 +423,7 @@
             var homeOrderForTest: [String] {
                 homeStack.arrangedSubviews.compactMap { view in
                     if view === expressView { return "express" }
-                    if view === savedCardList { return "savedCards" }
+                    if view === savedCardSummary { return "savedCards" }
                     if view === newCardEntryRow { return "newCardEntry" }
                     return nil
                 }
@@ -407,6 +443,19 @@
 
             /// Test readout: whether the independent new-card subpage (card form) is visible.
             var isNewCardSubpageVisibleForTest: Bool { !newCardStack.isHidden }
+
+            /// Test readout: whether the full saved-card list page ("View more") is visible.
+            var isAllSavedCardsVisibleForTest: Bool { !allSavedCardsStack.isHidden }
+
+            /// Test seam: taps the home "View more" affordance (opens the full saved-card list page).
+            func tapViewMoreForTest() {
+                showAllSavedCards()
+            }
+
+            /// Test seam: taps a row on the full saved-card list page (select + auto-return home).
+            func tapFullListRowForTest(_ paymentMethodId: String) {
+                savedCardList?.tapRowForTest(paymentMethodId)
+            }
 
             /// Test readout: whether the express (wallet) row exists AND is currently visible. It lives in
             /// the home page, so it is visible only while the home page is shown.
@@ -534,6 +583,7 @@
         /// Home page: the Pay button is visible+enabled only when a saved card is selected, and
         /// hidden otherwise (e.g. a wallet-only home shows no bottom Pay button). New-card subpage:
         /// always visible; dimmed (`appearsDisabled`, still tappable) until the form is complete.
+        /// Full saved-card list page ("View more"): Pay is hidden — that page is a pure picker.
         ///
         /// Safe to call while the machine is `.editing` **or** `.failed` — both are editable states
         /// where the user may (re)submit. It must not clobber the CTA while a confirm is in flight
@@ -554,7 +604,12 @@
                 if confirmButton.isHidden != wasHidden { reportContentHeightIfChanged() }
             }
 
-            if isShowingNewCard {
+            if isShowingAllSavedCards {
+                // Full list page is a pure picker: no in-page confirm, Pay returns on the home page.
+                confirmButton.appearsDisabled = false
+                confirmButton.isHidden = true
+                confirmButton.update(status: .disabled, animated: false)
+            } else if isShowingNewCard {
                 // Subpage: Pay is always visible. An incomplete form looks disabled but stays
                 // tappable, so a tap runs `handleConfirmNewCard` and surfaces the field error.
                 confirmButton.isHidden = false
@@ -651,10 +706,15 @@
 
             buildNewCardStack()
             rootStack.addArrangedSubview(newCardStack)
+
+            allSavedCardsStack.axis = .vertical
+            allSavedCardsStack.spacing = 16
+            allSavedCardsStack.isHidden = true
+            rootStack.addArrangedSubview(allSavedCardsStack)
         }
 
-        /// Builds the home page: saved-card list (if any) + "New card" entry, with the express row
-        /// (if available) first for `.top` and last for `.bottom`.
+        /// Builds the home page: a collapsed saved-card summary (if any) + "New card" entry, with the
+        /// express row (if available) first for `.top` and last for `.bottom`.
         private func buildHomeStack() {
             let express = makeExpressView()
             expressView = express
@@ -664,9 +724,11 @@
             }
 
             if !savedCards.isEmpty {
-                let list = makeSavedCardList()
-                savedCardList = list
-                homeStack.addArrangedSubview(list)
+                // Default selection: pre-select the first saved card so Pay is immediately available.
+                selectedSavedCardId = savedCards.first?.id
+                let summary = makeSavedCardSummary()
+                savedCardSummary = summary
+                homeStack.addArrangedSubview(summary)
             }
 
             let entry = makeNewCardEntryRow()
@@ -709,15 +771,78 @@
 
         // MARK: - Component factories
 
-        private func makeSavedCardList() -> SavedCardListView {
-            let list = SavedCardListView(appearance: appearance, cards: savedCards)
-            list.onSelect = { [weak self] paymentMethodId in
-                // Selecting a saved card does NOT submit; record it, highlight it, and enable Pay.
-                guard let self else { return }
-                self.selectedSavedCardId = paymentMethodId
-                self.refreshConfirmButtonState()
+        /// Builds the collapsed home saved-card summary: a single `SavedCardRow` for the currently
+        /// selected card (border-highlighted), plus a trailing "View more" affordance when there are
+        /// 2+ saved cards (so the full list is one tap away). With exactly one saved card, no "View
+        /// more" is shown (there is nothing more to see).
+        ///
+        /// Tapping the summary card itself does nothing (it is already the selected card); only the
+        /// explicit "View more" affordance opens the full list page.
+        private func makeSavedCardSummary() -> UIView {
+            let stack = UIStackView()
+            stack.axis = .vertical
+            stack.spacing = 8
+
+            let selectedId = selectedSavedCardId ?? savedCards.first?.id
+            if let card = savedCards.first(where: { $0.id == selectedId }) ?? savedCards.first {
+                let row = SavedCardRow(appearance: appearance, card: card)
+                row.setSelected(true)
+                row.presentAsStaticSummary()
+                stack.addArrangedSubview(row)
             }
-            return list
+
+            if savedCards.count > 1 {
+                let viewMore = makeViewMoreRow()
+                viewMoreAffordance = viewMore
+                stack.addArrangedSubview(viewMore)
+            } else {
+                viewMoreAffordance = nil
+            }
+            return stack
+        }
+
+        /// Builds the "View more" affordance: a localized label + trailing chevron that opens the full
+        /// saved-card list page. Styled like the "New card" entry's trailing chevron.
+        private func makeViewMoreRow() -> UIView {
+            let container = UIView()
+
+            let label = UILabel()
+            label.text = localize("sunbay.cof.viewMore")
+            label.font = appearance.cardFieldFont
+            label.textColor = appearance.primary
+            label.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            label.translatesAutoresizingMaskIntoConstraints = false
+
+            let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
+            chevron.tintColor = appearance.primary
+            chevron.contentMode = .scaleAspectFit
+            chevron.setContentHuggingPriority(.required, for: .horizontal)
+            chevron.translatesAutoresizingMaskIntoConstraints = false
+
+            let stack = UIStackView(arrangedSubviews: [label, chevron])
+            stack.axis = .horizontal
+            stack.alignment = .center
+            stack.spacing = 6
+            stack.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(stack)
+
+            NSLayoutConstraint.activate([
+                stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
+                stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
+                stack.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+                stack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -8),
+            ])
+
+            container.isAccessibilityElement = true
+            container.accessibilityTraits = .button
+            container.accessibilityLabel = label.text
+            container.addGestureRecognizer(
+                UITapGestureRecognizer(target: self, action: #selector(handleViewMoreTap)))
+            return container
+        }
+
+        @objc private func handleViewMoreTap() {
+            showAllSavedCards()
         }
 
         /// Builds the express (wallet) view for the home page, or nil when unavailable.
@@ -947,14 +1072,22 @@
             showHome(animated: false)
         }
 
-        /// Shows the home page (express + saved-card list + "New card" entry); hides the new-card
-        /// subpage. No back button (home is the root). The title returns to the pay title.
+        /// Shows the home page (express + collapsed saved-card summary + "New card" entry); hides the
+        /// new-card subpage. No back button (home is the root). The title returns to the pay title.
+        /// When saved cards exist, the home summary reflects the current selection (defaulting to the
+        /// first card) so Pay shows a valid default.
         private func showHome(animated: Bool = true) {
             guard !stateMachine.state.isLockedAgainstNewConfirm else { return }
+            if !savedCards.isEmpty, selectedSavedCardId == nil {
+                selectedSavedCardId = savedCards.first?.id
+            }
+            rebuildSavedCardSummary()
             performPageSwitch(direction: .backward, animated: animated) {
                 isShowingNewCard = false
+                isShowingAllSavedCards = false
                 homeStack.isHidden = false
                 newCardStack.isHidden = true
+                allSavedCardsStack.isHidden = true
             }
             performHeaderSwitch(animated: animated) {
                 self.header.setBackVisible(false)
@@ -963,6 +1096,61 @@
             notice.hide()
             refreshConfirmButtonState()
             reportContentHeightIfChanged()
+        }
+
+        /// Rebuilds the home saved-card summary in place so it reflects the current `selectedSavedCardId`
+        /// (and the correct "View more" visibility). No-op when there are no saved cards.
+        private func rebuildSavedCardSummary() {
+            guard !savedCards.isEmpty, let old = savedCardSummary else { return }
+            let fresh = makeSavedCardSummary()
+            savedCardSummary = fresh
+            if let index = homeStack.arrangedSubviews.firstIndex(of: old) {
+                homeStack.insertArrangedSubview(fresh, at: index)
+            }
+            homeStack.removeArrangedSubview(old)
+            old.removeFromSuperview()
+        }
+
+        /// Opens the full saved-card list page ("View more"): a forward page switch to the complete
+        /// `SavedCardListView`, with the header showing the "Saved cards" title and a back button. The
+        /// list reflects the current selection. Picking a row selects it and returns home; the back
+        /// button returns home keeping the current selection.
+        private func showAllSavedCards() {
+            guard !stateMachine.state.isLockedAgainstNewConfirm, !savedCards.isEmpty else { return }
+            if savedCardList == nil {
+                let list = makeFullSavedCardList()
+                savedCardList = list
+                allSavedCardsStack.addArrangedSubview(list)
+            }
+            savedCardList?.selectedPaymentMethodId = selectedSavedCardId
+            performPageSwitch(direction: .forward, animated: true) {
+                isShowingNewCard = false
+                isShowingAllSavedCards = true
+                homeStack.isHidden = true
+                newCardStack.isHidden = true
+                allSavedCardsStack.isHidden = false
+            }
+            performHeaderSwitch(animated: true) {
+                self.header.setBackVisible(true)
+                self.header.setTitle(self.localize("sunbay.sheet.savedCards"))
+            }
+            notice.hide()
+            refreshConfirmButtonState()
+            reportContentHeightIfChanged()
+        }
+
+        /// Builds the full saved-card list for the "View more" page. Picking a row records the
+        /// selection, refreshes the home summary, and returns home (picker flow); it never submits.
+        private func makeFullSavedCardList() -> SavedCardListView {
+            let list = SavedCardListView(appearance: appearance, cards: savedCards)
+            list.onSelect = { [weak self] paymentMethodId in
+                guard let self else { return }
+                self.selectedSavedCardId = paymentMethodId
+                self.rebuildSavedCardSummary()
+                self.refreshConfirmButtonState()
+                self.showHome()
+            }
+            return list
         }
 
         /// Applies the home-page header title: the custom title, or the localized default. Only the
@@ -988,18 +1176,19 @@
         }
 
         /// Shows the independent new-card subpage (card form + address + Pay; no express). A back
-        /// button returns to the home page. Entering clears any saved-card selection.
+        /// button returns to the home page. Entering clears the saved-card selection; returning home
+        /// re-applies the first-card default.
         private func showNewCardSubpage(animated: Bool = true) {
             guard !stateMachine.state.isLockedAgainstNewConfirm else { return }
             performPageSwitch(direction: .forward, animated: animated) {
                 isShowingNewCard = true
+                isShowingAllSavedCards = false
                 homeStack.isHidden = true
                 newCardStack.isHidden = false
+                allSavedCardsStack.isHidden = true
             }
-            // Clear both the selection state and the list's visual radio, so returning home does not
-            // show a highlighted row while Pay is hidden.
+            // Clear the selection while on the subpage; `showHome()` re-applies the first-card default.
             selectedSavedCardId = nil
-            savedCardList?.selectedPaymentMethodId = nil
             performHeaderSwitch(animated: animated) {
                 self.header.setBackVisible(true)
                 self.header.setTitle(self.localize("sunbay.sheet.newCard"))

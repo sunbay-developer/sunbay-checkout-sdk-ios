@@ -1,11 +1,11 @@
 #if canImport(UIKit)
     import UIKit
 
-    /// The saved-card (COF) list (design §5, screen 2): a vertical stack of `SavedCardRow`s with radio
-    /// selection.
+    /// The saved-card (COF) list (design §5, screen 2): a vertical stack of `SavedCardRow`s with
+    /// single-choice selection.
     ///
-    /// Selection is single-choice: setting `selectedPaymentMethodId` re-renders the radios and brand
-    /// tints; tapping a row fires `onSelect(id)` (which does NOT submit — the content VC enables the
+    /// Selection is single-choice: setting `selectedPaymentMethodId` re-renders the rows' border
+    /// highlight; tapping a row fires `onSelect(id)` (which does NOT submit — the content VC enables the
     /// Pay button). The "New card" entry row is NOT part of this list; it lives on the home page as a
     /// standalone row (so it shows even when there are no saved cards). The view holds only
     /// `SavedCard` display data (no sensitive payment data).
@@ -15,7 +15,7 @@
         /// Invoked with the selected payment method id when a saved-card row is tapped.
         var onSelect: ((String) -> Void)?
 
-        /// The currently selected payment method id (radio selection). Setting it updates the rows.
+        /// The currently selected payment method id (single-choice). Setting it updates the rows.
         var selectedPaymentMethodId: String? {
             didSet { applySelection() }
         }

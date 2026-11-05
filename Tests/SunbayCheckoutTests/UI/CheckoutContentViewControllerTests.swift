@@ -199,14 +199,106 @@
             XCTAssertEqual(paymentMethodId, "pm_2")
         }
 
-        /// On the saved-card home page with nothing selected, the Pay button is hidden (a wallet-only
-        /// / list home shows no bottom Pay button until a card is selected).
-        func test_payButtonHiddenWhenNothingSelectedOnSavedList() {
+        /// On the saved-card home page, the first card is pre-selected: the Pay button is visible and
+        /// enabled immediately, and nothing is submitted by the pre-selection alone.
+        func test_home_preSelectsFirstSavedCard_payEnabled_noSubmit() {
             let vc = makeVC(savedCards: sampleSavedCards())
             vc.loadViewIfNeeded()
-            XCTAssertFalse(
-                vc.isConfirmButtonVisibleForTest,
-                "With no saved card selected, the Pay button must be hidden on the list home page.")
+            let delegate = MockContentDelegate()
+            vc.delegate = delegate
+            XCTAssertEqual(vc.highlightedSavedCardIdForTest, "pm_1")
+            XCTAssertTrue(vc.isConfirmButtonVisibleForTest)
+            XCTAssertTrue(vc.isConfirmButtonEnabledForTest)
+            XCTAssertNil(delegate.lastRequestedAction)
+        }
+
+        /// "View more" is shown only when there are 2+ saved cards; a single saved card is shown
+        /// (pre-selected) with no "View more".
+        func test_viewMore_visibleOnlyForMultipleCards() {
+            let one = makeVC(savedCards: [sampleSavedCards()[0]])
+            one.loadViewIfNeeded()
+            XCTAssertFalse(one.isViewMoreVisibleForTest)
+            XCTAssertEqual(one.highlightedSavedCardIdForTest, "pm_1")
+
+            let many = makeVC(savedCards: sampleSavedCards())
+            many.loadViewIfNeeded()
+            XCTAssertTrue(many.isViewMoreVisibleForTest)
+        }
+
+        /// home → New card → back re-selects the first saved card (Pay stays valid), not blank.
+        func test_homeToNewCardAndBack_reselectsFirstCard() {
+            let vc = makeVC(savedCards: sampleSavedCards())
+            vc.loadViewIfNeeded()
+            vc.tapNewCardEntryForTest()
+            vc.tapBackForTest()
+            XCTAssertTrue(vc.isHomeVisibleForTest)
+            XCTAssertEqual(vc.highlightedSavedCardIdForTest, "pm_1")
+            XCTAssertTrue(vc.isConfirmButtonVisibleForTest)
+        }
+
+        /// The home summary card is a static, non-interactive element: it must not be announced to
+        /// VoiceOver as a tappable button (only the separate "View more" control navigates).
+        func test_homeSummaryRow_isNotAnnouncedAsButton() {
+            let vc = makeVC(savedCards: sampleSavedCards())
+            vc.loadViewIfNeeded()
+            XCTAssertFalse(vc.isSummaryRowButtonForTest, "Summary card must not advertise a .button trait.")
+        }
+
+        /// "View more" opens the full saved-card list page; the back button returns home with the
+        /// selection intact.
+        func test_viewMore_opensFullList_backReturnsHome() {
+            let vc = makeVC(savedCards: sampleSavedCards())
+            vc.loadViewIfNeeded()
+            vc.tapViewMoreForTest()
+            XCTAssertTrue(vc.isAllSavedCardsVisibleForTest)
+            XCTAssertFalse(vc.isHomeVisibleForTest)
+            vc.tapBackForTest()
+            XCTAssertTrue(vc.isHomeVisibleForTest)
+            XCTAssertEqual(vc.highlightedSavedCardIdForTest, "pm_1")
+        }
+
+        /// The full saved-card list page ("View more") is a pure picker: the bottom Pay button is
+        /// hidden while it is visible, and reappears once the user returns home (via back or by
+        /// picking a card).
+        func test_viewMore_hidesPay_restoredOnReturnHome() {
+            let vc = makeVC(savedCards: sampleSavedCards())
+            vc.loadViewIfNeeded()
+            XCTAssertTrue(vc.isConfirmButtonVisibleForTest, "Precondition: Pay is visible on home.")
+
+            vc.tapViewMoreForTest()
+            XCTAssertTrue(vc.isAllSavedCardsVisibleForTest)
+            XCTAssertFalse(vc.isConfirmButtonVisibleForTest, "Pay is hidden on the full list page.")
+
+            vc.tapBackForTest()
+            XCTAssertTrue(vc.isHomeVisibleForTest)
+            XCTAssertTrue(vc.isConfirmButtonVisibleForTest, "Pay returns home via back.")
+
+            vc.tapViewMoreForTest()
+            XCTAssertFalse(vc.isConfirmButtonVisibleForTest)
+            vc.tapFullListRowForTest("pm_2")
+            XCTAssertTrue(vc.isHomeVisibleForTest)
+            XCTAssertTrue(vc.isConfirmButtonVisibleForTest, "Pay returns home when a card is picked.")
+        }
+
+        /// Picking a non-first card on the full list selects it and auto-returns home showing that
+        /// card; tapping Pay then submits `.confirmSavedCard` for the picked card.
+        func test_fullList_pickSelectsAndReturnsHome() {
+            let vc = makeVC(savedCards: sampleSavedCards())
+            vc.loadViewIfNeeded()
+            let delegate = MockContentDelegate()
+            vc.delegate = delegate
+            vc.tapViewMoreForTest()
+            vc.tapFullListRowForTest("pm_2")
+            XCTAssertTrue(vc.isHomeVisibleForTest, "Picking a card returns to home.")
+            XCTAssertEqual(vc.highlightedSavedCardIdForTest, "pm_2")
+            XCTAssertTrue(vc.isConfirmButtonVisibleForTest)
+            XCTAssertNil(delegate.lastRequestedAction, "Picking must not submit.")
+
+            vc.simulateTapPay()
+            guard case let .confirmSavedCard(id) = delegate.lastRequestedAction else {
+                return XCTFail("Expected .confirmSavedCard, got \(String(describing: delegate.lastRequestedAction))")
+            }
+            XCTAssertEqual(id, "pm_2")
         }
 
         /// On the new-card subpage the Pay button is ALWAYS visible. With an incomplete form it looks
@@ -279,8 +371,9 @@
             XCTAssertNil(delegate.lastRequestedAction)
         }
 
-        /// home → select → New card → back: no row stays highlighted and Pay is hidden.
-        func test_homeToNewCardAndBack_clearsHighlight_andHidesPay() {
+        /// home → select pm_2 → New card → back: the first card (pm_1) is re-selected as the default
+        /// (no stale pm_2 highlight), and Pay stays visible because a valid default is selected.
+        func test_homeToNewCardAndBack_resetsToFirstCardDefault() {
             let vc = makeVC(savedCards: sampleSavedCards())
             vc.loadViewIfNeeded()
             vc.tapSavedCardRowForTest("pm_2")
@@ -290,8 +383,8 @@
             vc.tapBackForTest()
 
             XCTAssertTrue(vc.isHomeVisibleForTest)
-            XCTAssertNil(vc.highlightedSavedCardIdForTest, "No saved row may look selected.")
-            XCTAssertFalse(vc.isConfirmButtonVisibleForTest, "Pay hidden with nothing selected.")
+            XCTAssertEqual(vc.highlightedSavedCardIdForTest, "pm_1", "Back resets to the first-card default.")
+            XCTAssertTrue(vc.isConfirmButtonVisibleForTest, "Pay stays visible with the default selected.")
         }
 
         // MARK: - Navigation lock while processing
@@ -489,9 +582,9 @@
             XCTAssertGreaterThan(homeHeight ?? 0, 36 + 52, "Chrome must be counted.")
         }
 
-        /// Selecting a saved card makes the Pay button appear in the fixed bottom bar, which must be
-        /// re-reported (no navigation involved); deselecting via navigation shrinks it again.
-        func test_reportedHeight_growsWhenPayAppears_shrinksWhenNavigationResets() {
+        /// With a pre-selected saved card the Pay button is visible on home from the start; navigating
+        /// to the taller new-card subpage grows the reported height, and returning home restores it.
+        func test_reportedHeight_homeShowsPay_growsOnNewCard_restoresOnBack() {
             let vc = makeVC(savedCards: sampleSavedCards())
             let delegate = MockContentDelegate()
             vc.delegate = delegate
@@ -503,21 +596,18 @@
                 window.rootViewController = nil
             }
             vc.view.layoutIfNeeded()
-            guard let before = delegate.heights.last else { return XCTFail("No initial height reported.") }
-            XCTAssertFalse(vc.isConfirmButtonVisibleForTest)
-
-            vc.tapSavedCardRowForTest("pm_1")
+            // Home pre-selects the first card, so Pay is already visible.
             XCTAssertTrue(vc.isConfirmButtonVisibleForTest)
-            guard let withPay = delegate.heights.last else { return XCTFail("No height after selection.") }
-            XCTAssertGreaterThan(withPay, before + 20, "Pay button appearing must grow the reported height.")
+            guard let home = delegate.heights.last else { return XCTFail("No initial height reported.") }
 
-            // New card → back clears the selection: Pay hides again and the height shrinks back.
             vc.tapNewCardEntryForTest()
+            guard let form = delegate.heights.last else { return XCTFail("No height after New card.") }
+            XCTAssertGreaterThan(form, home + 20, "The new-card subpage is taller than home.")
+
             vc.tapBackForTest()
-            XCTAssertFalse(vc.isConfirmButtonVisibleForTest)
-            guard let after = delegate.heights.last else { return XCTFail("No height after reset.") }
-            XCTAssertLessThan(after, withPay, "Hiding Pay must shrink the reported height.")
-            XCTAssertEqual(after, before, accuracy: 1.0)
+            XCTAssertTrue(vc.isConfirmButtonVisibleForTest, "Back restores the pre-selected card and its Pay.")
+            guard let back = delegate.heights.last else { return XCTFail("No height after back.") }
+            XCTAssertEqual(back, home, accuracy: 1.0, "Returning home restores the home height.")
         }
 
         // MARK: - Pending / unknown unlock, double-tap while processing
