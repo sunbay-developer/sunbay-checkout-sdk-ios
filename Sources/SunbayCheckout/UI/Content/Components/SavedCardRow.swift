@@ -24,6 +24,7 @@
         private let brandBadge = UILabel()
         private let numberLabel = UILabel()
         private let expiryLabel = UILabel()
+        private var tapRecognizer: UITapGestureRecognizer?
 
         /// Creates a saved-card row.
         ///
@@ -92,7 +93,20 @@
             accessibilityLabel = "\(card.brand) \(card.last4)"
 
             addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(handleTap)))
+            if let tap = gestureRecognizers?.last as? UITapGestureRecognizer { tapRecognizer = tap }
             refreshBorder()
+        }
+
+        /// Presents the row as a static, non-interactive summary: removes the tap gesture and the
+        /// `.button` accessibility trait so VoiceOver does not announce an action that never fires.
+        /// Used for the collapsed home summary, where only the separate "View more" control navigates.
+        func presentAsStaticSummary() {
+            if let tap = tapRecognizer {
+                removeGestureRecognizer(tap)
+                tapRecognizer = nil
+            }
+            onTap = nil
+            accessibilityTraits = .staticText
         }
 
         override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {

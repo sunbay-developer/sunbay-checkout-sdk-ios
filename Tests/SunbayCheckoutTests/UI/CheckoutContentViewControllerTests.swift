@@ -236,6 +236,14 @@
             XCTAssertTrue(vc.isConfirmButtonVisibleForTest)
         }
 
+        /// The home summary card is a static, non-interactive element: it must not be announced to
+        /// VoiceOver as a tappable button (only the separate "View more" control navigates).
+        func test_homeSummaryRow_isNotAnnouncedAsButton() {
+            let vc = makeVC(savedCards: sampleSavedCards())
+            vc.loadViewIfNeeded()
+            XCTAssertFalse(vc.isSummaryRowButtonForTest, "Summary card must not advertise a .button trait.")
+        }
+
         /// "View more" opens the full saved-card list page; the back button returns home with the
         /// selection intact.
         func test_viewMore_opensFullList_backReturnsHome() {

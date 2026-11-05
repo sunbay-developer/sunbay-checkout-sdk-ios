@@ -330,19 +330,16 @@
                 refreshConfirmButtonState()
             }
 
-            /// Test seam: taps a saved-card row through the REAL selection wiring. On the home page the
-            /// per-card choice lives on the full list page ("View more"); this opens it (when present)
-            /// and taps the row there, then the pick returns home. For a single saved card it selects
-            /// the pre-selected card directly.
+            /// Test seam: selects a saved card as if it were chosen, without any page navigation.
+            /// This is a pure, side-effect-free selection seam — it mirrors what the real selection
+            /// wiring ultimately does (set `selectedSavedCardId`, rebuild the summary, refresh the CTA)
+            /// but deliberately does NOT drive the "View more" drill-in. The full-list open/pick path
+            /// has its own seams (`tapViewMoreForTest` + `tapFullListRowForTest`), so this seam stays
+            /// out of navigation timing for unrelated flow tests.
             func tapSavedCardRowForTest(_ paymentMethodId: String) {
-                if savedCards.count > 1 {
-                    showAllSavedCards()
-                    savedCardList?.tapRowForTest(paymentMethodId)
-                } else {
-                    selectedSavedCardId = paymentMethodId
-                    rebuildSavedCardSummary()
-                    refreshConfirmButtonState()
-                }
+                selectedSavedCardId = paymentMethodId
+                rebuildSavedCardSummary()
+                refreshConfirmButtonState()
             }
 
             /// Test seam: taps the "New card" entry row's action.
@@ -372,6 +369,18 @@
             var isViewMoreVisibleForTest: Bool {
                 guard let v = viewMoreAffordance else { return false }
                 return !v.isHidden && !homeStack.isHidden
+            }
+
+            /// Test readout: whether the home summary's saved-card row is announced as a tappable button
+            /// (it must NOT be: the summary body is static; only "View more" navigates).
+            var isSummaryRowButtonForTest: Bool {
+                guard let summary = savedCardSummary else { return false }
+                func find(_ v: UIView) -> SavedCardRow? {
+                    if let row = v as? SavedCardRow { return row }
+                    for sub in v.subviews { if let r = find(sub) { return r } }
+                    return nil
+                }
+                return find(summary)?.accessibilityTraits.contains(.button) ?? false
             }
 
             /// Test readout: whether the Pay button is dimmed (appears disabled) yet still tappable.
@@ -767,6 +776,7 @@
             if let card = savedCards.first(where: { $0.id == selectedId }) ?? savedCards.first {
                 let row = SavedCardRow(appearance: appearance, card: card)
                 row.setSelected(true)
+                row.presentAsStaticSummary()
                 stack.addArrangedSubview(row)
             }
 
