@@ -22,6 +22,7 @@ enum SunbayUIStringKeys {
         "sunbay.sheet.newCard",
         "sunbay.sheet.savedCards",
         // Card form
+        "sunbay.card.informationTitle",
         "sunbay.card.number",
         "sunbay.card.expiry",
         "sunbay.card.cvc",
@@ -36,6 +37,7 @@ enum SunbayUIStringKeys {
         "sunbay.address.loadError",
         // COF
         "sunbay.cof.newPaymentMethod",
+        "sunbay.cof.viewMore",
         // Common / state
         "sunbay.common.retry",
         "sunbay.notice.reconciling",

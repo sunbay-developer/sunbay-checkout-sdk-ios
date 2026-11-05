@@ -23,8 +23,8 @@
         private let chevron = UIImageView(image: UIImage(systemName: "chevron.down"))
         private let menuButton = UIButton(type: .system)
 
-        /// The top band reserved for the floated label, in points (matches `FloatingLabelTextField`).
-        private let floatBand: CGFloat = 18
+        /// The top band reserved for the floated label, in points (shared token).
+        private let floatBand = FloatingLabelMetrics.floatBand
         private let leadingInset: CGFloat = 0
         /// Room reserved on the trailing side for the chevron so the value/label never runs under it.
         private let trailingInset: CGFloat = 22
@@ -117,7 +117,7 @@
         // MARK: - Float state
 
         private var floatedFont: UIFont {
-            appearance.cardFieldFont.withSize(max(11, appearance.cardFieldFont.pointSize * 0.72))
+            FloatingLabelMetrics.floatedFont(from: appearance.cardFieldFont)
         }
 
         override func layoutSubviews() {

@@ -100,6 +100,11 @@
         /// here in the UI layer.
         private let localize: (String) -> String
 
+        /// The host-configured locale (BCP-47), or nil to follow the system. Threaded to the content VC
+        /// so the Pay-button amount and error messages format in the configured locale, consistent with
+        /// the UI copy routed through `localize`.
+        private let localeCode: String?
+
         /// The resolved appearance for the content + container, and the merchant color-scheme
         /// preference (drives `overrideUserInterfaceStyle`). Built in `present()` from the host
         /// configuration's appearance (or `.default`).
@@ -153,6 +158,7 @@
                 sessionId: sessionId,
                 customerAccessSecret: customerAccessSecret,
                 localize: LocalizationResolver(explicitLocale: checkout.configuration.locale).localizedNoComment,
+                localeCode: checkout.configuration.locale,
                 appearance: checkout.configuration.appearance ?? .default,
                 paymentSheetTitle: checkout.configuration.paymentSheetTitle,
                 addressMetadataService: checkout.addressMetadataService
@@ -181,6 +187,7 @@
             sessionId: String,
             customerAccessSecret: String? = nil,
             localize: @escaping (String) -> String = LocalizationResolver(explicitLocale: nil).localizedNoComment,
+            localeCode: String? = nil,
             appearance: Appearance = .default,
             paymentSheetTitle: String? = nil,
             addressMetadataService: any AddressMetadataService = EmptyAddressMetadataService()
@@ -189,6 +196,7 @@
             self.sessionId = sessionId
             self.customerAccessSecret = customerAccessSecret
             self.localize = localize
+            self.localeCode = localeCode
             self.appearance = appearance
             self.paymentSheetTitle = paymentSheetTitle
             self.addressMetadataService = addressMetadataService
@@ -237,6 +245,7 @@
                 presenter: presenter,
                 appearance: appearance,
                 localize: localize,
+                localeCode: localeCode,
                 paymentSheetTitle: paymentSheetTitle,
                 addressService: addressMetadataService,
                 onStateChange: { [weak self] state in self?.onStateChange?(state) },
@@ -438,6 +447,7 @@
         private weak var presenter: UIViewController?
         private let appearance: Appearance
         private let localize: (String) -> String
+        private let localeCode: String?
         private let paymentSheetTitle: String?
         private let addressService: any AddressMetadataService
         private let onStateChange: (CheckoutPresentationState) -> Void
@@ -471,6 +481,7 @@
             presenter: UIViewController,
             appearance: Appearance,
             localize: @escaping (String) -> String,
+            localeCode: String?,
             paymentSheetTitle: String?,
             addressService: any AddressMetadataService,
             onStateChange: @escaping (CheckoutPresentationState) -> Void,
@@ -480,6 +491,7 @@
             self.presenter = presenter
             self.appearance = appearance
             self.localize = localize
+            self.localeCode = localeCode
             self.paymentSheetTitle = paymentSheetTitle
             self.addressService = addressService
             self.onStateChange = onStateChange
@@ -530,6 +542,7 @@
                 savedCards: savedCards,
                 appearance: resolved,
                 localize: localize,
+                localeCode: localeCode,
                 billingMode: appearance.billingAddressMode,
                 shippingMode: appearance.shippingAddressMode,
                 addressService: addressService,

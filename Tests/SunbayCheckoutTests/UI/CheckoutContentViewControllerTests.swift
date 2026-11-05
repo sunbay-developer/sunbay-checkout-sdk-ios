@@ -84,13 +84,16 @@
 
         private func makeVC(
             savedCards: [SavedCard], methods: Set<PaymentMethodKind> = [.card],
-            appearance: Appearance = .default, cofEnabled: Bool = false
+            appearance: Appearance = .default, cofEnabled: Bool = false,
+            localeCode: String? = nil,
+            localize: @escaping (String) -> String = { $0 }
         ) -> CheckoutContentViewController {
             CheckoutContentViewController(
                 session: makeSession(methods: methods, cofEnabled: cofEnabled),
                 savedCards: savedCards,
                 appearance: .resolve(appearance),
-                localize: { $0 },
+                localize: localize,
+                localeCode: localeCode,
                 billingMode: .simple,
                 shippingMode: .simple,
                 addressService: MockAddressService()
@@ -938,6 +941,38 @@
             XCTAssertTrue(vc.isNewCardSubpageVisibleForTest)
             XCTAssertFalse(vc.isHomeVisibleForTest)
             XCTAssertFalse(vc.isExpressVisibleForTest, "Express must not show on the new-card subpage.")
+        }
+
+        // MARK: - Configured-locale formatting
+
+        /// The Pay-button amount is formatted with the host-configured locale, not the device locale.
+        /// de-DE uses a comma decimal separator, so its title differs from en-US's.
+        func test_payButtonAmountHonorsConfiguredLocale() {
+            let en = makeVC(savedCards: [], localeCode: "en-US")
+            en.loadViewIfNeeded()
+            en.openNewCardForTest()
+            en.fillCardForTest()
+
+            let de = makeVC(savedCards: [], localeCode: "de-DE")
+            de.loadViewIfNeeded()
+            de.openNewCardForTest()
+            de.fillCardForTest()
+
+            XCTAssertNotEqual(
+                en.payButtonTitleForTest, de.payButtonTitleForTest,
+                "the amount must format differently under en-US vs de-DE")
+            XCTAssertTrue(
+                de.payButtonTitleForTest.contains("19,99"),
+                "de-DE must use a comma decimal separator; got \(de.payButtonTitleForTest)")
+        }
+
+        /// Error messages localize against the configured locale, not the system/en default.
+        func test_errorMessageHonorsConfiguredLocale() {
+            let vc = makeVC(savedCards: [], localeCode: "zh-CN")
+            vc.loadViewIfNeeded()
+            let message = vc.localizedFailureForTest(
+                CheckoutError(code: "CHECKOUT_EXPIRED", message: "dev fallback", category: .validation, traceId: nil))
+            XCTAssertEqual(message, "结账会话已过期。")
         }
 
         // MARK: - Contextual close visibility

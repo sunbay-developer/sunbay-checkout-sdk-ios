@@ -46,6 +46,10 @@
         private let savedCards: [SavedCard]
         private let appearance: ResolvedAppearance
         private let localize: (String) -> String
+        /// The host-configured locale (BCP-47), or nil to follow the system. Drives amount formatting
+        /// (`payTitle`) and error-message localization (`localizedFailure`) so both honor
+        /// `CheckoutConfiguration.locale`, exactly like the UI copy does via `localize`.
+        private let localeCode: String?
         private let billingMode: Appearance.AddressCollectionMode
         private let shippingMode: Appearance.AddressCollectionMode
         private let addressService: any AddressMetadataService
@@ -132,6 +136,9 @@
         ///   - savedCards: The saved cards to list (empty when COF is unavailable).
         ///   - appearance: The resolved appearance tokens.
         ///   - localize: The localization closure for all copy.
+        ///   - localeCode: The host-configured locale (BCP-47), or nil to follow the system. Drives the
+        ///     Pay-button amount formatting and error-message localization so they honor the configured
+        ///     locale (defaults to nil = system, keeping existing call sites unchanged).
         ///   - billingMode: The billing-address collection mode.
         ///   - shippingMode: The shipping-address collection mode.
         ///   - addressService: The address-metadata service (for the full address form).
@@ -141,6 +148,7 @@
             savedCards: [SavedCard],
             appearance: ResolvedAppearance,
             localize: @escaping (String) -> String,
+            localeCode: String? = nil,
             billingMode: Appearance.AddressCollectionMode,
             shippingMode: Appearance.AddressCollectionMode,
             addressService: any AddressMetadataService,
@@ -150,6 +158,7 @@
             self.savedCards = savedCards
             self.appearance = appearance
             self.localize = localize
+            self.localeCode = localeCode
             self.billingMode = billingMode
             self.shippingMode = shippingMode
             self.addressService = addressService
@@ -397,6 +406,13 @@
             /// Test readout: whether the card form currently shows a field error.
             var isCardFieldErrorShownForTest: Bool { cardForm.hasFieldErrorForTest }
 
+            /// Test readout: the Pay button's current title (to assert locale-formatted amount).
+            var payButtonTitleForTest: String { confirmButton.titleForTest }
+
+            /// Test readout: the localized message for an error, using the configured locale (to assert
+            /// error localization honors `CheckoutConfiguration.locale`).
+            func localizedFailureForTest(_ error: CheckoutError) -> String { localizedFailure(error) }
+
             /// Test readout: whether the inline notice (error / info) is currently shown.
             var isNoticeVisibleForTest: Bool { !notice.isHidden }
 
@@ -564,7 +580,7 @@
             // Prefer the key-mapped localized message; the Core extension falls back to `message` for
             // unmapped codes. Route through a resolver so the mapping is consistent with the rest of
             // the SDK; when the environment yields no mapping the developer-facing message is used.
-            let resolver = LocalizationResolver(explicitLocale: nil)
+            let resolver = LocalizationResolver(explicitLocale: localeCode)
             return error.localizedDisplayMessage(using: resolver)
         }
 
@@ -1195,9 +1211,16 @@
             }
         }
 
+        /// The locale used to format the amount: the host-configured locale when set, otherwise the
+        /// device locale. Keeps the Pay-button amount consistent with `CheckoutConfiguration.locale`.
+        private var resolvedLocale: Locale {
+            guard let localeCode else { return .current }
+            return Locale(identifier: localeCode)
+        }
+
         /// The CTA title: the localized `Pay %@` with the session amount formatted via `AmountFormatter`.
         private func payTitle() -> String {
-            let amountString = AmountFormatter().string(from: session.amount, locale: .current)
+            let amountString = AmountFormatter().string(from: session.amount, locale: resolvedLocale)
             let template = localize("sunbay.sheet.payAmount")
             if template.contains("%@") {
                 return template.replacingOccurrences(of: "%@", with: amountString)

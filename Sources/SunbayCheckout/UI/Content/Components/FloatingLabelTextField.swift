@@ -25,8 +25,8 @@
         /// taking precedence over the focus/primary color).
         private var isErrorActive = false
 
-        /// The top band reserved for the floated label, in points.
-        private let floatBand: CGFloat = 18
+        /// The top band reserved for the floated label, in points (shared token).
+        private let floatBand = FloatingLabelMetrics.floatBand
 
         /// Leading inset for the floated label, matching the text's leading edge.
         private let horizontalInset: CGFloat = 0
@@ -102,7 +102,7 @@
 
         /// The floated (small) font, derived from the field font so Dynamic Type still applies.
         private var floatedFont: UIFont {
-            restingFont.withSize(max(11, restingFont.pointSize * 0.72))
+            FloatingLabelMetrics.floatedFont(from: restingFont)
         }
 
         private func updateLabelColor() {

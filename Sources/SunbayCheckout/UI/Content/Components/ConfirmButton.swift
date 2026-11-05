@@ -116,6 +116,11 @@
             titleLabel.text = title
         }
 
+        #if DEBUG
+            /// Test readout: the current title text.
+            var titleForTest: String { title }
+        #endif
+
         /// Updates the button's visible status.
         ///
         /// - Parameters:
