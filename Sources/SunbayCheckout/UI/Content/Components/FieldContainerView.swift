@@ -39,12 +39,18 @@
 
             control.translatesAutoresizingMaskIntoConstraints = false
             addSubview(control)
+            // A floating-label field manages its own top band for the floated label, so it fills the
+            // box vertically (no extra 6pt inset) and the box is taller to fit label + text. Other
+            // controls (e.g. the country menu button) keep the original inset and height floor.
+            let isFloating = control is FloatingLabelTextField
+            let verticalInset: CGFloat = isFloating ? 0 : 6
+            let minHeight: CGFloat = isFloating ? 56 : 48
             NSLayoutConstraint.activate([
                 control.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
                 control.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-                control.topAnchor.constraint(equalTo: topAnchor, constant: 6),
-                control.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
-                heightAnchor.constraint(greaterThanOrEqualToConstant: 48),
+                control.topAnchor.constraint(equalTo: topAnchor, constant: verticalInset),
+                control.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -verticalInset),
+                heightAnchor.constraint(greaterThanOrEqualToConstant: minHeight),
             ])
 
             if let field = control as? UITextField {

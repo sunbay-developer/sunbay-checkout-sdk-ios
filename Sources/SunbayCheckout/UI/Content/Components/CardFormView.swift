@@ -31,9 +31,9 @@
 
         // MARK: - Fields
 
-        private let panField = UITextField()
-        private let expiryField = UITextField()
-        private let cvvField = UITextField()
+        private let panField: FloatingLabelTextField
+        private let expiryField: FloatingLabelTextField
+        private let cvvField: FloatingLabelTextField
 
         private let brandIconView = UIImageView()
         private let errorLabel = UILabel()
@@ -56,6 +56,9 @@
         ///   - localize: The localization closure for placeholders and the field error label.
         init(appearance: ResolvedAppearance, localize: @escaping (String) -> String) {
             self.appearance = appearance
+            self.panField = FloatingLabelTextField(appearance: appearance)
+            self.expiryField = FloatingLabelTextField(appearance: appearance)
+            self.cvvField = FloatingLabelTextField(appearance: appearance)
             super.init(frame: .zero)
             configureSubviews(localize: localize)
         }
@@ -103,7 +106,8 @@
         ///   - field: The field the error relates to (reserved for future per-field emphasis).
         ///   - message: The localized error message, or `nil` to clear.
         func showFieldError(_ field: CardFormField, message: String?) {
-            if let message, !message.isEmpty {
+            let active = (message?.isEmpty == false)
+            if active {
                 hasFieldError = true
                 errorLabel.text = message
                 errorLabel.isHidden = false
@@ -111,6 +115,11 @@
                 hasFieldError = false
                 errorLabel.text = nil
                 errorLabel.isHidden = true
+            }
+            // The error is shown as a whole-group state (red border + message), so all three field
+            // labels adopt the danger color to match.
+            for field in [panField, expiryField, cvvField] {
+                field.setErrorActive(active)
             }
             refreshGroupBorder()
         }
@@ -150,9 +159,9 @@
                 field.addTarget(self, action: #selector(handleEditingDidEnd), for: .editingDidEnd)
             }
 
-            panField.placeholder = localize("sunbay.card.number")
-            expiryField.placeholder = localize("sunbay.card.expiry")
-            cvvField.placeholder = localize("sunbay.card.cvc")
+            panField.title = localize("sunbay.card.number")
+            expiryField.title = localize("sunbay.card.expiry")
+            cvvField.title = localize("sunbay.card.cvc")
 
             brandIconView.image = UIImage(systemName: "creditcard")
             brandIconView.tintColor = appearance.textSecondary
@@ -184,7 +193,9 @@
             errorLabel.translatesAutoresizingMaskIntoConstraints = false
             addSubview(errorLabel)
 
-            let rowHeight: CGFloat = appearance.density == .compact ? 44 : 52
+            // Taller rows than a bare field: the floating label occupies a top band inside each field,
+            // so the row must fit label + text without clipping.
+            let rowHeight: CGFloat = appearance.density == .compact ? 48 : 56
 
             NSLayoutConstraint.activate([
                 group.topAnchor.constraint(equalTo: topAnchor),

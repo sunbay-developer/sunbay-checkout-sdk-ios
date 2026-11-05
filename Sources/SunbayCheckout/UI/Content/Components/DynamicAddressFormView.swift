@@ -246,10 +246,8 @@
             if field.type == .state, let config, !config.subdivisions.isEmpty {
                 return makeStateRow(field, subdivisions: config.subdivisions)
             }
-            let textField = UITextField()
-            textField.placeholder = field.placeholder
-            textField.font = appearance.cardFieldFont
-            textField.textColor = appearance.text
+            let textField = FloatingLabelTextField(appearance: appearance)
+            textField.title = field.placeholder
             textField.autocorrectionType = .no
             textField.translatesAutoresizingMaskIntoConstraints = false
             if field.type == .postalCode {

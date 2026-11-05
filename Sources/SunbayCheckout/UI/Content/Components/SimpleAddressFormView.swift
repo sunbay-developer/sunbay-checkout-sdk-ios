@@ -15,8 +15,8 @@
         private let appearance: ResolvedAppearance
 
         private let countryButton = UIButton(type: .system)
-        private let line1Field = UITextField()
-        private let postalField = UITextField()
+        private let line1Field: FloatingLabelTextField
+        private let postalField: FloatingLabelTextField
 
         private var selectedCountryCode: String?
         private let countries: [(code: String, name: String)]
@@ -29,6 +29,8 @@
         init(appearance: ResolvedAppearance, localize: @escaping (String) -> String) {
             self.appearance = appearance
             self.countries = Self.systemCountries()
+            self.line1Field = FloatingLabelTextField(appearance: appearance)
+            self.postalField = FloatingLabelTextField(appearance: appearance)
             super.init(frame: .zero)
             configureSubviews(localize: localize)
         }
@@ -66,8 +68,8 @@
         private func configureSubviews(localize: @escaping (String) -> String) {
             configureCountryButton(localize: localize)
 
-            line1Field.placeholder = localize("sunbay.address.line1")
-            postalField.placeholder = localize("sunbay.address.postalCode")
+            line1Field.title = localize("sunbay.address.line1")
+            postalField.title = localize("sunbay.address.postalCode")
             for field in [line1Field, postalField] {
                 field.font = appearance.cardFieldFont
                 field.textColor = appearance.text
