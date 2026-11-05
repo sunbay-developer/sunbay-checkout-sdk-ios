@@ -24,7 +24,15 @@
         private let brandBadge = UILabel()
         private let numberLabel = UILabel()
         private let expiryLabel = UILabel()
+        private let contentStack = UIStackView()
         private var tapRecognizer: UITapGestureRecognizer?
+
+        /// Invoked when the trailing "View more" affordance is tapped (set via
+        /// `showViewMoreInsteadOfExpiry`). Distinct from `onTap` (the whole-row tap).
+        private var onViewMore: (() -> Void)?
+
+        /// The trailing "View more" control, when shown (for tests / visibility checks).
+        private(set) var viewMoreControl: UIView?
 
         /// Creates a saved-card row.
         ///
@@ -73,18 +81,20 @@
             expiryLabel.setContentHuggingPriority(.required, for: .horizontal)
             expiryLabel.translatesAutoresizingMaskIntoConstraints = false
 
-            let stack = UIStackView(arrangedSubviews: [brandBadge, numberLabel, expiryLabel])
-            stack.axis = .horizontal
-            stack.alignment = .center
-            stack.spacing = 12
-            stack.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(stack)
+            contentStack.addArrangedSubview(brandBadge)
+            contentStack.addArrangedSubview(numberLabel)
+            contentStack.addArrangedSubview(expiryLabel)
+            contentStack.axis = .horizontal
+            contentStack.alignment = .center
+            contentStack.spacing = 12
+            contentStack.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(contentStack)
 
             NSLayoutConstraint.activate([
-                stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-                stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-                stack.topAnchor.constraint(equalTo: topAnchor, constant: 12),
-                stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
+                contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+                contentStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+                contentStack.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+                contentStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
                 heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
             ])
 
@@ -107,6 +117,50 @@
             }
             onTap = nil
             accessibilityTraits = .staticText
+        }
+
+        /// Replaces the trailing expiry with a tappable "View more ›" affordance, used by the collapsed
+        /// home summary when there is more than one saved card so the drill-in lives on the card row
+        /// itself (not a separate row). The card-brand + masked number stay; only the trailing slot
+        /// changes. The affordance is its own accessibility button so VoiceOver announces the navigation
+        /// separately from the static card summary.
+        ///
+        /// - Parameters:
+        ///   - title: The localized "View more" copy.
+        ///   - onTap: The navigation action (opens the full saved-card list).
+        func showViewMoreInsteadOfExpiry(title: String, onTap: @escaping () -> Void) {
+            onViewMore = onTap
+            expiryLabel.isHidden = true
+
+            let label = UILabel()
+            label.text = title
+            label.font = appearance.cardFieldFont
+            label.textColor = appearance.primary
+            label.setContentHuggingPriority(.required, for: .horizontal)
+
+            let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
+            chevron.tintColor = appearance.primary
+            chevron.contentMode = .scaleAspectFit
+            chevron.setContentHuggingPriority(.required, for: .horizontal)
+
+            let viewMore = UIStackView(arrangedSubviews: [label, chevron])
+            viewMore.axis = .horizontal
+            viewMore.alignment = .center
+            viewMore.spacing = 4
+            viewMore.isUserInteractionEnabled = true
+            viewMore.setContentHuggingPriority(.required, for: .horizontal)
+            viewMore.isAccessibilityElement = true
+            viewMore.accessibilityTraits = .button
+            viewMore.accessibilityLabel = title
+            viewMore.addGestureRecognizer(
+                UITapGestureRecognizer(target: self, action: #selector(handleViewMoreTap)))
+
+            contentStack.addArrangedSubview(viewMore)
+            viewMoreControl = viewMore
+        }
+
+        @objc private func handleViewMoreTap() {
+            onViewMore?()
         }
 
         override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {

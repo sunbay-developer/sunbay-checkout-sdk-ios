@@ -147,10 +147,12 @@
                 floatingLabel.frame = CGRect(
                     x: horizontalInset, y: 0, width: width, height: floatBand)
             } else {
-                // Rest where the field's own text sits (full-height, vertically centered), so the label
-                // reads as a placeholder until the field gains focus or content.
+                // Rest exactly where the field's own text is drawn (same rect as `textRect`), so the
+                // resting label sits on the text baseline and reads as a true placeholder — vertically
+                // centered in the text area rather than pinned low.
+                let textArea = textRect(forBounds: bounds)
                 floatingLabel.frame = CGRect(
-                    x: horizontalInset, y: floatBand, width: width, height: bounds.height - floatBand)
+                    x: horizontalInset, y: textArea.minY, width: width, height: textArea.height)
             }
         }
 
@@ -161,13 +163,18 @@
             layoutFloatingLabel()
         }
 
-        /// Reserves the top band for the floated label so the text never overlaps it.
+        /// The content rect for the text.
+        ///
+        /// When floated, the top `floatBand` is reserved so the text never overlaps the raised label.
+        /// When resting (empty + unfocused), the full height is used so the label/placeholder sits
+        /// vertically centered in the field rather than pinned to the lower band.
         private func insetRect(_ bounds: CGRect) -> CGRect {
-            CGRect(
+            let topReserve = shouldFloat ? floatBand : 0
+            return CGRect(
                 x: bounds.minX + horizontalInset,
-                y: bounds.minY + floatBand,
+                y: bounds.minY + topReserve,
                 width: bounds.width - horizontalInset * 2,
-                height: bounds.height - floatBand)
+                height: bounds.height - topReserve)
         }
 
         override func textRect(forBounds bounds: CGRect) -> CGRect {

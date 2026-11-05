@@ -39,10 +39,10 @@
 
             control.translatesAutoresizingMaskIntoConstraints = false
             addSubview(control)
-            // A floating-label field manages its own top band for the floated label, so it fills the
-            // box vertically (no extra 6pt inset) and the box is taller to fit label + text. Other
-            // controls (e.g. the country menu button) keep the original inset and height floor.
-            let isFloating = control is FloatingLabelTextField
+            // A floating-label control (text field or menu field) manages its own top band for the
+            // floated label, so it fills the box vertically (no extra 6pt inset) and the box is taller
+            // to fit label + value. Other controls keep the original inset and height floor.
+            let isFloating = control is FloatingLabelTextField || control is FloatingLabelMenuField
             let verticalInset: CGFloat = isFloating ? 0 : 6
             let minHeight: CGFloat = isFloating ? 56 : 48
             NSLayoutConstraint.activate([

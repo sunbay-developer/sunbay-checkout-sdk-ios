@@ -85,16 +85,39 @@
                 "floated label must not reach the trailing edge")
         }
 
-        /// The text / editing rect reserves a top band so the field text does not overlap the floated
-        /// label.
-        func test_textRectReservesTopBandForLabel() {
+        /// When resting (empty + unfocused), the label is vertically centered in the field — not pinned
+        /// to the lower band — so it reads as a centered placeholder.
+        func test_restingLabelIsVerticallyCentered() {
+            let field = FloatingLabelTextField(appearance: makeAppearance())
+            field.title = "Postal code"
+            field.frame = CGRect(x: 0, y: 0, width: 200, height: 56)
+            field.layoutIfNeeded()
+            let labelCenterY = field.floatingLabelFrameForTest.midY
+            let fieldCenterY = field.bounds.midY
+            XCTAssertEqual(labelCenterY, fieldCenterY, accuracy: 1.5,
+                           "resting label must be vertically centered in the field")
+        }
+
+        /// The text / editing rect reserves a top band (only once floated) so the field text does not
+        /// overlap the floated label.
+        func test_textRectReservesTopBandWhenFloated() {
             let field = FloatingLabelTextField(appearance: makeAppearance())
             field.title = "MM / YY"
-            field.frame = CGRect(x: 0, y: 0, width: 200, height: 52)
+            field.text = "12/28" // non-empty → floated, so the top band is reserved
+            field.frame = CGRect(x: 0, y: 0, width: 200, height: 56)
             let textRect = field.textRect(forBounds: field.bounds)
             let editingRect = field.editingRect(forBounds: field.bounds)
-            XCTAssertGreaterThan(textRect.minY, 0, "text rect must leave room for the floated label")
-            XCTAssertGreaterThan(editingRect.minY, 0, "editing rect must leave room for the floated label")
+            XCTAssertGreaterThan(textRect.minY, 0, "floated text rect must leave room for the raised label")
+            XCTAssertGreaterThan(editingRect.minY, 0, "floated editing rect must leave room for the raised label")
+        }
+
+        /// When resting (empty + unfocused), the text rect uses the full height (no reserved top band),
+        /// so the placeholder/label is centered.
+        func test_textRectUsesFullHeightWhenResting() {
+            let field = FloatingLabelTextField(appearance: makeAppearance())
+            field.title = "MM / YY"
+            field.frame = CGRect(x: 0, y: 0, width: 200, height: 56)
+            XCTAssertEqual(field.textRect(forBounds: field.bounds).minY, 0, accuracy: 0.01)
         }
     }
 #endif
