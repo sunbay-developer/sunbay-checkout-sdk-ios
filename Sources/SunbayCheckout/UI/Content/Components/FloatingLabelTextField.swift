@@ -28,8 +28,12 @@
         /// The top band reserved for the floated label, in points.
         private let floatBand: CGFloat = 18
 
-        /// Horizontal inset for the text, matching the floated label's leading inset.
+        /// Leading inset for the floated label, matching the text's leading edge.
         private let horizontalInset: CGFloat = 0
+
+        /// Trailing room reserved for the floated label so a long label is not clipped by a trailing
+        /// accessory (e.g. the card-number brand icon that sits just past the field's trailing edge).
+        private let labelTrailingInset: CGFloat = 8
 
         /// The floating label's text. Replaces `placeholder` usage; `placeholder` stays empty.
         var title: String? {
@@ -117,10 +121,9 @@
         /// page transitions are disabled or Reduce Motion is on.
         private func applyFloatState(animated: Bool) {
             let animate = animated && appearance.pageTransitionsEnabled && !UIAccessibility.isReduceMotionEnabled
-            let work = { [weak self] in
-                guard let self else { return }
-                self.layoutFloatingLabel()
-                self.updateLabelColor()
+            let work: () -> Void = { [weak self] in
+                // `layoutFloatingLabel` updates position, font, and color together.
+                self?.layoutFloatingLabel()
             }
             if animate {
                 UIView.animate(withDuration: 0.15, delay: 0, options: [.curveEaseInOut], animations: work)
@@ -135,8 +138,11 @@
             let floating = shouldFloat
             floatingLabel.font = floating ? floatedFont : restingFont
             floatingLabel.sizeToFit()
+            // Position and color share this one trigger so they can never diverge (e.g. after a
+            // programmatic `text =` set, which fires no editing event but does trigger layout).
+            updateLabelColor()
 
-            let width = bounds.width - horizontalInset * 2
+            let width = max(0, bounds.width - horizontalInset - labelTrailingInset)
             if floating {
                 floatingLabel.frame = CGRect(
                     x: horizontalInset, y: 0, width: width, height: floatBand)
@@ -196,6 +202,9 @@
 
             /// Test readout: the floating label's current text color (reflects error / focus / neutral).
             var floatingLabelColorForTest: UIColor { floatingLabel.textColor }
+
+            /// Test readout: the floating label's current frame (to assert trailing room / position).
+            var floatingLabelFrameForTest: CGRect { floatingLabel.frame }
         #endif
     }
 #endif

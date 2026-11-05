@@ -58,6 +58,33 @@
             XCTAssertEqual(field.floatingLabelColorForTest, appearance.danger)
         }
 
+        /// The label color must reflect the current state after a programmatic `text =` set, which fires
+        /// no control event. An error marked before the value is applied must still render danger once a
+        /// layout pass runs (color and float position share one trigger).
+        func test_labelColorReflectsErrorAfterProgrammaticTextSet() {
+            let appearance = makeAppearance()
+            let field = FloatingLabelTextField(appearance: appearance)
+            field.title = "ZIP"
+            field.setErrorActive(true)
+            field.text = "94107" // programmatic set: no editingChanged event
+            field.frame = CGRect(x: 0, y: 0, width: 200, height: 56)
+            field.layoutIfNeeded()
+            XCTAssertEqual(field.floatingLabelColorForTest, appearance.danger)
+        }
+
+        /// The floated label must leave trailing room (not span the full field width) so a long label is
+        /// not clipped by a trailing accessory such as the card-number brand icon.
+        func test_floatedLabelLeavesTrailingRoom() {
+            let field = FloatingLabelTextField(appearance: makeAppearance())
+            field.title = "A very long card number label that could run wide"
+            field.text = "1" // force floated
+            field.frame = CGRect(x: 0, y: 0, width: 200, height: 56)
+            field.layoutIfNeeded()
+            XCTAssertLessThan(
+                field.floatingLabelFrameForTest.maxX, field.bounds.width,
+                "floated label must not reach the trailing edge")
+        }
+
         /// The text / editing rect reserves a top band so the field text does not overlap the floated
         /// label.
         func test_textRectReservesTopBandForLabel() {
