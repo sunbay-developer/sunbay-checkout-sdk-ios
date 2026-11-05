@@ -996,7 +996,7 @@
                 homeStack.isHidden = true
                 newCardStack.isHidden = false
             }
-            // Clear both the selection state and the list's visual radio, so returning home does not
+            // Clear both the selection state and the list's visual highlight, so returning home does not
             // show a highlighted row while Pay is hidden.
             selectedSavedCardId = nil
             savedCardList?.selectedPaymentMethodId = nil
