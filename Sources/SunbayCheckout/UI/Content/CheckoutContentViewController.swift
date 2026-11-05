@@ -74,12 +74,12 @@
         private var expressView: ExpressCheckoutView?
         private var newCardEntryRow: UIView?
 
-        /// The "Save this card" (COF consent) toggle, shown only when COF is enabled on the session.
-        private var saveCardSwitch: UISwitch?
+        /// The "Save this card" (COF consent) checkbox, shown only when COF is enabled on the session.
+        private var saveCardSwitch: CheckboxControl?
 
         private var billingAddressView: UIView?
         private var shippingAddressView: UIView?
-        private var shippingSameAsBillingSwitch: UISwitch?
+        private var shippingSameAsBillingSwitch: CheckboxControl?
         private var shippingContainer: UIStackView?
 
         // MARK: - Layout containers
@@ -806,10 +806,8 @@
         }
 
         private func makeSaveCardRow() -> UIView {
-            let toggle = UISwitch()
-            toggle.onTintColor = appearance.primary
-            toggle.translatesAutoresizingMaskIntoConstraints = false
-            saveCardSwitch = toggle
+            let checkbox = CheckboxControl(appearance: appearance)
+            saveCardSwitch = checkbox
 
             let label = UILabel()
             label.text = localize("sunbay.sheet.saveThisCard")
@@ -817,10 +815,15 @@
             label.textColor = appearance.text
             label.translatesAutoresizingMaskIntoConstraints = false
 
-            let row = UIStackView(arrangedSubviews: [label, toggle])
+            // Checkbox leads the label (left-aligned), matching the design.
+            let row = UIStackView(arrangedSubviews: [checkbox, label])
             row.axis = .horizontal
             row.alignment = .center
-            row.distribution = .fill
+            row.spacing = 10
+            // Trailing spacer so the row hugs the leading edge instead of stretching the label.
+            let spacer = UIView()
+            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            row.addArrangedSubview(spacer)
             return row
         }
 
@@ -846,29 +849,34 @@
             }
         }
 
-        /// Builds the shipping section: a title, a "same as billing" toggle, and the shipping form.
+        /// Builds the shipping section: a header row (uppercase title on the left, a "same as billing"
+        /// checkbox + label on the right), and the shipping form. "Same as billing" defaults on, so the
+        /// shipping form starts hidden.
         private func makeShippingSection() -> UIView? {
             guard let shipping = makeAddressView(mode: shippingMode) else { return nil }
             shippingAddressView = shipping
 
             let title = makeSectionTitle("sunbay.address.shippingTitle")
+            title.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+            let checkbox = CheckboxControl(appearance: appearance)
+            checkbox.isOn = true
+            checkbox.addTarget(self, action: #selector(handleSameAsBillingChanged), for: .valueChanged)
+            shippingSameAsBillingSwitch = checkbox
 
             let toggleLabel = UILabel()
             toggleLabel.text = localize("sunbay.address.sameAsBilling")
             toggleLabel.font = appearance.cardFieldFont
             toggleLabel.textColor = appearance.text
+            toggleLabel.setContentHuggingPriority(.required, for: .horizontal)
 
-            let toggle = UISwitch()
-            toggle.onTintColor = appearance.primary
-            toggle.isOn = true
-            toggle.addTarget(self, action: #selector(handleSameAsBillingChanged), for: .valueChanged)
-            shippingSameAsBillingSwitch = toggle
+            // Header row: title (left) ... checkbox + label (right), on one line.
+            let headerRow = UIStackView(arrangedSubviews: [title, checkbox, toggleLabel])
+            headerRow.axis = .horizontal
+            headerRow.alignment = .center
+            headerRow.spacing = 10
 
-            let toggleRow = UIStackView(arrangedSubviews: [toggleLabel, toggle])
-            toggleRow.axis = .horizontal
-            toggleRow.alignment = .center
-
-            let container = UIStackView(arrangedSubviews: [title, toggleRow, shipping])
+            let container = UIStackView(arrangedSubviews: [headerRow, shipping])
             container.axis = .vertical
             container.spacing = 12
             shippingContainer = container

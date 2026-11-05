@@ -44,6 +44,7 @@
 
         private let appearance: ResolvedAppearance
         private var hasFieldError = false
+        private var hasFocus = false
 
         // MARK: - Init
 
@@ -145,6 +146,8 @@
                 field.delegate = self
                 field.translatesAutoresizingMaskIntoConstraints = false
                 field.addTarget(self, action: #selector(handleEditingChanged), for: .editingChanged)
+                field.addTarget(self, action: #selector(handleEditingDidBegin), for: .editingDidBegin)
+                field.addTarget(self, action: #selector(handleEditingDidEnd), for: .editingDidEnd)
             }
 
             panField.placeholder = localize("sunbay.card.number")
@@ -240,14 +243,20 @@
             refreshGroupBorder()
         }
 
-        /// Re-applies the group's border (danger when a field error is showing, otherwise the neutral
-        /// border) and the optional shadow, re-resolving `cgColor` against the current trait.
+        /// Re-applies the group's border and the optional shadow, re-resolving `cgColor` against the
+        /// current trait. Border color priority: error (danger) > focus (primary) > neutral (border).
         private func refreshGroupBorder() {
-            let borderColor = (hasFieldError ? appearance.danger : appearance.border)
-                .resolvedColor(with: traitCollection)
+            let borderColor: UIColor
+            if hasFieldError {
+                borderColor = appearance.danger
+            } else if hasFocus {
+                borderColor = appearance.primary
+            } else {
+                borderColor = appearance.border
+            }
             ThemeableView.applyDynamicLayerColors(
                 to: group.layer,
-                border: borderColor,
+                border: borderColor.resolvedColor(with: traitCollection),
                 borderWidth: max(appearance.borderWidth, 1),
                 shadow: appearance.shadow
             )
@@ -257,6 +266,18 @@
 
         @objc private func handleEditingChanged() {
             onEditingChanged?()
+        }
+
+        @objc private func handleEditingDidBegin() {
+            hasFocus = true
+            refreshGroupBorder()
+        }
+
+        /// Recomputes focus when a field ends editing: the group stays highlighted while any of the
+        /// three card fields is still the first responder (so tabbing between them doesn't flicker).
+        @objc private func handleEditingDidEnd() {
+            hasFocus = panField.isFirstResponder || expiryField.isFirstResponder || cvvField.isFirstResponder
+            refreshGroupBorder()
         }
     }
 

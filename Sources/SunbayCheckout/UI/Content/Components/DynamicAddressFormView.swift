@@ -228,8 +228,7 @@
             }
             countryButton = button
 
-            let label = config?.fields[.country]?.label ?? localize("sunbay.address.country")
-            return makeFieldContainer(label: label, control: button)
+            return FieldContainerView(appearance: appearance, control: button)
         }
 
         private func makeRow(_ fields: [AddressFieldConfig]) -> UIView {
@@ -257,7 +256,7 @@
                 textField.keyboardType = .numbersAndPunctuation
             }
             textFields[field.type] = textField
-            return makeFieldContainer(label: field.label, control: textField)
+            return FieldContainerView(appearance: appearance, control: textField)
         }
 
         private func makeStateRow(_ field: AddressFieldConfig, subdivisions: [AddressSubdivision]) -> UIView {
@@ -281,26 +280,7 @@
                 button.setTitle(field.placeholder, for: .normal)
             }
             stateButton = button
-            return makeFieldContainer(label: field.label, control: button)
-        }
-
-        private func makeFieldContainer(label: String, control: UIView) -> UIView {
-            let container = UIView()
-            container.backgroundColor = appearance.componentBackground
-            container.layer.cornerRadius = appearance.cornerRadius
-            container.layer.borderWidth = max(appearance.borderWidth, 1)
-            container.layer.borderColor = appearance.border.cgColor
-
-            control.translatesAutoresizingMaskIntoConstraints = false
-            container.addSubview(control)
-            NSLayoutConstraint.activate([
-                control.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
-                control.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
-                control.topAnchor.constraint(equalTo: container.topAnchor, constant: 6),
-                control.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -6),
-                container.heightAnchor.constraint(greaterThanOrEqualToConstant: 48),
-            ])
-            return container
+            return FieldContainerView(appearance: appearance, control: button)
         }
 
         // MARK: - Value capture / restore (code-based, §7.3)

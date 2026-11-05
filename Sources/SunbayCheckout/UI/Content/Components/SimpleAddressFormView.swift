@@ -64,8 +64,6 @@
         }
 
         private func configureSubviews(localize: @escaping (String) -> String) {
-            let countryField = makeFieldContainer(
-                label: localize("sunbay.address.country"), control: countryButton)
             configureCountryButton(localize: localize)
 
             line1Field.placeholder = localize("sunbay.address.line1")
@@ -78,10 +76,10 @@
             }
             postalField.keyboardType = .numbersAndPunctuation
 
-            let line1Container = makeFieldContainer(
-                label: localize("sunbay.address.line1"), control: line1Field)
-            let postalContainer = makeFieldContainer(
-                label: localize("sunbay.address.postalCode"), control: postalField)
+            // Each control is its own bordered box; text fields highlight their border on focus.
+            let countryField = FieldContainerView(appearance: appearance, control: countryButton)
+            let line1Container = FieldContainerView(appearance: appearance, control: line1Field)
+            let postalContainer = FieldContainerView(appearance: appearance, control: postalField)
 
             let stack = UIStackView(arrangedSubviews: [countryField, line1Container, postalContainer])
             stack.axis = .vertical
@@ -114,26 +112,6 @@
             }
             countryButton.menu = UIMenu(children: actions)
             countryButton.showsMenuAsPrimaryAction = true
-        }
-
-        /// Wraps a control in a labeled, bordered field container matching the design's field style.
-        private func makeFieldContainer(label: String, control: UIView) -> UIView {
-            let container = UIView()
-            container.backgroundColor = appearance.componentBackground
-            container.layer.cornerRadius = appearance.cornerRadius
-            container.layer.borderWidth = max(appearance.borderWidth, 1)
-            container.layer.borderColor = appearance.border.cgColor
-
-            control.translatesAutoresizingMaskIntoConstraints = false
-            container.addSubview(control)
-            NSLayoutConstraint.activate([
-                control.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
-                control.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
-                control.topAnchor.constraint(equalTo: container.topAnchor, constant: 6),
-                control.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -6),
-                container.heightAnchor.constraint(greaterThanOrEqualToConstant: 48),
-            ])
-            return container
         }
     }
 #endif
