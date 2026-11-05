@@ -281,6 +281,13 @@
                 spinner.centerYAnchor.constraint(equalTo: centerYAnchor),
                 heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
             ])
+            // Resolve the button's height to its 52pt minimum unless content (Dynamic Type) needs more.
+            // Without a preferred value the `>= 52` leaves the height a free variable; when the button is
+            // visible inside the fixed bottom bar (now the case on the COF home page, which shows Pay for
+            // the pre-selected card), that free variable makes the scroll/bottom-bar split ambiguous.
+            let preferredHeight = heightAnchor.constraint(equalToConstant: 52)
+            preferredHeight.priority = .defaultLow
+            preferredHeight.isActive = true
 
             addTarget(self, action: #selector(handleTap), for: .touchUpInside)
         }
