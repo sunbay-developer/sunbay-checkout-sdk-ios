@@ -12,8 +12,7 @@
 "sunbay.sheet.payTitle" = "Payment";
 "sunbay.sheet.payAmount" = "Pay %@";
 "sunbay.sheet.orPayUsing" = "Or pay using";
-"sunbay.notice.reconciling" = "Confirming your payment. Please don't try again.";
-"sunbay.notice.stillReconciling" = "We're still confirming this payment. You can close this sheet; we won't charge you twice.";
+"sunbay.notice.reconciling" = "We're confirming your payment. You can close this sheet; we won't charge you twice.";
 "sunbay.card.invalid" = "Please check your card details.";
 "sunbay.address.billingTitle" = "Billing address";
 "sunbay.address.shippingTitle" = "Shipping address";

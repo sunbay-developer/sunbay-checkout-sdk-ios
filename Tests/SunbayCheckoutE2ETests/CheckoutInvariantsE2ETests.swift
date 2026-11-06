@@ -90,13 +90,11 @@ final class CheckoutInvariantsE2ETests: XCTestCase {
         let actionStub = E2EActionStub()
 
         paymentService.stubSession(DemoSessionFactory.make(id: e2eSessionId, cofEnabled: false))
-        let poller = ResultPoller(service: paymentService, sleep: { _ in })
         let controller = CheckoutController(
             paymentService: paymentService,
             cofService: cofService,
             credentials: CredentialStore(),
-            actionHandler: actionStub,
-            poller: poller
+            actionHandler: actionStub
         )
         _ = try? await controller.start(
             sessionId: e2eSessionId,

@@ -31,12 +31,14 @@
     /// Tap → `WalletAuthorizing.authorize(...)` to get the encrypted wallet token →
     /// `controller.confirmWallet(token:)` → the backend-confirmed terminal state is mapped to a
     /// `CheckoutOutcome` → `onResult` fires on the main thread. Wallet authorization success ≠
-    /// transaction success (§3.2): the real conclusion comes from `confirmWallet`'s outcome.
+    /// transaction success (§3.2): the real conclusion comes from `confirmWallet`'s outcome. The user
+    /// dismissing the sheet maps to `.canceled`; an authorization failure maps to `.failed`; both fire
+    /// `onResult` and leave the control tappable again.
     ///
     /// ## Security (§5)
     /// The wallet token `Data` flows only along the single path `authorize → confirmWallet`, and
-    /// **never** enters `onResult`, logs, or any persistence. On cancel / authorization failure,
-    /// no `onResult` is produced (keeping the control tappable again).
+    /// **never** enters `onResult`, logs, or any persistence. A cancel / authorization failure carries
+    /// no token and no sensitive data in its `onResult` outcome.
     ///
     /// iOS-only: the whole thing is `#if canImport(UIKit)`; it does not compile under the macOS host.
     public final class ApplePayButton: UIControl {
@@ -225,8 +227,21 @@
                     )
                     outcome = await controller.confirmWallet(token: token)
                 } catch {
-                    // Authorization canceled / failed: produce no transaction conclusion, the control stays tappable again.
-                    return
+                    // Authorization ended without a token. Distinguish a user cancel (→ `.canceled`,
+                    // NOT a failure) from an authorization failure (→ `.failed`). The PassKit authorizer
+                    // throws a `CheckoutError` with code `WALLET_CANCELED` on cancel. Either way nothing
+                    // was submitted; the control stays tappable. No sensitive data is involved.
+                    if let checkoutError = error as? CheckoutError, checkoutError.code == "WALLET_CANCELED" {
+                        outcome = .canceled
+                    } else {
+                        let checkoutError = (error as? CheckoutError) ?? CheckoutError(
+                            code: "WALLET_AUTH_FAILED",
+                            message: "Apple Pay authorization failed.",
+                            category: .runtime,
+                            traceId: nil
+                        )
+                        outcome = .failed(txnId: nil, error: checkoutError)
+                    }
                 }
                 self?.onMain { self?.onResult?(outcome) }
             }

@@ -1,7 +1,9 @@
 # Submit-lock scope & no-client-poll realignment — design
 
 Date: 2026-11-06
-Status: DRAFT — awaiting review before implementation
+Status: IMPLEMENTED (2026-11-06) — Step 1 (no client poll, lock = in-flight submit) and Step 2
+(wallet cancel/failure split) landed; `VALIDATION_ERROR` intentionally not ported (see §4). All
+host + iOS-Simulator tests green.
 Scope: Core (`CheckoutController`, `ResultPoller`, `PendingReconciliationStore`), UI
 (`PaymentSheet` auto-reconcile), Wallet (`ApplePayButton`, `WalletAuthorizing`), docs
 (`AGENTS.md`, `product-spec.md`).

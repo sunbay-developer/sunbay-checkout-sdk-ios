@@ -2,8 +2,8 @@ import Foundation
 import XCTest
 
 // This e2e target drives the Core `CheckoutController` end to end through all five
-// `CheckoutOutcome` results. `CheckoutController`, its `confirm*` methods, the `ActionHandling`
-// seam, and `ResultPoller` are all `internal`, so this target uses `@testable import SunbayCheckout`
+// `CheckoutOutcome` results. `CheckoutController`, its `confirm*` methods, and the `ActionHandling`
+// seam are all `internal`, so this target uses `@testable import SunbayCheckout`
 // to reach them. This is an allowed, deliberate choice: this target is our OWN test harness, not a
 // host integrator. The Example app (a separate project) stays strictly public-API-only. The
 // scriptable backend doubles (`ScriptablePaymentService` / `ScriptableCofService` /
@@ -65,8 +65,7 @@ let e2eSessionId = "sid"
 ///
 /// Stubs a `DemoSessionFactory` session (id == `e2eSessionId`) on a fresh
 /// `ScriptablePaymentService`, constructs a `CheckoutController` via `@testable` with a real
-/// `CredentialStore()`, a local `E2EActionStub`, and an injected ZERO-WAIT `ResultPoller` (so the
-/// `initial -> poll -> terminal` path never actually backs off), then calls
+/// `CredentialStore()` and a local `E2EActionStub`, then calls
 /// `start(sessionId:customerAccessSecret:)`.
 ///
 /// Each test scripts submit/getResult/action AFTER `makeE2E` returns and BEFORE driving a confirm;
@@ -83,16 +82,11 @@ func makeE2E(customerAccessSecret: String? = "demo_secret") async -> E2EFixture 
 
     paymentService.stubSession(DemoSessionFactory.make(id: e2eSessionId))
 
-    // Zero-wait poller: deterministic, no real backoff. Driven by the same payment service so
-    // `getResult` scripting feeds the poll loop.
-    let poller = ResultPoller(service: paymentService, sleep: { _ in })
-
     let controller = CheckoutController(
         paymentService: paymentService,
         cofService: cofService,
         credentials: CredentialStore(),
-        actionHandler: actionStub,
-        poller: poller
+        actionHandler: actionStub
     )
 
     _ = try? await controller.start(

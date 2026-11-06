@@ -12,8 +12,7 @@
 "sunbay.sheet.payTitle" = "支付";
 "sunbay.sheet.payAmount" = "支付 %@";
 "sunbay.sheet.orPayUsing" = "或使用以下方式支付";
-"sunbay.notice.reconciling" = "正在确认您的支付结果，请勿重复支付。";
-"sunbay.notice.stillReconciling" = "我们仍在确认这笔支付。您可以关闭此页面，我们不会重复扣款。";
+"sunbay.notice.reconciling" = "我们正在确认您的支付结果。您可以关闭此页面，我们不会重复扣款。";
 "sunbay.card.invalid" = "请检查您的卡信息。";
 "sunbay.address.billingTitle" = "账单地址";
 "sunbay.address.shippingTitle" = "收货地址";

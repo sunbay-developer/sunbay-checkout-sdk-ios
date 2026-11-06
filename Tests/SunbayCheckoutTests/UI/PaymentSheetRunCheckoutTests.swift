@@ -242,20 +242,11 @@
             }
         }
 
-        /// Zero-wait poller with a one-query bound (`overallLimit: 0` → exactly one `getResult` per poll),
-        /// so call counts are deterministic and nothing sleeps for real.
-        private func makeZeroWaitPoller(_ payment: MockPaymentService) -> ResultPoller {
-            ResultPoller(
-                service: payment, config: PollConfig(initial: 0.001, max: 0.001, overallLimit: 0),
-                sleep: { _ in })
-        }
-
         /// Presents the real sheet over a test window; returns what's needed to drive it. The localizer
         /// is the identity so notices can be asserted by key.
         @MainActor
         private func presentSheet(
             submit: [PaymentSnapshot], getResult: [PaymentSnapshot],
-            poller: ((MockPaymentService) -> ResultPoller)? = nil,
             configure: ((MockPaymentService) -> Void)? = nil
         ) async throws -> Presented {
             let sessionId = "sess_present"
@@ -270,8 +261,7 @@
                 paymentService: payment,
                 cofService: cof,
                 credentials: CredentialStore(),
-                actionHandler: StubActionHandler(result: .pending),
-                poller: poller?(payment) ?? makeZeroWaitPoller(payment)
+                actionHandler: StubActionHandler(result: .pending)
             )
             let sheet = PaymentSheet(
                 controller: controller, sessionId: sessionId, customerAccessSecret: "secret_abc",
@@ -328,9 +318,15 @@
 
         /// A `.unknown` attempt followed by the user closing the sheet: `present()` returns `.unknown`
         /// (so the host calls `retrievePayment()`), NOT `.canceled`.
+        /// A `.unknown` attempt (submit throws, the one-shot query also throws) followed by the user
+        /// closing the sheet: `present()` returns `.unknown` (so the host calls `retrievePayment()`),
+        /// NOT `.canceled`.
         @MainActor
         func test_present_closeAfterUnknown_returnsUnknown_notCanceled() async throws {
-            let p = try await presentSheet(submit: [initialSnap], getResult: [initialSnap])
+            let p = try await presentSheet(submit: [], getResult: []) {
+                $0.stubSubmitError(URLError(.notConnectedToInternet))
+                $0.stubGetResultError(URLError(.notConnectedToInternet))
+            }
             defer { p.tearDown() }
 
             payWithSavedCard(p)
@@ -353,53 +349,31 @@
             XCTAssertEqual(outcome, .canceled)
         }
 
-        // MARK: - F1: automatic in-sheet reconciliation
+        // MARK: - Pending / unknown (no client polling)
 
-        /// `.unknown` auto-reconciles in the sheet: a terminal success follows the normal success path
-        /// (auto-close) without the user closing anything, and `present()` returns `.succeeded`. Exactly
-        /// two queries happened (the submit's own bounded poll + the reconcile) and one submit.
+        /// `.unknown` locks the sheet with the neutral "you can close" notice and the SDK does NOT poll;
+        /// the user closes and `present()` returns `.unknown` for the host to reconcile.
         @MainActor
-        func test_autoReconcile_resolvesSucceeded_autoCloses() async throws {
-            let succeeded = PaymentSnapshot(sessionId: "sess_present", status: .succeeded, txnId: "txn_r")
-            let p = try await presentSheet(submit: [initialSnap], getResult: [initialSnap, succeeded])
-            defer { p.tearDown() }
-
-            payWithSavedCard(p)
-
-            let outcome = await p.outcome()
-            XCTAssertEqual(outcome, .succeeded(txnId: "txn_r"))
-            XCTAssertEqual(p.payment.submitCallCount, 1, "reconcile must never submit")
-            XCTAssertEqual(p.payment.getResultCallCount, 2, "one submit poll + one reconcile query")
-        }
-
-        /// `.unknown` auto-reconciles to a terminal failure: the sheet UNLOCKS back to editable with the
-        /// failure notice, `present()` keeps running, and the next Pay is a FRESH submit (the marker is
-        /// cleared, so Core does not gate it).
-        @MainActor
-        func test_autoReconcile_resolvesFailed_unlocksSheet_andFreshAttemptSubmits() async throws {
-            let failed = PaymentSnapshot(sessionId: "sess_present", status: .failed, txnId: "txn_f")
-            let ok = PaymentSnapshot(sessionId: "sess_present", status: .succeeded, txnId: "txn_new")
-            let p = try await presentSheet(submit: [initialSnap, ok], getResult: [initialSnap, failed])
+        func test_pending_locksSheet_showsNotice_noPolling_closeReturnsUnknown() async throws {
+            let p = try await presentSheet(submit: [initialSnap], getResult: [])
             defer { p.tearDown() }
 
             payWithSavedCard(p)
             try await waitUntil("reconciling") { p.content.currentViewState == .reconciling }
-            try await waitUntil("unlock into failed") { self.isFailed(p.content.currentViewState) }
-
-            XCTAssertTrue(p.content.isHomeInteractiveForTest, "a resolved failure must unlock inputs")
-            XCTAssertTrue(p.content.isConfirmButtonVisibleForTest)
-            XCTAssertTrue(p.content.isConfirmButtonEnabledForTest)
-            XCTAssertTrue(p.content.isNoticeVisibleForTest, "the failure notice must be shown")
+            try await waitUntil("confirming notice") {
+                p.content.noticeMessageForTest == "sunbay.notice.reconciling"
+            }
+            XCTAssertFalse(p.content.isConfirmButtonVisibleForTest, "Pay stays hidden while unsettled")
+            XCTAssertTrue(p.content.isCloseInteractiveForTest, "✕ must work")
             XCTAssertEqual(p.payment.submitCallCount, 1)
-            XCTAssertEqual(p.payment.getResultCallCount, 2)
+            XCTAssertEqual(p.payment.getResultCallCount, 0, "the SDK must NOT poll for the result")
 
-            // Fresh attempt: submits again (new attemptId), no extra reconcile query.
-            p.content.simulateTapPay()
+            XCTAssertTrue(p.container.requestCancel())
             let outcome = await p.outcome()
-            XCTAssertEqual(outcome, .succeeded(txnId: "txn_new"))
-            XCTAssertEqual(p.payment.submitCallCount, 2, "the post-failure attempt is a fresh submit")
-            XCTAssertEqual(p.payment.getResultCallCount, 2, "marker cleared: no reconcile gate on the fresh attempt")
+            XCTAssertEqual(outcome, .pending(txnId: nil))
         }
+
+        // MARK: - Buffered user action (unlock window after a .failed)
 
         /// A Pay tap that lands in the unlock window (the sheet is interactive again after a `.failed`,
         /// but the loop is still reloading the session and is not yet suspended in `awaitEvent`) must NOT
@@ -462,69 +436,6 @@
             XCTAssertEqual(p.payment.submitCallCount, 1, "the buffered tap must not submit after a close")
         }
 
-        /// Still `.unknown` after the reconcile: the sheet stays LOCKED (Pay hidden) but the notice
-        /// switches to the "still confirming, you can close" message; ✕ works; `present()` returns the
-        /// unresolved outcome on close.
-        @MainActor
-        func test_autoReconcile_stillUnknown_switchesNotice_staysLocked_closeReturnsUnknown() async throws {
-            let p = try await presentSheet(submit: [initialSnap], getResult: [initialSnap])
-            defer { p.tearDown() }
-
-            payWithSavedCard(p)
-            try await waitUntil("still-confirming notice") {
-                p.content.noticeMessageForTest == "sunbay.notice.stillReconciling"
-            }
-            XCTAssertEqual(p.content.currentViewState, .reconciling, "must stay locked, not unlock")
-            XCTAssertFalse(p.content.isConfirmButtonVisibleForTest, "Pay must stay hidden")
-            XCTAssertTrue(p.content.isCloseInteractiveForTest)
-            XCTAssertEqual(p.payment.submitCallCount, 1)
-            XCTAssertEqual(p.payment.getResultCallCount, 2, "one submit poll + exactly one reconcile (no endless re-polling)")
-            XCTAssertTrue(p.container.requestCancel(), "✕ must still work")
-
-            let outcome = await p.outcome()
-            XCTAssertEqual(outcome, .unknown(sessionId: "sess_present"))
-        }
-
-        /// Closing while the auto-reconcile is in flight cancels that task (it stops querying) and
-        /// resolves `present()` exactly once with the unresolved outcome.
-        @MainActor
-        func test_closeDuringAutoReconcile_cancelsReconcile_resolvesOnce() async throws {
-            let entered = LockedFlag()
-            // Submit and its query-first fallback both fail → `.unknown` without touching the poller;
-            // the ONLY poll is the reconcile, which then blocks in its sleep until cancelled.
-            let p = try await presentSheet(
-                submit: [], getResult: [],
-                poller: { payment in
-                    ResultPoller(
-                        service: payment, config: PollConfig(initial: 1, max: 1, overallLimit: 90),
-                        sleep: { _ in
-                            entered.set()
-                            try await Task.sleep(nanoseconds: 60 * 1_000_000_000)
-                        })
-                },
-                configure: {
-                    $0.stubSubmitError(URLError(.notConnectedToInternet))
-                    $0.stubGetResultError(URLError(.notConnectedToInternet))
-                })
-            defer { p.tearDown() }
-
-            payWithSavedCard(p)
-            try await waitUntil("reconcile poll sleeping") { entered.isSet }
-            XCTAssertEqual(p.content.currentViewState, .reconciling)
-            let queriesBeforeClose = p.payment.getResultCallCount
-
-            XCTAssertTrue(p.container.requestCancel(), "✕ must work while the reconcile is in flight")
-            let start = Date()
-            let outcome = await p.outcome(within: 5)
-            XCTAssertLessThan(Date().timeIntervalSince(start), 3, "close must not wait for the poll to finish")
-            XCTAssertEqual(outcome, .unknown(sessionId: "sess_present"))
-
-            // The cancelled poll must stop (no further queries) and deliver nothing more.
-            try await Task.sleep(nanoseconds: 200_000_000)
-            XCTAssertEqual(p.payment.getResultCallCount, queriesBeforeClose, "cancelled reconcile must stop querying")
-            XCTAssertEqual(p.payment.submitCallCount, 1)
-        }
-
         // MARK: - F2: start failure inside the retry loop
 
         /// A session RE-load failing while an earlier attempt is unresolved (the sheet is locked) must not
@@ -538,8 +449,8 @@
             // The next (re)load, which the loop performs after the unsettled attempt, will fail.
             p.payment.stubLoadError(CheckoutErrors.networkUnavailable())
             payWithSavedCard(p)
-            try await waitUntil("still-confirming notice") {
-                p.content.noticeMessageForTest == "sunbay.notice.stillReconciling"
+            try await waitUntil("confirming notice") {
+                p.content.noticeMessageForTest == "sunbay.notice.reconciling"
             }
             try await Task.sleep(nanoseconds: 300_000_000)
 
@@ -548,7 +459,7 @@
             XCTAssertTrue(p.container.requestCancel())
 
             let outcome = await p.outcome()
-            XCTAssertEqual(outcome, .unknown(sessionId: "sess_present"))
+            XCTAssertEqual(outcome, .pending(txnId: nil))
         }
 
         /// The very first session load failing never presents anything and `present()` returns that
@@ -559,7 +470,7 @@
             payment.stubLoadError(CheckoutErrors.networkUnavailable())
             let controller = CheckoutController(
                 paymentService: payment, cofService: MockCofService(), credentials: CredentialStore(),
-                actionHandler: StubActionHandler(result: .pending), poller: makeZeroWaitPoller(payment))
+                actionHandler: StubActionHandler(result: .pending))
             let sheet = PaymentSheet(controller: controller, sessionId: "sess_present", customerAccessSecret: nil)
             let root = UIViewController()
             let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))

@@ -41,9 +41,15 @@ Full design: `docs/product-spec.md`. Security/PCI: `docs/security-and-pci.md`.
 4. **Sensitive data boundary is cohesive.** Only `CardEncryptor` touches plaintext card data; only
    `CredentialStore` holds secrets. Plaintext is zeroed immediately after encryption. Nothing
    sensitive is persisted (no UserDefaults / file / Keychain / UIPasteboard).
-5. **Payment truth = server-confirmed terminal state.** Wallet authorization success only means a
-   token was obtained, not that the transaction succeeded. On timeout / app relaunch, query by
-   session/transaction first — never blindly resubmit.
+5. **Payment truth = server-confirmed terminal state; the SDK does not poll for it.** Wallet
+   authorization success only means a token was obtained, not that the transaction succeeded. The
+   submit lock covers only the in-flight submit request and is released the moment the request
+   returns (success / failure / processing), never waiting on a poll or a backend terminal state.
+   The SDK does not client-poll the backend for the result: an async-undetermined result is
+   reported as `pending` / `unknown` (never `failed`), and the host reconciles via
+   `retrievePayment` / webhook. On a lost response within one in-flight attempt the SDK may query
+   once (not a loop) before concluding `unknown`; it never blindly resubmits. See
+   `docs/superpowers/specs/2026-11-06-submit-lock-and-no-poll-realignment-design.md`.
 6. **Core is UI-agnostic.** `CheckoutController` and the Core layer import no UIKit/PassKit UI types;
    they depend on protocols only. This is what makes L2 a zero-rework addition later.
 7. **Backend contract is not final.** The contract in `docs/product-spec.md` §7 is derived from
@@ -88,8 +94,13 @@ The tree also now includes:
   end-to-end is a release gate after the backend is ready.
 - Do not add tests beyond what is asked; when changing tested logic, update its tests.
 
-## 5. Git & secrets
+## 5. Git conventions
 
-- No merchant keys, certificates, production tokens, or real card data in the repo.
-- Stage specific files by name (no `git add .`). Do not commit/push unless explicitly asked.
-- Example apps call only the public API with mock/sandbox config; never depend on internal types.
+- Standalone git repo, default branch `main`. **Do not develop directly on
+  `main`**; open `feature/<scope>`, `fix/<scope>`, or `chore/<scope>` branches
+  per team conventions.
+- Do not commit unless the user explicitly asks; when committing, `git add`
+  precise files — **never `git add .`**.
+- Files that may contain secrets (`.env*`, credentials, token-bearing npmrc)
+  **must not be committed**.
+- Push the working branch by default; do not push directly to `main`.

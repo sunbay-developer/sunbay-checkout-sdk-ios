@@ -121,6 +121,77 @@
             XCTAssertEqual(txnId, "txn_ok")
         }
 
+        // MARK: - 3. Wallet cancel vs authorization failure
+
+        /// The user dismissing the Apple Pay sheet (authorizer throws `WALLET_CANCELED`) → `.canceled`
+        /// (NOT `.failed`), and no submit happens.
+        func test_tap_walletCanceled_drivesOnResultCanceled() {
+            let sessionId = "sess_apple_cancel"
+            let session = availableSession(id: sessionId)
+            let payment = MockPaymentService()
+            payment.stubSession(session)
+            let controller = CheckoutController(
+                paymentService: payment, cofService: MockCofService(),
+                credentials: CredentialStore(), actionHandler: StubActionHandler(result: .pending))
+            let cancelError = CheckoutError(
+                code: "WALLET_CANCELED", message: "canceled", category: .runtime, traceId: nil)
+            let wallet = MockWalletAuthorizer(canMake: true, outcome: .failure(cancelError))
+
+            let availableExpectation = expectation(description: "available")
+            let resultExpectation = expectation(description: "onResult")
+            var received: CheckoutOutcome?
+
+            let button = ApplePayButton(
+                controller: controller, walletAuthorizer: wallet, sessionId: sessionId,
+                configuredMerchantId: "merchant.com.acme", amount: session.amount)
+            button.onAvailabilityChange = { if $0 { availableExpectation.fulfill() } }
+            button.onResult = { received = $0; resultExpectation.fulfill() }
+
+            wait(for: [availableExpectation], timeout: 2.0)
+            fireTouchUpInside(on: button)
+
+            wait(for: [resultExpectation], timeout: 2.0)
+            guard case .canceled? = received else {
+                return XCTFail("expected .canceled, got \(String(describing: received))")
+            }
+            XCTAssertEqual(payment.submitCallCount, 0, "a cancel must not submit")
+        }
+
+        /// An authorization failure (authorizer throws a non-cancel error) → `.failed`, and no submit
+        /// happens (there is no token to submit).
+        func test_tap_walletAuthFailure_drivesOnResultFailed() {
+            let sessionId = "sess_apple_fail"
+            let session = availableSession(id: sessionId)
+            let payment = MockPaymentService()
+            payment.stubSession(session)
+            let controller = CheckoutController(
+                paymentService: payment, cofService: MockCofService(),
+                credentials: CredentialStore(), actionHandler: StubActionHandler(result: .pending))
+            let authError = CheckoutError(
+                code: "WALLET_AUTH_FAILED", message: "auth failed", category: .runtime, traceId: nil)
+            let wallet = MockWalletAuthorizer(canMake: true, outcome: .failure(authError))
+
+            let availableExpectation = expectation(description: "available")
+            let resultExpectation = expectation(description: "onResult")
+            var received: CheckoutOutcome?
+
+            let button = ApplePayButton(
+                controller: controller, walletAuthorizer: wallet, sessionId: sessionId,
+                configuredMerchantId: "merchant.com.acme", amount: session.amount)
+            button.onAvailabilityChange = { if $0 { availableExpectation.fulfill() } }
+            button.onResult = { received = $0; resultExpectation.fulfill() }
+
+            wait(for: [availableExpectation], timeout: 2.0)
+            fireTouchUpInside(on: button)
+
+            wait(for: [resultExpectation], timeout: 2.0)
+            guard case .failed(_, let error)? = received else {
+                return XCTFail("expected .failed, got \(String(describing: received))")
+            }
+            XCTAssertEqual(error.code, "WALLET_AUTH_FAILED")
+            XCTAssertEqual(payment.submitCallCount, 0, "an auth failure must not submit")
+        }
+
         // MARK: - Manually trigger control events (no host app environment)
 
         /// Triggers `.touchUpInside` directly based on the control's target-action registry.

@@ -40,7 +40,6 @@ enum SunbayUIStringKeys {
         "sunbay.cof.viewMore",
         // Common / state
         "sunbay.common.retry",
-        "sunbay.notice.reconciling",
-        "sunbay.notice.stillReconciling"
+        "sunbay.notice.reconciling"
     ]
 }

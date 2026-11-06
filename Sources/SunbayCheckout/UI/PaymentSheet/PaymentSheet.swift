@@ -59,10 +59,6 @@
             case confirmWallet(token: Data)
             /// The user canceled.
             case cancel
-            /// The in-sheet auto-reconcile of an unsettled attempt finished with this outcome. Produced
-            /// only by the presentation coordinator (never by the content VC); it carries no payment
-            /// data and never reaches a `confirm*` call.
-            case reconciled(CheckoutOutcome)
         }
 
         /// What one pass of the retry loop produced.
@@ -71,8 +67,6 @@
             case startFailed(CheckoutOutcome)
             /// A confirm (or a cancel) produced this outcome.
             case outcome(CheckoutOutcome)
-            /// The auto-reconcile of an earlier unsettled attempt produced this outcome (no new confirm).
-            case reconciled(CheckoutOutcome)
         }
 
         /// The context passed to the seam: the loaded session and the (per COF decision) listed saved cards.
@@ -222,19 +216,13 @@
         /// `retrievePayment()`). Returns the result of a **single** presentation; `pending/unknown`
         /// still pair with `retrievePayment()` or server-side reconciliation.
         ///
-        /// ## Auto-reconcile and start failures
-        /// After `.pending` / `.unknown` the locked sheet runs ONE query-only reconcile in the
-        /// background: success auto-closes, a confirmed failure unlocks the sheet for a fresh attempt,
-        /// and a still-unsettled result keeps it locked with a "you can close this sheet" notice.
-        /// A session (re)load failure inside the loop is never shown as a payment outcome: with an
-        /// unsettled attempt the sheet keeps waiting (verdict or close); otherwise the presentation ends
-        /// with that start failure.
-        ///
-        /// ## Close right after a verdict
-        /// A close that lands in the main-actor hop right after a reconcile verdict was resolved in Core
-        /// may return the EARLIER unresolved outcome (`.pending` / `.unknown`) even though the payment is
-        /// already `S` / `F`. That is safe: an unresolved outcome always tells the host to reconcile via
-        /// `retrievePayment()`, which then returns the terminal state.
+        /// ## Pending / unknown and start failures
+        /// After `.pending` / `.unknown` the sheet locks (Pay hidden, only ✕) and shows a neutral
+        /// "we're confirming this payment; you can close; we won't double-charge" notice. The SDK does
+        /// NOT poll: the sheet simply stays open until the user closes it, and the host reconciles the
+        /// final state via `retrievePayment()` / webhook. A session (re)load failure inside the loop is
+        /// never shown as a payment outcome: with an earlier unsettled attempt the sheet keeps waiting
+        /// for the user to close; otherwise the presentation ends with that start failure.
         ///
         /// - Parameter presenter: The host view controller used to present the payment page modally.
         /// - Returns: The `CheckoutOutcome` of this presentation (user cancel before any unsettled
@@ -248,8 +236,7 @@
                 localeCode: localeCode,
                 paymentSheetTitle: paymentSheetTitle,
                 addressService: addressMetadataService,
-                onStateChange: { [weak self] state in self?.onStateChange?(state) },
-                reconcile: { [controller, sessionId] in await controller.reconcile(sessionId: sessionId) }
+                onStateChange: { [weak self] state in self?.onStateChange?(state) }
             )
 
             // Drive attempts until the content finishes (success auto-close / cancel) or the sheet is
@@ -262,9 +249,9 @@
                 }
 
                 // A session (re)load failure is NOT a payment outcome (F2). While an earlier attempt is
-                // still unsettled the sheet is locked and owned by the auto-reconcile: do not touch the
-                // content, do not retry the load in a loop; just wait for the reconcile verdict or the
-                // user closing the sheet. Otherwise it ends the presentation (handled below).
+                // still unsettled the sheet is locked: do not touch the content, do not retry the load in
+                // a loop; just wait for the user to close the sheet. Otherwise it ends the presentation
+                // (handled below).
                 if case .startFailed = attempt, PaymentSheet.isUnresolved(lastOutcome), !coordinator.wasCanceled {
                     attempt = await execute(await coordinator.awaitEvent())
                 }
@@ -287,13 +274,11 @@
                 case let .outcome(outcome):
                     lastOutcome = outcome
                     // Feed the outcome into the content; `.succeeded` auto-closes (→ finish), others stay
-                    // open. `.pending` / `.unknown` lock the sheet and start the in-sheet auto-reconcile.
+                    // open. `.pending` / `.unknown` lock the sheet (no polling); the user closes it and
+                    // the host reconciles via `retrievePayment()`.
                     if await coordinator.applyOutcome(outcome) { break loop }
-                case let .reconciled(outcome):
-                    lastOutcome = outcome
-                    if await coordinator.applyReconciled(outcome) { break loop }
                 }
-                // Not finished: loop back and await the next confirm / reconcile verdict / cancel.
+                // Not finished: loop back and await the next confirm / cancel.
             }
 
             coordinator.dismiss()
@@ -351,7 +336,7 @@
             seam: @Sendable (CheckoutContext) async -> UserAction
         ) async -> CheckoutOutcome {
             switch await runAttempt(seam: seam) {
-            case let .startFailed(outcome), let .outcome(outcome), let .reconciled(outcome):
+            case let .startFailed(outcome), let .outcome(outcome):
                 return outcome
             }
         }
@@ -404,9 +389,6 @@
             case .cancel:
                 await controller.dismiss()
                 return .outcome(.canceled)
-            case let .reconciled(outcome):
-                // The auto-reconcile already queried the server; nothing to confirm or submit.
-                return .reconciled(outcome)
             }
         }
     }
@@ -422,19 +404,11 @@
     ///   presentation finished: `.succeeded` auto-closes (await the content's `didFinishWith`), while
     ///   non-terminal outcomes keep the sheet open for another confirm.
     ///
-    /// ## In-sheet auto-reconcile (F1)
-    /// When an attempt ends `.pending` / `.unknown` and the content has locked, the coordinator starts
-    /// ONE reconcile `Task` (query-only, bounded by Core's `ResultPoller`). Its verdict is delivered to
-    /// the `present()` loop as `UserAction.reconciled(_:)` through the same continuation the loop already
-    /// suspends on (or buffered if the loop is between awaits), so success/failure/still-unknown reuse the
-    /// loop's single result path. Race rules:
-    /// - Everything here is main-actor isolated, so "deliver the verdict" and "the user closed" are
-    ///   serialized; whichever runs first wins.
-    /// - Closing cancels the task and sets `wasCanceled`; a verdict that completes afterwards sees
-    ///   `wasCanceled` and is dropped. The result is therefore delivered at most once, and a closed
-    ///   sheet always resolves with the outcome known at close time (which may be the earlier unresolved
-    ///   outcome if the close lands right after a verdict; safe, the host reconciles via `retrievePayment()`).
-    ///
+    /// ## Pending / unknown (no client polling)
+    /// When an attempt ends `.pending` / `.unknown`, the content locks (Pay hidden, only ✕) and shows a
+    /// neutral "we're confirming; you can close; we won't double-charge" notice. The coordinator does
+    /// NOT poll: the sheet stays open until the user closes it, and the host reconciles the final state
+    /// via `retrievePayment()` / webhook.
     /// ## No lost user action
     /// A user action emitted while the loop is not suspended (e.g. a Pay tap in the unlock window after a
     /// `.failed`, during the session reload) is buffered (at most one) and delivered to the next
@@ -451,13 +425,7 @@
         private let paymentSheetTitle: String?
         private let addressService: any AddressMetadataService
         private let onStateChange: (CheckoutPresentationState) -> Void
-        /// Query-only reconcile of the session (Core `CheckoutController.reconcile`); honors cancellation.
-        private let reconcile: @Sendable () async -> CheckoutOutcome
 
-        /// The in-flight auto-reconcile, if any (at most one).
-        private var reconcileTask: Task<Void, Never>?
-        /// A reconcile verdict that arrived while no one was suspended on `awaitEvent` (delivered next).
-        private var bufferedReconcileResult: CheckoutOutcome?
         /// At most ONE user action that arrived while no one was suspended on `awaitEvent` (e.g. a Pay tap
         /// in the unlock window after a `.failed`, while the loop is still reloading the session). It is
         /// delivered to the next `awaitEvent`, so no user action is ever lost and the content (already in
@@ -484,10 +452,8 @@
             localeCode: String?,
             paymentSheetTitle: String?,
             addressService: any AddressMetadataService,
-            onStateChange: @escaping (CheckoutPresentationState) -> Void,
-            reconcile: @escaping @Sendable () async -> CheckoutOutcome
+            onStateChange: @escaping (CheckoutPresentationState) -> Void
         ) {
-            self.reconcile = reconcile
             self.presenter = presenter
             self.appearance = appearance
             self.localize = localize
@@ -510,9 +476,8 @@
             return await awaitEvent()
         }
 
-        /// Suspends until the next event for the loop: a user action, a cancel, or an auto-reconcile
-        /// verdict. A cancel wins over a buffered verdict (the closed sheet resolves with the outcome
-        /// known at close time).
+        /// Suspends until the next event for the loop: a user action or a cancel. A cancel wins over a
+        /// buffered action (the closed sheet resolves with the outcome known at close time).
         func awaitEvent() async -> PaymentSheet.UserAction {
             await withCheckedContinuation { continuation in
                 if wasCanceled {
@@ -523,11 +488,6 @@
                 if let action = bufferedUserAction {
                     bufferedUserAction = nil
                     continuation.resume(returning: action)
-                    return
-                }
-                if let buffered = bufferedReconcileResult {
-                    bufferedReconcileResult = nil
-                    continuation.resume(returning: .reconciled(buffered))
                     return
                 }
                 actionContinuation = continuation
@@ -604,8 +564,6 @@
             switch outcome {
             case .canceled:
                 wasCanceled = true
-                // The user left: stop any in-flight reconcile; a verdict completing later is dropped.
-                cancelReconcile()
                 // Unblock a suspended seam (user pulled down before confirming).
                 resumeAction(.cancel)
             default:
@@ -648,65 +606,16 @@
                 content?.applyOutcome(outcome)
                 return false
             case .pending, .unknown:
-                // Lock first, THEN start the reconcile: the content may defer applying the outcome (the
-                // minimum processing time), and a fast verdict must not be applied before the lock.
-                content?.applyOutcome(outcome) { [weak self] in
-                    self?.startReconcile()
-                }
+                // Lock the sheet and show the neutral "we're confirming; you can close; we won't
+                // double-charge" notice. The SDK does not poll — the user closes and the host
+                // reconciles via `retrievePayment()`.
+                content?.applyOutcome(outcome)
                 return false
             }
         }
 
-        /// Applies the verdict of the auto-reconcile.
-        ///
-        /// - `.succeeded` / `.failed`: the normal paths (success animation + auto-close / unlock with the
-        ///   failure notice, ready for a fresh attempt).
-        /// - still `.pending` / `.unknown`: stay locked, switch the notice to the "still confirming, you
-        ///   can close" copy. No further polling is started (the user can close; the host reconciles).
-        ///
-        /// - Returns: `true` when the presentation finished (success auto-close); `false` otherwise.
-        func applyReconciled(_ outcome: CheckoutOutcome) async -> Bool {
-            switch outcome {
-            case .pending, .unknown:
-                content?.showStillReconcilingNotice()
-                return false
-            case .succeeded, .failed, .canceled:
-                return await applyOutcome(outcome)
-            }
-        }
-
-        /// Starts the single auto-reconcile task (no-op if one is running or the sheet was closed).
-        private func startReconcile() {
-            guard !wasCanceled, reconcileTask == nil else { return }
-            let work = reconcile
-            reconcileTask = Task { [weak self] in
-                let result = await work()
-                self?.reconcileFinished(result)
-            }
-        }
-
-        /// Delivers the reconcile verdict exactly once, unless the user closed first.
-        private func reconcileFinished(_ result: CheckoutOutcome) {
-            reconcileTask = nil
-            guard !wasCanceled else { return }
-            if let continuation = actionContinuation {
-                actionContinuation = nil
-                continuation.resume(returning: .reconciled(result))
-            } else {
-                bufferedReconcileResult = result
-            }
-        }
-
-        /// Cancels the in-flight reconcile and discards any undelivered verdict.
-        private func cancelReconcile() {
-            reconcileTask?.cancel()
-            reconcileTask = nil
-            bufferedReconcileResult = nil
-        }
-
-        /// Dismisses the sheet (if still presented) and stops any in-flight reconcile.
+        /// Dismisses the sheet (if still presented).
         func dismiss() {
-            cancelReconcile()
             container?.dismiss(animated: true)
         }
     }

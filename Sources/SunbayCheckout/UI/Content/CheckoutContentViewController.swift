@@ -228,20 +228,6 @@
         /// The current internal view state (test / introspection readout).
         var currentViewState: CheckoutViewState { stateMachine.state }
 
-        /// Swaps the reconciling notice copy to the "still confirming" message, without leaving the
-        /// locked `.reconciling` state.
-        ///
-        /// Called by the coordinator when an auto-reconcile attempt (F1) comes back still `.unknown`:
-        /// the sheet stays exactly as locked as before (Pay hidden, inputs disabled, only ✕ available),
-        /// only the notice text changes to tell the user it is safe to close and that we will not charge
-        /// them twice. A no-op outside `.reconciling` (defensive; the coordinator only calls this while
-        /// reconciling).
-        func showStillReconcilingNotice() {
-            guard case .reconciling = stateMachine.state else { return }
-            notice.show(message: localize("sunbay.notice.stillReconciling"), severity: .info)
-            reportContentHeightIfChanged()
-        }
-
         #if DEBUG
             // MARK: Layout readouts (internal, tests only)
 

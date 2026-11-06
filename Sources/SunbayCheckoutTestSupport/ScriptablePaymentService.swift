@@ -35,7 +35,7 @@ public final class ScriptablePaymentService: PaymentService, @unchecked Sendable
     ///
     /// Uses `TimeInterval` (seconds) rather than `Duration`: `Duration` requires iOS 16 / macOS 13,
     /// while this target must also build on the macOS host at the package's iOS-15-mapped deployment
-    /// target. This mirrors the SDK's own convention (see `ResultPoller`).
+    /// target.
     private var _submitDelay: TimeInterval?
 
     /// Scripted snapshot sequence for `getResult` (consumed in call order; once exhausted, the last one is reused).

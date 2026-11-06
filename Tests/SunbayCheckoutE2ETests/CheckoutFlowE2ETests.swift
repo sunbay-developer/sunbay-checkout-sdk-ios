@@ -59,24 +59,20 @@ final class CheckoutFlowE2ETests: XCTestCase {
         XCTAssertEqual(fixture.actionStub.handleCallCount, 1)
     }
 
-    /// 4. Submit returns non-terminal `I`; the injected zero-wait poller then observes a terminal
-    /// `S` via `getResult` -> `.succeeded(txnId:)`.
-    func test_confirmSavedCard_initial_polls_to_succeeded() async {
+    /// 4. Submit returns non-terminal `I`; the SDK does not poll -> `.pending(txnId:)` immediately.
+    func test_confirmSavedCard_initial_mapsToPending_withoutPolling() async {
         let fixture = await makeE2E()
         fixture.paymentService.stubSubmit([
-            PaymentSnapshot(sessionId: e2eSessionId, status: .initial, txnId: nil)
-        ])
-        fixture.paymentService.stubGetResult([
-            PaymentSnapshot(sessionId: e2eSessionId, status: .succeeded, txnId: "txn_4")
+            PaymentSnapshot(sessionId: e2eSessionId, status: .initial, txnId: "txn_4")
         ])
 
         let outcome = await fixture.controller.confirmSavedCard(paymentMethodId: "pm_1")
 
-        guard case .succeeded(let txnId) = outcome else {
-            return XCTFail("expected .succeeded, got \(outcome)")
+        guard case .pending(let txnId) = outcome else {
+            return XCTFail("expected .pending, got \(outcome)")
         }
         XCTAssertEqual(txnId, "txn_4")
-        XCTAssertGreaterThanOrEqual(fixture.paymentService.getResultCallCount, 1)
+        XCTAssertEqual(fixture.paymentService.getResultCallCount, 0, "the SDK must not poll")
     }
 
     /// 5. Submit throws; the "query first on failure" `getResult` also throws -> `.unknown(sessionId:)`.
