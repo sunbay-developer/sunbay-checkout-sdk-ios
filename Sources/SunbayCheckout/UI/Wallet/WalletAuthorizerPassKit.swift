@@ -90,17 +90,19 @@ struct WalletAuthorizer: WalletAuthorizing {
                 controller.delegate = delegate
                 // The delegate must stay alive until authorization completes; retain it until the flow ends.
                 delegate.retainController = controller
-                controller.present { presented in
-                    if !presented {
-                        delegate.finish(
-                            throwing: CheckoutError(
-                                code: "WALLET_PRESENT_FAILED",
-                                message: "Failed to present Apple Pay.",
-                                category: .runtime,
-                                traceId: nil
-                            )
+                // Use the async `present()` variant: we are already inside a `@MainActor` Task,
+                // so this avoids the completion-handler form and keeps `finish(throwing:)` on the
+                // main actor (both the "async alternative" and "main actor-isolated call" warnings).
+                let presented = await controller.present()
+                if !presented {
+                    delegate.finish(
+                        throwing: CheckoutError(
+                            code: "WALLET_PRESENT_FAILED",
+                            message: "Failed to present Apple Pay.",
+                            category: .runtime,
+                            traceId: nil
                         )
-                    }
+                    )
                 }
             }
         }

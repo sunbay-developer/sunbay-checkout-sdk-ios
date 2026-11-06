@@ -177,28 +177,35 @@
                 isEnabled = false
                 spinner.stopAnimating()
                 titleLabel.isHidden = true
-                backgroundColor = appearance.primaryButtonBackground
+                // Background is transitioned to the success color by `animateSuccess` (morphed when
+                // animated, set directly under reduced motion). Leaving it unchanged here avoids a
+                // one-frame flash of the brand background before the morph begins.
                 alpha = 1.0
                 accessibilityTraits = .button
             }
         }
 
-        // MARK: - Success animation (ported conceptually from Stripe's animateSuccess)
+        // MARK: - Success animation (green fill + white checkmark)
 
-        /// Draws the ring→checkmark success indicator.
+        /// Transforms the button into a success "check button": the brand background morphs to the
+        /// success color and a large white checkmark is drawn on top.
         ///
-        /// A `CAShapeLayer` strokes a full circle, then a checkmark path, using the resolved success
-        /// color. Under reduced motion both shapes are shown fully drawn without the stroke animation.
+        /// When animated, the background crossfades to green while the checkmark pops in (scale +
+        /// fade) so the CTA appears to transform in place rather than being replaced. Under reduced
+        /// motion the final state (green fill + fully drawn checkmark) is shown without motion.
         private func animateSuccess(animated: Bool) {
             removeSuccessLayer()
 
-            let side: CGFloat = 20
+            // The checkmark occupies a generous share of the button height so the icon reads large.
+            let side = min(bounds.height, 44) * 0.8
+
             let shape = CAShapeLayer()
             shape.fillColor = UIColor.clear.cgColor
-            shape.strokeColor = appearance.success.cgColor
-            shape.lineWidth = 2
+            shape.strokeColor = UIColor.white.cgColor
+            shape.lineWidth = max(3, side * 0.11)
             shape.lineCap = .round
             shape.lineJoin = .round
+            shape.path = checkmarkPath(side: side).cgPath
             layer.addSublayer(shape)
             successLayer = shape
 
@@ -206,44 +213,45 @@
 
             let reduceMotion = UIAccessibility.isReduceMotionEnabled
             guard animated, !reduceMotion else {
-                // Final state only: show the checkmark path fully drawn.
-                shape.path = checkmarkPath(side: side).cgPath
+                // Final state only: green fill + fully drawn checkmark, no motion.
+                backgroundColor = appearance.success
                 shape.strokeEnd = 1
                 return
             }
 
-            // Phase 1: stroke the ring in.
-            shape.path = ringPath(side: side).cgPath
-            let ring = CABasicAnimation(keyPath: "strokeEnd")
-            ring.fromValue = 0
-            ring.toValue = 1
-            ring.duration = 0.25
-            ring.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            shape.add(ring, forKey: "ring")
-
-            // Phase 2: swap to the checkmark and stroke it in.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-                guard let self, self.successLayer === shape else { return }
-                shape.path = self.checkmarkPath(side: side).cgPath
-                let check = CABasicAnimation(keyPath: "strokeEnd")
-                check.fromValue = 0
-                check.toValue = 1
-                check.duration = 0.2
-                check.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                shape.strokeEnd = 1
-                shape.add(check, forKey: "check")
+            // Phase 1: morph the background from the brand color to the success color.
+            UIView.animate(withDuration: 0.25, delay: 0, options: [.curveEaseInOut]) {
+                self.backgroundColor = self.appearance.success
             }
+
+            // Phase 2: pop the checkmark in (scale from 0.6 → 1 while fading and stroking in).
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 0
+            fade.toValue = 1
+
+            let stroke = CABasicAnimation(keyPath: "strokeEnd")
+            stroke.fromValue = 0
+            stroke.toValue = 1
+
+            let scale = CABasicAnimation(keyPath: "transform.scale")
+            scale.fromValue = 0.6
+            scale.toValue = 1
+            scale.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.3) // slight overshoot
+
+            let group = CAAnimationGroup()
+            group.animations = [fade, stroke, scale]
+            group.duration = 0.3
+            group.beginTime = CACurrentMediaTime() + 0.15 // start as the background morph settles
+            group.fillMode = .backwards
+
+            shape.strokeEnd = 1
+            shape.add(group, forKey: "check")
         }
 
-        /// Centers the success shape layer in the button bounds.
+        /// Centers the success shape layer in the button bounds and anchors it for a centered scale.
         private func layoutSuccessLayer(_ shape: CAShapeLayer, side: CGFloat) {
-            let origin = CGPoint(x: (bounds.width - side) / 2, y: (bounds.height - side) / 2)
-            shape.frame = CGRect(origin: origin, size: CGSize(width: side, height: side))
-        }
-
-        /// A circular ring path in a `side`×`side` box.
-        private func ringPath(side: CGFloat) -> UIBezierPath {
-            UIBezierPath(ovalIn: CGRect(x: 1, y: 1, width: side - 2, height: side - 2))
+            shape.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+            shape.position = CGPoint(x: bounds.midX, y: bounds.midY)
         }
 
         /// A checkmark path in a `side`×`side` box.
