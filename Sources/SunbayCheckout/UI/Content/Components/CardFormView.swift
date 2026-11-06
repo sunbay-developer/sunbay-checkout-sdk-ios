@@ -163,6 +163,12 @@
             expiryField.title = localize("sunbay.card.expiry")
             cvvField.title = localize("sunbay.card.cvc")
 
+            // In-field example hints, shown only once the label has floated up and the field is still
+            // empty (focused + empty). Static format examples — no sensitive data.
+            panField.floatedPlaceholder = localize("sunbay.card.number.placeholder")
+            expiryField.floatedPlaceholder = localize("sunbay.card.expiry.placeholder")
+            cvvField.floatedPlaceholder = localize("sunbay.card.cvc.placeholder")
+
             brandIconView.image = UIImage(systemName: "creditcard")
             brandIconView.tintColor = appearance.textSecondary
             brandIconView.contentMode = .scaleAspectFit

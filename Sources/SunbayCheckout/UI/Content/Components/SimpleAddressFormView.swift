@@ -72,6 +72,9 @@
 
             line1Field.title = localize("sunbay.address.line1")
             postalField.title = localize("sunbay.address.postalCode")
+            // In-field example hints, shown only when the label has floated up and the field is empty.
+            line1Field.floatedPlaceholder = localize("sunbay.address.line1.placeholder")
+            postalField.floatedPlaceholder = localize("sunbay.address.postalCode.placeholder")
             for field in [line1Field, postalField] {
                 field.font = appearance.cardFieldFont
                 field.textColor = appearance.text

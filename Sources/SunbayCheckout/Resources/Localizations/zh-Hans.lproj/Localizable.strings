@@ -21,11 +21,16 @@
 "sunbay.address.country" = "国家或地区";
 "sunbay.address.line1" = "地址";
 "sunbay.address.postalCode" = "邮政编码";
+"sunbay.address.line1.placeholder" = "示例：中山路 123 号";
+"sunbay.address.postalCode.placeholder" = "518000";
 "sunbay.address.loadError" = "无法加载地址选项。";
 "sunbay.card.informationTitle" = "卡信息";
 "sunbay.card.number" = "卡号";
 "sunbay.card.expiry" = "月/年";
 "sunbay.card.cvc" = "安全码";
+"sunbay.card.number.placeholder" = "4242 4242 4242 4242";
+"sunbay.card.expiry.placeholder" = "08 / 28";
+"sunbay.card.cvc.placeholder" = "123";
 "sunbay.cof.newPaymentMethod" = "新卡";
 "sunbay.cof.viewMore" = "查看更多";
 "sunbay.common.retry" = "重试";

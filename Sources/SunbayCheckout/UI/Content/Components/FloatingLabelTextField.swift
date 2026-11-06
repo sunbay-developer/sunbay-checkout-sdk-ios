@@ -11,10 +11,13 @@
     /// or validates — card plaintext only ever lives in the field's `text`, exactly as with a bare
     /// `UITextField` (security-and-pci.md §4).
     ///
-    /// The label text is set via `title` (not `placeholder`, which stays empty so there is no double
-    /// text). Focus/content changes are observed through the field's own editing control events, so no
-    /// external wiring is required for the float behavior; a `delegate` and extra targets set by the
-    /// owner (formatting, CTA refresh) continue to work alongside the internal ones.
+    /// The label text is set via `title`. The native `placeholder` is owned internally and is used
+    /// ONLY for the optional `floatedPlaceholder` hint, shown inside the field while the label has
+    /// floated up but the field is still empty (focused + empty); in every other state `placeholder`
+    /// stays empty so it never double-draws with the resting label. Focus/content changes are observed
+    /// through the field's own editing control events, so no external wiring is required for the float
+    /// behavior; a `delegate` and extra targets set by the owner (formatting, CTA refresh) continue to
+    /// work alongside the internal ones.
     ///
     /// iOS-only: gated by `#if canImport(UIKit)`; does not compile under the macOS host (`swift test`).
     final class FloatingLabelTextField: UITextField {
@@ -35,11 +38,23 @@
         /// accessory (e.g. the card-number brand icon that sits just past the field's trailing edge).
         private let labelTrailingInset: CGFloat = 8
 
-        /// The floating label's text. Replaces `placeholder` usage; `placeholder` stays empty.
+        /// The floating label's text. Replaces `placeholder` usage; `placeholder` is reserved for the
+        /// `floatedPlaceholder` hint.
         var title: String? {
             didSet {
                 floatingLabel.text = title
                 setNeedsLayout()
+            }
+        }
+
+        /// An optional hint shown inside the field ONLY while the label has floated up but the field is
+        /// still empty (i.e. focused + empty). It stays hidden while resting (so it never double-draws
+        /// with the resting label) and once the field has content. Carries no sensitive data; it is a
+        /// static UI hint supplied by the owner.
+        var floatedPlaceholder: String? {
+            didSet {
+                guard floatedPlaceholder != oldValue else { return }
+                updateInFieldPlaceholder()
             }
         }
 
@@ -117,6 +132,18 @@
             floatingLabel.textColor = color
         }
 
+        /// Shows the `floatedPlaceholder` inside the field only in the floated-but-empty state
+        /// (focused + empty), and clears the native `placeholder` otherwise so it never double-draws
+        /// with the resting label. Reuses `shouldFloat` as the single source of truth for the state.
+        private func updateInFieldPlaceholder() {
+            let showHint = shouldFloat && (text ?? "").isEmpty
+            let hint = showHint ? floatedPlaceholder : nil
+            // Avoid redundant assignments (each sets placeholder attributes and invalidates layout).
+            if placeholder != hint {
+                placeholder = hint
+            }
+        }
+
         /// Applies the current float state to the label (position + font + color), animating unless
         /// page transitions are disabled or Reduce Motion is on.
         private func applyFloatState(animated: Bool) {
@@ -138,9 +165,11 @@
             let floating = shouldFloat
             floatingLabel.font = floating ? floatedFont : restingFont
             floatingLabel.sizeToFit()
-            // Position and color share this one trigger so they can never diverge (e.g. after a
-            // programmatic `text =` set, which fires no editing event but does trigger layout).
+            // Position, color, and the in-field placeholder share this one trigger so they can never
+            // diverge (e.g. after a programmatic `text =` set, which fires no editing event but does
+            // trigger layout).
             updateLabelColor()
+            updateInFieldPlaceholder()
 
             let width = max(0, bounds.width - horizontalInset - labelTrailingInset)
             if floating {
@@ -212,6 +241,9 @@
 
             /// Test readout: the floating label's current frame (to assert trailing room / position).
             var floatingLabelFrameForTest: CGRect { floatingLabel.frame }
+
+            /// Test readout: the in-field placeholder currently shown (nil unless floated + empty).
+            var inFieldPlaceholderForTest: String? { placeholder }
         #endif
     }
 #endif
