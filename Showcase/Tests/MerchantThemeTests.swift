@@ -47,7 +47,7 @@ final class MerchantThemeTests: XCTestCase {
             XCTAssertEqual(appearance.cornerRadius, radius)
             XCTAssertEqual(store.cornerRadius, radius)
             XCTAssertNotNil(appearance.colors.primary)
-            XCTAssertEqual(appearance.colors.primary, UIColor(showcaseHex: hex))
+            XCTAssertEqual(appearance.colors.primary, UIColor(sunbayHex: hex))
         }
     }
 }

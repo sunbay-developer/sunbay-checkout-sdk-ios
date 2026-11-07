@@ -50,13 +50,13 @@ final class ThemeStore: ObservableObject {
         }
     }
 
-    var primary: Color { Color(UIColor(showcaseHex: preset.primaryHex) ?? .systemOrange) }
+    var primary: Color { Color(UIColor(sunbayHex: preset.primaryHex) ?? .systemOrange) }
     var cornerRadius: CGFloat { preset.cornerRadius }
 
     /// Never returns `.automatic`: `.system` resolves through `systemIsDark`.
     func appearance(systemIsDark: Bool) -> Appearance {
         var appearance = Appearance()
-        appearance.colors.primary = UIColor(showcaseHex: preset.primaryHex)
+        appearance.colors.primary = UIColor(sunbayHex: preset.primaryHex)
         appearance.cornerRadius = preset.cornerRadius
         switch mode {
         case .system: appearance.colorScheme = systemIsDark ? .dark : .light
@@ -64,19 +64,5 @@ final class ThemeStore: ObservableObject {
         case .dark: appearance.colorScheme = .dark
         }
         return appearance
-    }
-}
-
-extension UIColor {
-    /// Parses `#RRGGBB` (the SDK's own hex initializer is internal).
-    convenience init?(showcaseHex hex: String) {
-        var s = hex.trimmingCharacters(in: .whitespaces)
-        if s.hasPrefix("#") { s.removeFirst() }
-        guard s.count == 6, let v = UInt32(s, radix: 16) else { return nil }
-        self.init(
-            red: CGFloat((v >> 16) & 0xff) / 255,
-            green: CGFloat((v >> 8) & 0xff) / 255,
-            blue: CGFloat(v & 0xff) / 255,
-            alpha: 1)
     }
 }
