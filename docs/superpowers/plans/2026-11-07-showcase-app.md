@@ -16,7 +16,7 @@
 - English only in code, comments, identifiers, docs, commit messages. The sole exception: Chinese UI strings in the single file `Shared/Strings/Strings.swift`.
 - iOS 15 minimum; `NavigationView` (no `NavigationStack`), `ObservableObject` (no Observation), no `presentationDetents`.
 - Public SDK API only; no `@testable import SunbayCheckout`; do NOT link `SunbayCheckoutTestSupport`; no SDK source changes.
-- No signing material committed. Env vars (copy mechanism from `Example/SunbayCheckoutDemo/Project.swift`): `TUIST_SUNBAY_SHOWCASE_MERCHANT_ID` (default `merchant.com.sunbay.demo`), `TUIST_SUNBAY_SHOWCASE_DEVELOPMENT_TEAM` (default empty). Bundle id `com.sunbay.checkout.showcase`.
+- No signing material committed. Env vars (copy mechanism from `Example/SunbayCheckoutDemo/Project.swift`): `TUIST_SUNBAY_SHOWCASE_MERCHANT_ID` (default `merchant.native.com.sunbay.dev`), `TUIST_SUNBAY_SHOWCASE_DEVELOPMENT_TEAM` (default empty). Bundle id `com.sunbay.checkout.showcase`.
 - Nothing sensitive is logged or shown; the callback panel shows `txnId` and states only.
 - Billing address stays SDK default `.simple`; no shipping UI; do not inject an address-metadata service.
 - Generated `Showcase/*.xcodeproj`, `*.xcworkspace`, `Derived/` are git-ignored.
@@ -123,7 +123,7 @@ Showcase/
 **Interfaces:**
 - Consumes: `ThemeStore.appearance(systemIsDark:)`, `LanguageStore.language.localeCode`, `ShowcasePaymentService`, `ShowcaseCofService`.
 - Produces: `struct PaymentResult { let outcome: CheckoutOutcome; let states: [CheckoutPresentationState] }`; `@MainActor final class CheckoutPresenter: ObservableObject { @Published private(set) var isPresenting: Bool; func pay(amountMinor: Int64, theme: ThemeStore, language: LanguageStore, systemIsDark: Bool) async -> PaymentResult? }`.
-- `pay` returns `nil` immediately if `isPresenting` (double-tap guard) or no presenter VC is found. Builds `CheckoutConfiguration(environment: .dev, applePayMerchantId: <env-independent placeholder "merchant.com.sunbay.demo">, appearance:, locale:)`, `SunbayCheckout(configuration:paymentService:cofService:)`, `PaymentSheet(checkout:sessionId:customerAccessSecret: "demo_secret")`, records `onStateChange` into an array, `await sheet.present(from:)` on the top controller (walk `presentedViewController`, copy `topViewController()` from `DemoRootView.swift`), resets `isPresenting` after.
+- `pay` returns `nil` immediately if `isPresenting` (double-tap guard) or no presenter VC is found. Builds `CheckoutConfiguration(environment: .dev, applePayMerchantId: <env-independent placeholder "merchant.native.com.sunbay.dev">, appearance:, locale:)`, `SunbayCheckout(configuration:paymentService:cofService:)`, `PaymentSheet(checkout:sessionId:customerAccessSecret: "demo_secret")`, records `onStateChange` into an array, `await sheet.present(from:)` on the top controller (walk `presentedViewController`, copy `topViewController()` from `DemoRootView.swift`), resets `isPresenting` after.
 
 - [ ] **Step 1:** Implement.
 - [ ] **Step 2:** Build. Expected: BUILD SUCCEEDED.

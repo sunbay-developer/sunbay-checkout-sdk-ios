@@ -27,7 +27,7 @@ import Foundation
     /// target (see README.md).
     enum ProbeConfig {
         /// Placeholder merchant id (on a real device, replace with a real id registered in Apple Developer).
-        static let merchantIdentifier = "merchant.com.sunbay.probe"
+        static let merchantIdentifier = "merchant.native.com.sunbay.dev"
         /// Placeholder country/region (TEST).
         static let countryCode = "US"
         /// Placeholder currency (TEST).

@@ -18,7 +18,7 @@ Concretely it:
 - calls `PKPaymentAuthorizationController.canMakePayments()` and
   `canMakePayments(usingNetworks:)` (capability detection),
 - builds a `PKPaymentRequest` with **placeholder** merchant/gateway params (placeholder
-  `merchantIdentifier` `merchant.com.sunbay.probe`, TEST/placeholder country `US`, currency
+  `merchantIdentifier` `merchant.native.com.sunbay.dev`, TEST/placeholder country `US`, currency
   `USD`, supported networks visa / masterCard / amex, `.threeDSecure`, a single `1.00` summary
   item),
 - presents `PKPaymentAuthorizationController`,
@@ -49,7 +49,7 @@ repo (no certificates/secrets are committed). To run it on a real device a devel
    sources in an Xcode **app** target (or add an app wrapper) and enable Apple Pay on it.
 2. **A real `merchantIdentifier`.** Register a merchant ID in the Apple Developer account (e.g.
    `merchant.com.<yourorg>.<app>`), attach it to the capability, and replace the placeholder
-   `ProbeConfig.merchantIdentifier` (`merchant.com.sunbay.probe`) in `ApplePayProbe.swift` with it.
+   `ProbeConfig.merchantIdentifier` (`merchant.native.com.sunbay.dev`) in `ApplePayProbe.swift` with it.
    The placeholder will not produce a usable sheet on a device.
 3. **A sandbox tester + a test card in Wallet.** Sign in to the device with an **Apple sandbox
    tester** account and add a **test card** to Wallet (per Apple's Apple Pay sandbox testing
