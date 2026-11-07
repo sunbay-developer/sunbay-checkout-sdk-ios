@@ -338,7 +338,7 @@
 
             /// Fills the card form with a valid test card (bypasses keystrokes).
             func fillCardForTest() {
-                cardForm.setFieldsForTest(pan: "4242424242424242", expiry: "08/28", cvv: "123")
+                cardForm.setFieldsForTest(pan: "4242424242424242", expiry: "12/99", cvv: "123")
                 refreshConfirmButtonState()
             }
 
@@ -791,7 +791,7 @@
         private func buildNewCardStack() {
             let topDivider = makeNewCardTopDivider()
             newCardStack.addArrangedSubview(topDivider)
-            newCardStack.addArrangedSubview(makeSectionTitle("sunbay.card.informationTitle"))
+            newCardStack.addArrangedSubview(makeCardInformationHeader())
             newCardStack.addArrangedSubview(cardForm)
             // A little more breathing room between the top divider and the first section title.
             newCardStack.setCustomSpacing(20, after: topDivider)
@@ -1098,6 +1098,48 @@
             ])
             return container
         }
+
+        /// Builds the "Card information" header row: the section title on the left and, when scanning is
+        /// available (auto-detected, unless the host disabled it), a themed "Scan card" button on the right.
+        private func makeCardInformationHeader() -> UIView {
+            let title = makeSectionTitle("sunbay.card.informationTitle")
+            #if !targetEnvironment(macCatalyst)
+                guard CardScanAvailability.isAvailable(policy: appearance.cardScanning) else { return title }
+
+                let button = UIButton(type: .system)
+                let config = UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+                button.setImage(UIImage(systemName: "camera.fill", withConfiguration: config), for: .normal)
+                button.setTitle(" " + localize("sunbay.card.scan"), for: .normal)
+                button.titleLabel?.font = appearance.optionHintFont
+                button.tintColor = appearance.primary
+                button.setTitleColor(appearance.primary, for: .normal)
+                button.accessibilityLabel = localize("sunbay.card.scan")
+                button.setContentHuggingPriority(.required, for: .horizontal)
+                button.setContentCompressionResistancePriority(.required, for: .horizontal)
+                button.addTarget(self, action: #selector(scanCardTapped), for: .touchUpInside)
+
+                title.setContentHuggingPriority(.defaultLow, for: .horizontal)
+                let row = UIStackView(arrangedSubviews: [title, button])
+                row.axis = .horizontal
+                row.alignment = .center
+                row.spacing = 8
+                return row
+            #else
+                return title
+            #endif
+        }
+
+        #if !targetEnvironment(macCatalyst)
+            @objc private func scanCardTapped() {
+                view.endEditing(true)
+                let scanner = CardScanViewController(appearance: appearance, localize: localize)
+                scanner.onScanned = { [weak self] card in
+                    self?.cardForm.applyScannedCard(card)
+                    self?.refreshConfirmButtonState()
+                }
+                present(scanner, animated: true)
+            }
+        #endif
 
         /// Builds a group section header: uppercased, semibold, in the primary text color and the
         /// small `sectionHeaderFont`. It is the dark anchor of each group, while placeholders stay

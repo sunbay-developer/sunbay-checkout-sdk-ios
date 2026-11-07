@@ -15,6 +15,10 @@
 "sunbay.sheet.orPayUsing" = "Or pay using";
 "sunbay.notice.reconciling" = "We're confirming your payment. You can close this sheet; we won't charge you twice.";
 "sunbay.card.invalid" = "Please check your card details.";
+"sunbay.card.scan" = "Scan card";
+"sunbay.card.scan.hint" = "Position your card within the frame";
+"sunbay.card.scan.tip" = "Hold steady, try another angle, or turn on the light";
+"sunbay.card.scan.light" = "Light";
 "sunbay.address.billingTitle" = "Billing address";
 "sunbay.address.shippingTitle" = "Shipping address";
 "sunbay.address.sameAsBilling" = "Same as billing";

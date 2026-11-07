@@ -15,6 +15,10 @@
 "sunbay.sheet.orPayUsing" = "或使用以下方式支付";
 "sunbay.notice.reconciling" = "我们正在确认您的支付结果。您可以关闭此页面，我们不会重复扣款。";
 "sunbay.card.invalid" = "请检查您的卡信息。";
+"sunbay.card.scan" = "扫描银行卡";
+"sunbay.card.scan.hint" = "请将银行卡置于框内";
+"sunbay.card.scan.tip" = "请保持稳定，试试换个角度，或打开补光灯";
+"sunbay.card.scan.light" = "补光灯";
 "sunbay.address.billingTitle" = "账单地址";
 "sunbay.address.shippingTitle" = "收货地址";
 "sunbay.address.sameAsBilling" = "与账单地址相同";
@@ -26,7 +30,7 @@
 "sunbay.address.loadError" = "无法加载地址选项。";
 "sunbay.card.informationTitle" = "卡信息";
 "sunbay.card.number" = "卡号";
-"sunbay.card.expiry" = "月/年";
+"sunbay.card.expiry" = "月 / 年";
 "sunbay.card.cvc" = "安全码";
 "sunbay.card.number.placeholder" = "4242 4242 4242 4242";
 "sunbay.card.expiry.placeholder" = "08 / 28";
