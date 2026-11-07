@@ -6,6 +6,9 @@ xcuserdata/
 .superpowers/
 semantic-review/
 
+# Local editor settings (per developer, not shared).
+.vscode/
+
 # Tuist-generated Example app artifacts (Project.swift and Sources/ are checked in).
 Example/SunbayCheckoutDemo/*.xcodeproj
 Example/SunbayCheckoutDemo/*.xcworkspace
