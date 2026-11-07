@@ -2,6 +2,7 @@
 "sunbay.sheet.savedCards" = "Saved cards";
 "sunbay.sheet.newCard" = "New card";
 "sunbay.sheet.saveThisCard" = "Save this card";
+"sunbay.sheet.saveThisCardHint" = "Stored securely for faster checkout at %@ next time.";
 "sunbay.sheet.pay" = "Pay";
 "sunbay.sheet.applePay" = "Apple Pay";
 "sunbay.error.already_presenting" = "A checkout is already in progress.";

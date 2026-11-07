@@ -310,6 +310,7 @@ import SunbayCheckoutTestSupport
             switch mode {
             case .simple: return .simple
             case .full: return .full
+            case .off: return .off
             }
         }
 

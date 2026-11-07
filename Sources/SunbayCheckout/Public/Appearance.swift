@@ -86,6 +86,8 @@
             case simple
             /// Backend-layout-driven full address form.
             case full
+            /// Not collected: the section is not shown at all.
+            case off
         }
 
         /// Bottom-sheet sizing policy.

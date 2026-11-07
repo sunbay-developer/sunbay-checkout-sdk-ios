@@ -151,6 +151,7 @@ struct DemoSettings: Codable, Equatable {
     enum DemoAddressMode: String, Codable, CaseIterable, Identifiable {
         case simple
         case full
+        case off
 
         var id: String { rawValue }
 
@@ -159,6 +160,7 @@ struct DemoSettings: Codable, Equatable {
             switch self {
             case .simple: return "Simple (country / line1 / ZIP)"
             case .full: return "Full (backend layout)"
+            case .off: return "Off (not collected)"
             }
         }
     }

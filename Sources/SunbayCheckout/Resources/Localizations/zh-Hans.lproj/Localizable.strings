@@ -2,6 +2,7 @@
 "sunbay.sheet.savedCards" = "已保存的卡";
 "sunbay.sheet.newCard" = "新卡";
 "sunbay.sheet.saveThisCard" = "保存此卡";
+"sunbay.sheet.saveThisCardHint" = "安全保存，下次在 %@ 结账更快捷。";
 "sunbay.sheet.pay" = "支付";
 "sunbay.sheet.applePay" = "Apple Pay";
 "sunbay.error.already_presenting" = "结账正在进行中。";
