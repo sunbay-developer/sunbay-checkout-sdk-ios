@@ -645,8 +645,10 @@
             scrollView.translatesAutoresizingMaskIntoConstraints = false
             // Dragging the form dismisses the keyboard (Stripe parity).
             scrollView.keyboardDismissMode = .onDrag
-            // Tapping the empty background also dismisses the keyboard. `cancelsTouchesInView = false`
-            // keeps every control working; the delegate skips taps on fields/controls.
+            // Tapping any non-interactive area of the sheet (header, form background, bottom bar)
+            // dismisses the keyboard. It lives on the root view so it covers the whole sheet in one
+            // place. `cancelsTouchesInView = false` keeps every control working; the delegate skips
+            // taps on fields/controls.
             let backgroundTap = UITapGestureRecognizer(target: self, action: #selector(handleBackgroundTap))
             backgroundTap.cancelsTouchesInView = false
             backgroundTap.delegate = self
