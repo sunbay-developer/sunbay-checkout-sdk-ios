@@ -82,6 +82,7 @@
                 field.translatesAutoresizingMaskIntoConstraints = false
             }
             postalField.keyboardType = .numbersAndPunctuation
+            KeyboardDismissal.installDoneAccessory(on: postalField)
 
             // Each control is its own bordered box; text fields highlight their border on focus.
             let countryContainer = FieldContainerView(appearance: appearance, control: countryField)

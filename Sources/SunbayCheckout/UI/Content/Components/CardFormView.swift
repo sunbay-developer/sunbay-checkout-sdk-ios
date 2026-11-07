@@ -153,6 +153,7 @@
                 field.font = appearance.cardFieldFont
                 field.textColor = appearance.text
                 field.delegate = self
+                KeyboardDismissal.installDoneAccessory(on: field)
                 field.translatesAutoresizingMaskIntoConstraints = false
                 field.addTarget(self, action: #selector(handleEditingChanged), for: .editingChanged)
                 field.addTarget(self, action: #selector(handleEditingDidBegin), for: .editingDidBegin)
