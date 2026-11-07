@@ -82,12 +82,12 @@
 
         private func configure() {
             floatingLabel.text = title
-            floatingLabel.font = appearance.cardFieldFont
+            floatingLabel.font = restingFont
             floatingLabel.textColor = appearance.textSecondary
             floatingLabel.translatesAutoresizingMaskIntoConstraints = true
             addSubview(floatingLabel)
 
-            valueLabel.font = appearance.cardFieldFont
+            valueLabel.font = restingFont
             valueLabel.textColor = appearance.text
             valueLabel.translatesAutoresizingMaskIntoConstraints = true
             addSubview(valueLabel)
@@ -116,8 +116,10 @@
 
         // MARK: - Float state
 
+        private var restingFont: UIFont { FloatingLabelMetrics.fieldFont(from: appearance.cardFieldFont) }
+
         private var floatedFont: UIFont {
-            FloatingLabelMetrics.floatedFont(from: appearance.cardFieldFont)
+            FloatingLabelMetrics.floatedFont(from: restingFont)
         }
 
         override func layoutSubviews() {
@@ -127,13 +129,16 @@
             if hasValue {
                 floatingLabel.font = floatedFont
                 floatingLabel.sizeToFit()
-                floatingLabel.frame = CGRect(x: leadingInset, y: 0, width: width, height: floatBand)
+                floatingLabel.frame = CGRect(
+                    x: leadingInset, y: FloatingLabelMetrics.floatedLabelTopInset, width: width,
+                    height: floatingLabel.bounds.height)
                 valueLabel.isHidden = false
                 valueLabel.frame = CGRect(
-                    x: leadingInset, y: floatBand, width: width, height: bounds.height - floatBand)
+                    x: leadingInset, y: floatBand, width: width,
+                    height: max(0, bounds.height - floatBand - FloatingLabelMetrics.bottomInset))
             } else {
                 // Resting: the label sits centered as a placeholder; no value shown.
-                floatingLabel.font = appearance.cardFieldFont
+                floatingLabel.font = restingFont
                 floatingLabel.sizeToFit()
                 floatingLabel.frame = CGRect(x: leadingInset, y: 0, width: width, height: bounds.height)
                 valueLabel.isHidden = true

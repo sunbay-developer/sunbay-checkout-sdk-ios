@@ -44,7 +44,7 @@
             // to fit label + value. Other controls keep the original inset and height floor.
             let isFloating = control is FloatingLabelTextField || control is FloatingLabelMenuField
             let verticalInset: CGFloat = isFloating ? 0 : 6
-            let minHeight: CGFloat = isFloating ? 56 : 48
+            let minHeight: CGFloat = isFloating ? FloatingLabelMetrics.minFieldHeight : 48
             NSLayoutConstraint.activate([
                 control.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
                 control.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
