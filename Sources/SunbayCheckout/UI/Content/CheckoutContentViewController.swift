@@ -650,7 +650,7 @@
             let backgroundTap = UITapGestureRecognizer(target: self, action: #selector(handleBackgroundTap))
             backgroundTap.cancelsTouchesInView = false
             backgroundTap.delegate = self
-            scrollView.addGestureRecognizer(backgroundTap)
+            view.addGestureRecognizer(backgroundTap)
             bottomBar.translatesAutoresizingMaskIntoConstraints = false
 
             view.addSubview(headerContainer)

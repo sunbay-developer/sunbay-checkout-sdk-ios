@@ -88,6 +88,21 @@
             XCTAssertNil(firstResponder(in: vc.view), "Tapping outside the fields must dismiss the keyboard.")
         }
 
+        /// The recognizer must live on the content root view so header and bottom bar taps count too,
+        /// not only the scrolling form.
+        func test_backgroundTapRecognizer_isInstalledOnRootView() {
+            let (vc, window) = makeHostedNewCardVC()
+            defer { window.isHidden = true; window.rootViewController = nil }
+
+            let taps = (vc.view.gestureRecognizers ?? []).compactMap { $0 as? UITapGestureRecognizer }
+            XCTAssertEqual(taps.count, 1, "Exactly one background tap recognizer on the root view.")
+            XCTAssertFalse(taps.first?.cancelsTouchesInView ?? true, "It must not swallow control taps.")
+            XCTAssertTrue(taps.first?.delegate === vc, "The delegate filters out field/control taps.")
+            XCTAssertTrue(
+                KeyboardDismissal.shouldHandleTap(on: vc.headerContainerForTest),
+                "A tap on the header area (not its buttons) is background.")
+        }
+
         func test_numberPadFields_haveDoneAccessory() {
             let (vc, window) = makeHostedNewCardVC()
             defer { window.isHidden = true; window.rootViewController = nil }
