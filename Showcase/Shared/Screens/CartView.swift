@@ -118,6 +118,9 @@ struct CartView: View {
                 callbackLine: "succeeded(txnId: \(txnId))",
                 statesLine: result.states.map { "\($0)" }.joined(separator: " -> ")
             )
+            // Clear now (snapshot already holds amount/lines) so a swipe-back
+            // from Result cannot land on a payable, already-paid cart.
+            cart.clear()
             showResult = true
         case .canceled:
             messageKey = "payment.canceled"

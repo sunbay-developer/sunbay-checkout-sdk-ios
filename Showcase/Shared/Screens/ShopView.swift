@@ -51,6 +51,7 @@ struct ShopView: View {
 
 private struct CartBadgeIcon: View {
     let count: Int
+    @EnvironmentObject private var lang: LanguageStore
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -66,7 +67,7 @@ private struct CartBadgeIcon: View {
                     .offset(x: 4, y: -6)
             }
         }
-        .accessibilityLabel("Cart, \(count)")
+        .accessibilityLabel(String(format: lang.t("shop.cartA11y"), count))
     }
 }
 

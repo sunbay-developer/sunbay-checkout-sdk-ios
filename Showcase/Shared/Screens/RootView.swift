@@ -16,6 +16,6 @@ struct RootView: View {
         .environmentObject(lang)
         .environmentObject(presenter)
         .preferredColorScheme(theme.swiftUIScheme)
-        .accentColor(theme.primary)
+        .tint(theme.primary)
     }
 }

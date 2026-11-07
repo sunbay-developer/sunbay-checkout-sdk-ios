@@ -67,6 +67,8 @@ enum Strings {
         "settings.language.en": ("English", "English"),
         "settings.language.zh": ("简体中文", "简体中文"),
 
+        "shop.cartA11y": ("Cart, %d items", "购物车，%d 件商品"),
+
         "result.orderNumber": ("Order number", "订单号"),
         "result.amount": ("Amount", "金额"),
         "result.thanks": ("Thank you for your order", "感谢您的订单"),
