@@ -4,7 +4,7 @@ import SwiftUI
 struct ShowcaseApp: App {
     var body: some Scene {
         WindowGroup {
-            Text("Showcase")
+            RootView()
         }
     }
 }
