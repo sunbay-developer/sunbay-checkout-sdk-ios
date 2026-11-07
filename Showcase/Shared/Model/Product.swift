@@ -12,10 +12,11 @@ struct Product: Identifiable, Equatable {
 
 enum Catalog {
     static let products: [Product] = [
-        Product(id: "headphones", nameKey: "product.headphones", priceMinor: 14_900, symbol: "headphones"),
-        Product(id: "watch", nameKey: "product.watch", priceMinor: 12_900, symbol: "applewatch"),
-        Product(id: "backpack", nameKey: "product.backpack", priceMinor: 6_900, symbol: "bag"),
-        Product(id: "bottle", nameKey: "product.bottle", priceMinor: 2_400, symbol: "cup.and.saucer"),
-        Product(id: "notebook", nameKey: "product.notebook", priceMinor: 1_200, symbol: "book.closed"),
+        // Coffee-shop menu. SF Symbols are all available on iOS 15.
+        Product(id: "latte", nameKey: "product.latte", priceMinor: 550, symbol: "cup.and.saucer"),
+        Product(id: "americano", nameKey: "product.americano", priceMinor: 400, symbol: "mug"),
+        Product(id: "coldbrew", nameKey: "product.coldbrew", priceMinor: 475, symbol: "takeoutbag.and.cup.and.straw"),
+        Product(id: "croissant", nameKey: "product.croissant", priceMinor: 350, symbol: "fork.knife"),
+        Product(id: "beans", nameKey: "product.beans", priceMinor: 1_600, symbol: "bag"),
     ]
 }

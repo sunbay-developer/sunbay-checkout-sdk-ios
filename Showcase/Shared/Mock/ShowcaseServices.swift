@@ -20,7 +20,7 @@ public final class ShowcasePaymentService: PaymentService, @unchecked Sendable {
         CheckoutSession(
             id: id,
             amount: Amount(minorUnits: amountMinor, currencyCode: "USD"),
-            merchantName: "Showcase Store",
+            merchantName: "Sunbay Coffee",
             methods: [.card, .applePay, .savedCard],
             expiresAt: Date().addingTimeInterval(15 * 60),
             rsaPublicKey: ShowcaseRSAKey.publicKeyBase64,

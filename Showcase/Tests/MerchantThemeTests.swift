@@ -57,4 +57,11 @@ final class MerchantThemeTests: XCTestCase {
         WindowAppearance.apply(.unspecified, to: [a, b])
         XCTAssertEqual(a.overrideUserInterfaceStyle, .unspecified, "System must clear the override.")
     }
+
+    /// The Showcase is a coffee shop: no shipping address; billing stays the SDK default.
+    func testAppearanceTurnsShippingOffAndKeepsSimpleBilling() {
+        let appearance = ThemeStore().appearance(systemIsDark: false)
+        XCTAssertEqual(appearance.shippingAddressMode, .off)
+        XCTAssertEqual(appearance.billingAddressMode, .simple)
+    }
 }

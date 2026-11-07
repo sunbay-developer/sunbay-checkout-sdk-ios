@@ -31,17 +31,17 @@ final class LanguageStore: ObservableObject {
 /// All user-visible strings. This is the only file allowed to contain Chinese text.
 enum Strings {
     private static let table: [String: (en: String, zh: String)] = [
-        "app.title": ("Sunbay Shop", "Sunbay 商店"),
+        "app.title": ("Sunbay Coffee", "Sunbay 咖啡"),
         "shop.title": ("Shop", "商品"),
         "cart.title": ("Cart", "购物车"),
         "result.title": ("Order Result", "订单结果"),
         "settings.title": ("Settings", "设置"),
 
-        "product.headphones": ("Headphones", "耳机"),
-        "product.watch": ("Smart Watch", "智能手表"),
-        "product.backpack": ("Backpack", "背包"),
-        "product.bottle": ("Water Bottle", "水杯"),
-        "product.notebook": ("Notebook", "笔记本"),
+        "product.latte": ("Caffe Latte", "拿铁"),
+        "product.americano": ("Americano", "美式咖啡"),
+        "product.coldbrew": ("Cold Brew", "冷萃咖啡"),
+        "product.croissant": ("Butter Croissant", "黄油可颂"),
+        "product.beans": ("Coffee Beans 250g", "咖啡豆 250g"),
 
         "action.add": ("Add", "添加"),
         "action.pay": ("Pay", "支付"),

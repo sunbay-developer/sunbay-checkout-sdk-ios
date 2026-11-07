@@ -79,6 +79,8 @@ final class ThemeStore: ObservableObject {
         var appearance = Appearance()
         appearance.colors.primary = UIColor(sunbayHex: preset.primaryHex)
         appearance.cornerRadius = preset.cornerRadius
+        // A coffee shop ships nothing: no shipping address. Billing keeps the SDK default (.simple).
+        appearance.shippingAddressMode = .off
         switch mode {
         case .system: appearance.colorScheme = systemIsDark ? .dark : .light
         case .light: appearance.colorScheme = .light
