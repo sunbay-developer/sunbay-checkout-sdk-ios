@@ -41,10 +41,16 @@
         /// Font for the sheet header title (title3, semibold). Larger than a section title.
         let titleFont: UIFont
         /// Font for group section headers (caption1, semibold). Smaller than the content, paired
-        /// with `textSecondary` + uppercased copy to read as a de-emphasized overline.
+        /// with the primary `text` color + uppercased copy to act as a dark group anchor.
         let sectionHeaderFont: UIFont
         /// Font for section titles (subheadline, semibold).
         let sectionTitleFont: UIFont
+        /// Font for checkbox option labels such as "Save this card" (subheadline, regular).
+        /// Smaller than the field font so opt-ins sit below the inputs in the visual hierarchy.
+        let optionLabelFont: UIFont
+        /// Color for checkbox option labels: the primary text color softened to 70% alpha, so it is
+        /// lighter than field content but darker than `textSecondary` placeholders.
+        var optionLabelColor: UIColor { text.withAlphaComponent(0.7) }
         /// Font for the primary call-to-action button (headline).
         let ctaFont: UIFont
 
@@ -109,6 +115,8 @@
                 base: appearance.font.base, textStyle: .caption1, scale: scale, weight: .semibold)
             let sectionTitleFont = Self.font(
                 base: appearance.font.base, textStyle: .subheadline, scale: scale, weight: .semibold)
+            let optionLabelFont = Self.font(
+                base: appearance.font.base, textStyle: .subheadline, scale: scale, weight: nil)
             let ctaFont = Self.font(
                 base: appearance.font.base, textStyle: .headline, scale: scale, weight: nil)
 
@@ -131,6 +139,7 @@
                 titleFont: titleFont,
                 sectionHeaderFont: sectionHeaderFont,
                 sectionTitleFont: sectionTitleFont,
+                optionLabelFont: optionLabelFont,
                 ctaFont: ctaFont,
                 cornerRadius: appearance.cornerRadius,
                 borderWidth: appearance.borderWidth,

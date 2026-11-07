@@ -911,8 +911,8 @@
 
             let label = UILabel()
             label.text = localize("sunbay.sheet.saveThisCard")
-            label.font = appearance.cardFieldFont
-            label.textColor = appearance.text
+            label.font = appearance.optionLabelFont
+            label.textColor = appearance.optionLabelColor
             label.translatesAutoresizingMaskIntoConstraints = false
             checkbox.attachLabel(label)
 
@@ -953,14 +953,15 @@
             return container
         }
 
-        /// Builds a group section header: uppercased, gray (`textSecondary`), and in the smaller
-        /// `sectionHeaderFont`, so it reads as a de-emphasized overline distinct from the content.
+        /// Builds a group section header: uppercased, semibold, in the primary text color and the
+        /// small `sectionHeaderFont`. It is the dark anchor of each group, while placeholders stay
+        /// gray and option labels are smaller/regular, giving a clear three-level hierarchy.
         /// Shared by the "Card information", billing, and shipping group titles.
         private func makeSectionTitle(_ key: String) -> UILabel {
             let label = UILabel()
             label.text = localize(key).uppercased()
             label.font = appearance.sectionHeaderFont
-            label.textColor = appearance.textSecondary
+            label.textColor = appearance.text
             return label
         }
 
@@ -992,8 +993,8 @@
 
             let toggleLabel = UILabel()
             toggleLabel.text = localize("sunbay.address.sameAsBilling")
-            toggleLabel.font = appearance.cardFieldFont
-            toggleLabel.textColor = appearance.text
+            toggleLabel.font = appearance.optionLabelFont
+            toggleLabel.textColor = appearance.optionLabelColor
             toggleLabel.setContentHuggingPriority(.required, for: .horizontal)
             checkbox.attachLabel(toggleLabel)
 
