@@ -329,10 +329,16 @@
 
             switch textField {
             case panField:
-                textField.text = Self.formatPAN(updated)
+                guard let edit = PANFormatter.apply(current: current, range: range, replacement: string)
+                else { return false }
+                textField.text = edit.text
+                Self.setCaret(in: textField, offset: edit.caret)
                 sendEditingChanged(textField)
-                // A number that is complete for its brand moves on to the expiry field.
-                if !string.isEmpty, Self.isCompletePAN(textField.text ?? "") { expiryField.becomeFirstResponder() }
+                // A number that is complete for its brand moves on to the expiry field (only when typing
+                // at the end, so editing a digit in the middle never steals focus).
+                if !string.isEmpty, edit.caretAtEnd, Self.isCompletePAN(edit.text) {
+                    expiryField.becomeFirstResponder()
+                }
                 return false
             case expiryField:
                 guard
@@ -385,15 +391,7 @@
 
         /// Groups PAN digits into blocks of four separated by a single space (display only), capped at
         /// 19 digits (the longest supported PAN).
-        static func formatPAN(_ raw: String) -> String {
-            let digits = String(raw.filter(\.isNumber).prefix(19))
-            var grouped = ""
-            for (index, character) in digits.enumerated() {
-                if index != 0, index % 4 == 0 { grouped.append(" ") }
-                grouped.append(character)
-            }
-            return grouped
-        }
+        static func formatPAN(_ raw: String) -> String { PANFormatter.format(raw) }
 
         /// Formats expiry as `MM/YY`, auto-inserting the `/` after the month (display only), capped at
         /// four digits.

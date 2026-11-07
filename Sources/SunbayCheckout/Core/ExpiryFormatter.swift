@@ -123,5 +123,5 @@ enum ExpiryFormatter {
 
 extension Character {
     /// `0`–`9` only (not other scripts' digits).
-    fileprivate var isASCIIDigit: Bool { ("0"..."9").contains(self) }
+    var isASCIIDigit: Bool { ("0"..."9").contains(self) }
 }
