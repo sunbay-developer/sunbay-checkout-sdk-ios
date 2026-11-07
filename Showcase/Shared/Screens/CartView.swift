@@ -108,7 +108,10 @@ struct CartView: View {
             theme: theme,
             language: lang,
             systemIsDark: colorScheme == .dark
-        ) else { return }
+        ) else {
+            messageKey = "payment.failed"
+            return
+        }
 
         switch result.outcome {
         case .succeeded(let txnId):

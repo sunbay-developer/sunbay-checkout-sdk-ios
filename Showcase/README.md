@@ -22,20 +22,27 @@ cd Showcase
 tuist generate          # produces Showcase.xcworkspace / .xcodeproj (git-ignored)
 ```
 
-Open the workspace in Xcode and run the `Showcase` scheme, or:
+Open the workspace in Xcode and run the `Showcase` scheme, or run the unit tests:
 
 ```bash
 xcodebuild test -scheme Showcase -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
+Substitute the name of any simulator installed on your machine.
+
 Environment variables read at generation time (no signing material is committed):
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `TUIST_SUNBAY_SHOWCASE_MERCHANT_ID` | `merchant.com.sunbay.demo` | Apple Pay merchant id entitlement |
+| `TUIST_SUNBAY_SHOWCASE_MERCHANT_ID` | `merchant.com.sunbay.demo` | Apple Pay merchant id (entitlement and SDK configuration) |
+| `TUIST_SUNBAY_SHOWCASE_BUNDLE_ID` | `com.sunbay.checkout.showcase` | App bundle id (the test target uses it plus `.tests`) |
 | `TUIST_SUNBAY_SHOWCASE_DEVELOPMENT_TEAM` | empty | Apple development team id |
 
-The bundle id is `com.sunbay.checkout.showcase`.
+These names differ from the Example app's (`SUNBAY_DEMO_*` there, `SUNBAY_SHOWCASE_*` here).
+
+Merchant id flow: the generate-time value is written to the entitlement and to Info.plist as
+`ShowcaseMerchantId`; the app reads it from `Bundle.main` at runtime and passes it to the SDK
+(falling back to `merchant.com.sunbay.demo`).
 
 ## Demo notes
 
@@ -49,9 +56,12 @@ The bundle id is `com.sunbay.checkout.showcase`.
 
 The project is structured so Archive works once the owner sets the bundle id, team and merchant id.
 
+- Archive needs the owner's team id via `TUIST_SUNBAY_SHOWCASE_DEVELOPMENT_TEAM`.
 - Upload to App Store Connect is done by the owner with their own team and bundle id.
 - Internal testers: leaders. External testing link: customers.
 - The first external build needs Beta App Review.
 - Builds expire after 90 days.
+- TestFlight builds will prompt for export compliance; the owner decides `ITSAppUsesNonExemptEncryption` (it is not set here).
+- An app icon exists, but the owner may replace it.
 
 Shared code is under `Shared/`, so an App Clip could be added as a future target.

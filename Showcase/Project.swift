@@ -5,9 +5,11 @@ import ProjectDescription
 //
 // No signing material is committed. Overrides (read at generate time via Tuist `Environment`):
 //   TUIST_SUNBAY_SHOWCASE_MERCHANT_ID       (default: merchant.com.sunbay.demo)
+//   TUIST_SUNBAY_SHOWCASE_BUNDLE_ID         (default: com.sunbay.checkout.showcase)
 //   TUIST_SUNBAY_SHOWCASE_DEVELOPMENT_TEAM  (default: none; the simulator needs none)
 
 private let merchantId = Environment.sunbayShowcaseMerchantId.getString(default: "merchant.com.sunbay.demo")
+private let bundleId = Environment.sunbayShowcaseBundleId.getString(default: "com.sunbay.checkout.showcase")
 private let developmentTeam = Environment.sunbayShowcaseDevelopmentTeam.getString(default: "")
 
 private let signingSettings: SettingsDictionary = developmentTeam.isEmpty
@@ -25,10 +27,12 @@ let project = Project(
             name: "Showcase",
             destinations: .iOS,
             product: .app,
-            bundleId: "com.sunbay.checkout.showcase",
+            bundleId: bundleId,
             deploymentTargets: .iOS("15.0"),
             infoPlist: .extendingDefault(
                 with: [
+                    "CFBundleDisplayName": "Sunbay Showcase",
+                    "ShowcaseMerchantId": .string(merchantId),
                     "UILaunchScreen": [:],
                     "UIApplicationSceneManifest": [
                         "UIApplicationSupportsMultipleScenes": false,
@@ -36,6 +40,7 @@ let project = Project(
                 ]
             ),
             sources: ["App/**", "Shared/**"],
+            resources: ["Resources/**"],
             entitlements: .dictionary([
                 "com.apple.developer.in-app-payments": .array([
                     .string(merchantId),
@@ -44,13 +49,13 @@ let project = Project(
             dependencies: [
                 .package(product: "SunbayCheckout"),
             ],
-            settings: .settings(base: signingSettings)
+            settings: .settings(base: signingSettings.merging(["ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon"]) { $1 })
         ),
         .target(
             name: "ShowcaseTests",
             destinations: .iOS,
             product: .unitTests,
-            bundleId: "com.sunbay.checkout.showcase.tests",
+            bundleId: bundleId + ".tests",
             deploymentTargets: .iOS("15.0"),
             infoPlist: .default,
             sources: ["Tests/**"],

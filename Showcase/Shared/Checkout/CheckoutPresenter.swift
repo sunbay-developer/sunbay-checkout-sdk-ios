@@ -13,7 +13,12 @@ struct PaymentResult {
 final class CheckoutPresenter: ObservableObject {
     @Published private(set) var isPresenting = false
 
-    private static let applePayMerchantId = "merchant.com.sunbay.demo"
+    static let defaultMerchantId = "merchant.com.sunbay.demo"
+    /// Merchant id baked into Info.plist (`ShowcaseMerchantId`) from the generate-time override.
+    static var bundleMerchantId: String {
+        let value = Bundle.main.object(forInfoDictionaryKey: "ShowcaseMerchantId") as? String
+        return (value?.isEmpty == false ? value : nil) ?? defaultMerchantId
+    }
     private static let sessionId = "showcase_session_001"
     private static let customerAccessSecret = "demo_secret"
 
@@ -21,11 +26,12 @@ final class CheckoutPresenter: ObservableObject {
     nonisolated static func makeConfiguration(
         theme: ThemeStore,
         language: ShowcaseLanguage,
-        systemIsDark: Bool
+        systemIsDark: Bool,
+        merchantId: String = CheckoutPresenter.defaultMerchantId
     ) -> CheckoutConfiguration {
         CheckoutConfiguration(
             environment: .dev,
-            applePayMerchantId: applePayMerchantId,
+            applePayMerchantId: merchantId,
             appearance: theme.appearance(systemIsDark: systemIsDark),
             locale: language.localeCode
         )
@@ -45,7 +51,8 @@ final class CheckoutPresenter: ObservableObject {
         let configuration = Self.makeConfiguration(
             theme: theme,
             language: language.language,
-            systemIsDark: systemIsDark
+            systemIsDark: systemIsDark,
+            merchantId: Self.bundleMerchantId
         )
         let checkout = SunbayCheckout(
             configuration: configuration,

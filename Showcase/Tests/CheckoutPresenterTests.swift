@@ -15,6 +15,15 @@ final class CheckoutPresenterTests: XCTestCase {
         )
     }
 
+    func testConfigurationUsesSuppliedMerchantId() {
+        let theme = ThemeStore()
+        let custom = CheckoutPresenter.makeConfiguration(
+            theme: theme, language: .en, systemIsDark: false, merchantId: "merchant.com.example.custom")
+        XCTAssertEqual(custom.applePayMerchantId, "merchant.com.example.custom")
+        let fallback = CheckoutPresenter.makeConfiguration(theme: theme, language: .en, systemIsDark: false)
+        XCTAssertEqual(fallback.applePayMerchantId, "merchant.com.sunbay.demo")
+    }
+
     func testSystemModeDarkDeviceYieldsDarkAppearance() {
         let theme = ThemeStore()
         theme.mode = .system

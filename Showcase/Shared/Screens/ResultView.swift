@@ -32,7 +32,7 @@ struct ResultView: View {
                     Text(order.callbackLine)
                         .font(.system(.footnote, design: .monospaced))
                         .accessibilityIdentifier("callbackLine")
-                    Text(order.statesLine)
+                    Text(order.statesLine.isEmpty ? "-" : order.statesLine)
                         .font(.system(.footnote, design: .monospaced))
                         .foregroundColor(.secondary)
                         .accessibilityIdentifier("callbackStates")
