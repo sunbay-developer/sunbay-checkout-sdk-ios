@@ -352,6 +352,11 @@
                 header.onBack?()
             }
 
+            /// Test seam: simulates a tap on the empty background of the scrolling form.
+            func simulateBackgroundTapForTest() {
+                handleBackgroundTap()
+            }
+
             /// Test seam: delivers a touch to the Pay button (only if it is an enabled, tappable control).
             func sendTouchOnPayButtonForTest() {
                 confirmButton.simulateTouchUpInsideForTest()
@@ -640,6 +645,12 @@
             scrollView.translatesAutoresizingMaskIntoConstraints = false
             // Dragging the form dismisses the keyboard (Stripe parity).
             scrollView.keyboardDismissMode = .onDrag
+            // Tapping the empty background also dismisses the keyboard. `cancelsTouchesInView = false`
+            // keeps every control working; the delegate skips taps on fields/controls.
+            let backgroundTap = UITapGestureRecognizer(target: self, action: #selector(handleBackgroundTap))
+            backgroundTap.cancelsTouchesInView = false
+            backgroundTap.delegate = self
+            scrollView.addGestureRecognizer(backgroundTap)
             bottomBar.translatesAutoresizingMaskIntoConstraints = false
 
             view.addSubview(headerContainer)
@@ -886,6 +897,10 @@
             container.addGestureRecognizer(
                 UITapGestureRecognizer(target: self, action: #selector(handleNewCardEntryTap)))
             return container
+        }
+
+        @objc private func handleBackgroundTap() {
+            view.endEditing(true)
         }
 
         @objc private func handleNewCardEntryTap() {
@@ -1136,6 +1151,9 @@
         private func performPageSwitch(
             direction: PageDirection, animated: Bool, change: () -> Void
         ) {
+            // The fields on the page being left are about to be hidden; hidden views keep first
+            // responder status, which would leave the keyboard up on the next page.
+            view.endEditing(true)
             PageTransition.perform(
                 in: scrollView, content: rootStack, direction: direction,
                 animated: animated && appearance.pageTransitionsEnabled, change: change)
@@ -1247,6 +1265,12 @@
             guard abs(height - lastReportedHeight) > 0.5 else { return }
             lastReportedHeight = height
             delegate?.content(self, didUpdateContentHeight: height)
+        }
+    }
+
+    extension CheckoutContentViewController: UIGestureRecognizerDelegate {
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            KeyboardDismissal.shouldHandleTap(on: touch.view)
         }
     }
 #endif

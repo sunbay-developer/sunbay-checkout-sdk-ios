@@ -246,6 +246,7 @@
             textField.translatesAutoresizingMaskIntoConstraints = false
             if field.type == .postalCode {
                 textField.keyboardType = .numbersAndPunctuation
+                KeyboardDismissal.installDoneAccessory(on: textField)
             }
             textFields[field.type] = textField
             return FieldContainerView(appearance: appearance, control: textField)
