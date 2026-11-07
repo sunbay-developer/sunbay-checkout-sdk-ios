@@ -32,6 +32,7 @@
 "sunbay.card.number" = "Card number";
 "sunbay.card.expiry" = "MM / YY";
 "sunbay.card.cvc" = "CVC";
+"sunbay.card.cvc.titleFormat" = "%@";
 "sunbay.card.number.placeholder" = "4242 4242 4242 4242";
 "sunbay.card.expiry.placeholder" = "08 / 28";
 "sunbay.card.cvc.placeholder" = "123";

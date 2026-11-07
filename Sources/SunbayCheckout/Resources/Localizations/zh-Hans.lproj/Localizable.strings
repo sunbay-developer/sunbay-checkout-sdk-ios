@@ -32,6 +32,7 @@
 "sunbay.card.number" = "卡号";
 "sunbay.card.expiry" = "月 / 年";
 "sunbay.card.cvc" = "安全码";
+"sunbay.card.cvc.titleFormat" = "安全码";
 "sunbay.card.number.placeholder" = "4242 4242 4242 4242";
 "sunbay.card.expiry.placeholder" = "08 / 28";
 "sunbay.card.cvc.placeholder" = "123";

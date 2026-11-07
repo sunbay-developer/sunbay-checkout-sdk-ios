@@ -80,7 +80,15 @@
         // MARK: - Components
 
         private lazy var header = SheetHeaderView(appearance: appearance, localize: localize)
-        private lazy var cardForm = CardFormView(appearance: appearance, localize: localize)
+        /// The card-brand rules in effect for this screen (cached remote > bundled), fixed at creation.
+        private let cardRuleSet = CardRulesProvider.activeRuleSet()
+        private lazy var cardForm = CardFormView(appearance: appearance, localize: localize, ruleSet: cardRuleSet)
+        private let cardBinService: any CardBinService
+        private let cardRulesService: any CardRulesService
+        /// Resolves the scheme from the BIN; created lazily so it exists only on the new-card flow.
+        private lazy var schemeResolver = CardSchemeResolver(
+            service: cardBinService, sessionId: session.id,
+            onChange: { [weak self] scheme in self?.cardForm.setBackendScheme(scheme) })
         private lazy var confirmButton = ConfirmButton(appearance: appearance)
         private lazy var notice = InlineNoticeView(appearance: appearance)
         private lazy var footer = CheckoutFooterView(appearance: appearance, localize: localize)
@@ -158,6 +166,9 @@
         ///     PassKit authorization). nil keeps the row token-staging only (tests).
         ///   - walletMerchantId: The resolved Apple Pay merchant id; the row is hidden when a
         ///     `walletAuthorizer` is given but no merchant id is configured.
+        ///   - cardBinService: BIN recognition (internal; the empty default keeps local prefix matching).
+        ///   - cardRulesService: Remote rules refresh (internal; the empty default keeps the cached /
+        ///     bundled rules).
         init(
             session: CheckoutSession,
             savedCards: [SavedCard],
@@ -169,8 +180,12 @@
             addressService: any AddressMetadataService,
             homeTitle: String? = nil,
             walletAuthorizer: (any WalletAuthorizing)? = nil,
-            walletMerchantId: String? = nil
+            walletMerchantId: String? = nil,
+            cardBinService: any CardBinService = EmptyCardBinService(),
+            cardRulesService: any CardRulesService = EmptyCardRulesService()
         ) {
+            self.cardBinService = cardBinService
+            self.cardRulesService = cardRulesService
             self.walletAuthorizer = walletAuthorizer
             self.walletMerchantId = walletMerchantId
             self.session = session
@@ -201,6 +216,9 @@
             configureInitialNavigation()
             refreshConfirmButtonState()
             observeFieldFocus()
+            cardForm.onPANDigitsChanged = { [weak self] digits in self?.schemeResolver.digitsChanged(digits) }
+            // Refresh the rules in the background; they apply the next time the card form is shown.
+            CardRulesRefresher.refreshInBackground(service: cardRulesService)
         }
 
         // MARK: - Keyboard focus
