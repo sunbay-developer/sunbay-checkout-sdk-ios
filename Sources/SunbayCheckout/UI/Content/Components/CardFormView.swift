@@ -150,7 +150,7 @@
             CardFieldSecurity.apply(toPAN: panField, expiry: expiryField, cvv: cvvField)
 
             for field in [panField, expiryField, cvvField] {
-                field.font = appearance.cardFieldFont
+                field.font = FloatingLabelMetrics.fieldFont(from: appearance.cardFieldFont)
                 field.textColor = appearance.text
                 field.delegate = self
                 KeyboardDismissal.installDoneAccessory(on: field)

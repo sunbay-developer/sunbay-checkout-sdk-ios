@@ -76,7 +76,7 @@
             line1Field.floatedPlaceholder = localize("sunbay.address.line1.placeholder")
             postalField.floatedPlaceholder = localize("sunbay.address.postalCode.placeholder")
             for field in [line1Field, postalField] {
-                field.font = appearance.cardFieldFont
+                field.font = FloatingLabelMetrics.fieldFont(from: appearance.cardFieldFont)
                 field.textColor = appearance.text
                 field.autocorrectionType = .no
                 field.translatesAutoresizingMaskIntoConstraints = false

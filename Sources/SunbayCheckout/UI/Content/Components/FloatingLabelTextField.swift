@@ -87,11 +87,11 @@
         // MARK: - Setup
 
         private func configure() {
-            font = appearance.cardFieldFont
+            font = restingFont
             textColor = appearance.text
 
             floatingLabel.text = title
-            floatingLabel.font = appearance.cardFieldFont
+            floatingLabel.font = restingFont
             floatingLabel.textColor = appearance.textSecondary
             // The label is frame-positioned in `layoutFloatingLabel` (it moves between resting and
             // floated), so it keeps autoresizing-mask translation and takes no constraints.
@@ -113,7 +113,7 @@
         }
 
         /// The resting (un-floated) font: the field font.
-        private var restingFont: UIFont { appearance.cardFieldFont }
+        private var restingFont: UIFont { FloatingLabelMetrics.fieldFont(from: appearance.cardFieldFont) }
 
         /// The floated (small) font, derived from the field font so Dynamic Type still applies.
         private var floatedFont: UIFont {
@@ -174,7 +174,8 @@
             let width = max(0, bounds.width - horizontalInset - labelTrailingInset)
             if floating {
                 floatingLabel.frame = CGRect(
-                    x: horizontalInset, y: 0, width: width, height: floatBand)
+                    x: horizontalInset, y: FloatingLabelMetrics.floatedLabelTopInset, width: width,
+                    height: floatingLabel.bounds.height)
             } else {
                 // Rest exactly where the field's own text is drawn (same rect as `textRect`), so the
                 // resting label sits on the text baseline and reads as a true placeholder — vertically
@@ -199,11 +200,12 @@
         /// vertically centered in the field rather than pinned to the lower band.
         private func insetRect(_ bounds: CGRect) -> CGRect {
             let topReserve = shouldFloat ? floatBand : 0
+            let bottomReserve = shouldFloat ? FloatingLabelMetrics.bottomInset : 0
             return CGRect(
                 x: bounds.minX + horizontalInset,
                 y: bounds.minY + topReserve,
                 width: bounds.width - horizontalInset * 2,
-                height: bounds.height - topReserve)
+                height: max(0, bounds.height - topReserve - bottomReserve))
         }
 
         override func textRect(forBounds bounds: CGRect) -> CGRect {
