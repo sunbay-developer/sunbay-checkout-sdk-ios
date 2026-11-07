@@ -56,8 +56,9 @@ State today (what was built ahead of the API):
 - [ ] Add the release script that overwrites the bundled file from the live `GET /api/card/rules`
       at SDK build time, and the CI check that compares the bundled file's SHA-256 with the live
       ETag and warns on drift. The bundled file is never edited by hand.
-- [ ] Verify the backend's real `cardScheme` strings map 1:1 to `brands[].scheme` (lower-cased).
-      Any scheme without a rule falls back to `generic` — confirm that is what we want.
+- [ ] The backend's `cardScheme` is `VISA MASTERCARD AMEX DISCOVER JCB DINERSCLUB UNIONPAY` or `null`;
+      rules use the lower-cased keys (note `dinersclub`, not `diners`). Re-check against the real
+      endpoint, and confirm an unknown value falls back to local matching / `generic`.
 - [ ] Run the contract's test vectors (section 6) against the Swift implementation using the
       production document, not only the draft.
 
