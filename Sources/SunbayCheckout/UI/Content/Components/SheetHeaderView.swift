@@ -100,10 +100,12 @@
         #endif
 
         private func configureSubviews(localize: @escaping (String) -> String) {
-            let buttonConfig = UIImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
+            let buttonConfig = UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
             backButton.setImage(
                 UIImage(systemName: "chevron.left", withConfiguration: buttonConfig), for: .normal)
             backButton.tintColor = appearance.text
+            // Glyph hugs the edge so it lines up with the content below (the parent supplies the 16pt margin).
+            backButton.contentHorizontalAlignment = .leading
             backButton.isHidden = true
             backButton.accessibilityLabel = localize("sunbay.sheet.back")
             backButton.translatesAutoresizingMaskIntoConstraints = false
@@ -112,6 +114,7 @@
             closeButton.setImage(
                 UIImage(systemName: "xmark", withConfiguration: buttonConfig), for: .normal)
             closeButton.tintColor = appearance.textSecondary
+            closeButton.contentHorizontalAlignment = .trailing
             closeButton.accessibilityLabel = localize("sunbay.sheet.close")
             closeButton.translatesAutoresizingMaskIntoConstraints = false
             closeButton.addTarget(self, action: #selector(handleClose), for: .touchUpInside)
@@ -128,15 +131,17 @@
 
             NSLayoutConstraint.activate([
                 // Back / close / title share one row: all vertically centered and aligned with each other.
-                backButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+                // -1pt / +2pt: the glyphs have built-in side bearing, so these offsets put the chevron tip and
+                // the close glyph's outer edge exactly on the content margin (the field borders below).
+                backButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -1),
                 backButton.centerYAnchor.constraint(equalTo: centerYAnchor),
-                backButton.widthAnchor.constraint(equalToConstant: 36),
-                backButton.heightAnchor.constraint(equalToConstant: 36),
+                backButton.widthAnchor.constraint(equalToConstant: 32),
+                backButton.heightAnchor.constraint(equalToConstant: 32),
 
-                closeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+                closeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 2),
                 closeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
-                closeButton.widthAnchor.constraint(equalToConstant: 36),
-                closeButton.heightAnchor.constraint(equalToConstant: 36),
+                closeButton.widthAnchor.constraint(equalToConstant: 32),
+                closeButton.heightAnchor.constraint(equalToConstant: 32),
 
                 titleLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
                 titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -145,7 +150,7 @@
 
                 // Deterministic row height so the parent's header → scroll → bottom-bar vertical chain
                 // stays unambiguous. The title is single-line and truncates instead of growing.
-                heightAnchor.constraint(equalToConstant: 44),
+                heightAnchor.constraint(equalToConstant: 36),
             ])
         }
 

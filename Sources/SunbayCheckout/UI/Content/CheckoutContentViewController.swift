@@ -672,7 +672,9 @@
                 headerContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
                 headerContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                 headerContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                header.topAnchor.constraint(equalTo: headerContainer.topAnchor, constant: 8),
+                // Top padding balances the gap below the title (row bottom + the 16pt scroll inset), so the
+                // title reads as vertically centered between the sheet's top edge and the content/divider.
+                header.topAnchor.constraint(equalTo: headerContainer.topAnchor, constant: 16),
                 header.leadingAnchor.constraint(equalTo: headerContainer.leadingAnchor, constant: 16),
                 header.trailingAnchor.constraint(equalTo: headerContainer.trailingAnchor, constant: -16),
                 header.bottomAnchor.constraint(equalTo: headerContainer.bottomAnchor),
@@ -845,7 +847,13 @@
             container.layer.borderWidth = max(appearance.borderWidth, 1)
             container.layer.borderColor = appearance.border.cgColor
 
-            let icon = UIImageView(image: UIImage(systemName: "creditcard"))
+            // SF Symbols carry baseline-based alignment insets that shift them off the label's center;
+            // zero them and size the glyph from the label font so icon + title share one optical center.
+            let symbolConfig = UIImage.SymbolConfiguration(font: appearance.cardFieldFont, scale: .medium)
+            func centeredSymbol(_ name: String) -> UIImage? {
+                UIImage(systemName: name, withConfiguration: symbolConfig)?.withAlignmentRectInsets(.zero)
+            }
+            let icon = UIImageView(image: centeredSymbol("creditcard"))
             icon.tintColor = appearance.primary
             icon.contentMode = .scaleAspectFit
             icon.setContentHuggingPriority(.required, for: .horizontal)
@@ -857,7 +865,7 @@
             title.textColor = appearance.text
             title.translatesAutoresizingMaskIntoConstraints = false
 
-            let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
+            let chevron = UIImageView(image: centeredSymbol("chevron.right"))
             chevron.tintColor = appearance.textSecondary
             chevron.contentMode = .scaleAspectFit
             chevron.setContentHuggingPriority(.required, for: .horizontal)
@@ -876,7 +884,9 @@
                 stack.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
                 stack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
                 icon.widthAnchor.constraint(equalToConstant: 24),
-                icon.heightAnchor.constraint(equalToConstant: 18),
+                icon.heightAnchor.constraint(equalToConstant: 24),
+                chevron.widthAnchor.constraint(equalToConstant: 16),
+                chevron.heightAnchor.constraint(equalToConstant: 24),
                 container.heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
             ])
 

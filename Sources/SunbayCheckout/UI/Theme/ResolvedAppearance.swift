@@ -38,7 +38,7 @@
 
         /// Font for card input fields (body text style).
         let cardFieldFont: UIFont
-        /// Font for the sheet header title (title3, semibold). Larger than a section title.
+        /// Font for the sheet header title (headline, semibold).
         let titleFont: UIFont
         /// Font for group section headers (caption1, semibold). Smaller than the content, paired
         /// with the primary `text` color + uppercased copy to act as a dark group anchor.
@@ -110,7 +110,7 @@
             let cardFieldFont = Self.font(
                 base: appearance.font.base, textStyle: .body, scale: scale, weight: nil)
             let titleFont = Self.font(
-                base: appearance.font.base, textStyle: .title3, scale: scale, weight: .semibold)
+                base: appearance.font.base, textStyle: .headline, scale: scale, weight: .semibold)
             let sectionHeaderFont = Self.font(
                 base: appearance.font.base, textStyle: .caption1, scale: scale, weight: .semibold)
             let sectionTitleFont = Self.font(

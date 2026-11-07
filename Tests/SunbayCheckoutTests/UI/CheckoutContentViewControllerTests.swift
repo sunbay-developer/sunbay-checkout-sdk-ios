@@ -517,7 +517,7 @@
             vc.view.layoutIfNeeded()
 
             let headerHeight = vc.headerContainerForTest.frame.height
-            XCTAssertGreaterThanOrEqual(headerHeight, 44, "Header row too small: \(headerHeight)", file: file, line: line)
+            XCTAssertGreaterThanOrEqual(headerHeight, 36, "Header row too small: \(headerHeight)", file: file, line: line)
             XCTAssertLessThanOrEqual(headerHeight, 72, "Header must stay near natural height: \(headerHeight)", file: file, line: line)
 
             let scroll = vc.scrollViewForTest
