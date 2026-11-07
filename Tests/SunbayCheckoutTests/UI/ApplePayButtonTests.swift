@@ -229,9 +229,13 @@
 
         func canMakePayments() -> Bool { canMake }
 
-        func authorize(amount: Amount, merchantId: String) async throws -> Data {
+        func authorize(
+            amount: Amount,
+            merchantId: String,
+            confirm: @escaping @Sendable (Data) async -> CheckoutOutcome
+        ) async throws -> CheckoutOutcome {
             switch outcome {
-            case .success(let data): return data
+            case .success(let data): return await confirm(data)
             case .failure(let error): throw error
             }
         }

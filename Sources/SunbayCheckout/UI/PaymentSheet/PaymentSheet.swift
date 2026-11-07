@@ -112,6 +112,10 @@
         /// used to build the content VC's full-mode address form. UI-agnostic (Core type).
         private let addressMetadataService: any AddressMetadataService
 
+        /// The wallet capability for the in-sheet Apple Pay row (real PassKit by default).
+        private let walletAuthorizer: any WalletAuthorizing
+        /// The resolved Apple Pay merchant id (host configuration first); nil hides the Apple Pay row.
+        private let walletMerchantId: String?
         // MARK: - Public observation
 
         /// Observes the coarse-grained in-sheet presentation state (spec §3.4).
@@ -155,7 +159,12 @@
                 localeCode: checkout.configuration.locale,
                 appearance: checkout.configuration.appearance ?? .default,
                 paymentSheetTitle: checkout.configuration.paymentSheetTitle,
-                addressMetadataService: checkout.addressMetadataService
+                addressMetadataService: checkout.addressMetadataService,
+                walletAuthorizer: WalletAuthorizer(),
+                walletMerchantId: resolveMerchantId(
+                    configured: checkout.configuration.applePayMerchantId,
+                    sessionProvided: nil
+                )
             )
         }
 
@@ -176,6 +185,9 @@
         ///   - paymentSheetTitle: Custom home-page title; defaults to nil (uses the localized default).
         ///   - addressMetadataService: The address-metadata service for the full-mode address form;
         ///     defaults to a fail-soft empty service so existing call sites compile unchanged.
+        ///   - walletAuthorizer: The wallet capability for the in-sheet Apple Pay row; defaults to the
+        ///     real PassKit `WalletAuthorizer`.
+        ///   - walletMerchantId: The resolved Apple Pay merchant id; defaults to nil (row hidden).
         init(
             controller: CheckoutController,
             sessionId: String,
@@ -184,8 +196,12 @@
             localeCode: String? = nil,
             appearance: Appearance = .default,
             paymentSheetTitle: String? = nil,
-            addressMetadataService: any AddressMetadataService = EmptyAddressMetadataService()
+            addressMetadataService: any AddressMetadataService = EmptyAddressMetadataService(),
+            walletAuthorizer: any WalletAuthorizing = WalletAuthorizer(),
+            walletMerchantId: String? = nil
         ) {
+            self.walletAuthorizer = walletAuthorizer
+            self.walletMerchantId = walletMerchantId
             self.controller = controller
             self.sessionId = sessionId
             self.customerAccessSecret = customerAccessSecret
@@ -236,6 +252,8 @@
                 localeCode: localeCode,
                 paymentSheetTitle: paymentSheetTitle,
                 addressService: addressMetadataService,
+                walletAuthorizer: walletAuthorizer,
+                walletMerchantId: walletMerchantId,
                 onStateChange: { [weak self] state in self?.onStateChange?(state) }
             )
 
@@ -424,6 +442,8 @@
         private let localeCode: String?
         private let paymentSheetTitle: String?
         private let addressService: any AddressMetadataService
+        private let walletAuthorizer: any WalletAuthorizing
+        private let walletMerchantId: String?
         private let onStateChange: (CheckoutPresentationState) -> Void
 
         /// At most ONE user action that arrived while no one was suspended on `awaitEvent` (e.g. a Pay tap
@@ -452,6 +472,8 @@
             localeCode: String?,
             paymentSheetTitle: String?,
             addressService: any AddressMetadataService,
+            walletAuthorizer: any WalletAuthorizing,
+            walletMerchantId: String?,
             onStateChange: @escaping (CheckoutPresentationState) -> Void
         ) {
             self.presenter = presenter
@@ -460,6 +482,8 @@
             self.localeCode = localeCode
             self.paymentSheetTitle = paymentSheetTitle
             self.addressService = addressService
+            self.walletAuthorizer = walletAuthorizer
+            self.walletMerchantId = walletMerchantId
             self.onStateChange = onStateChange
         }
 
@@ -506,7 +530,9 @@
                 billingMode: appearance.billingAddressMode,
                 shippingMode: appearance.shippingAddressMode,
                 addressService: addressService,
-                homeTitle: paymentSheetTitle
+                homeTitle: paymentSheetTitle,
+                walletAuthorizer: walletAuthorizer,
+                walletMerchantId: walletMerchantId
             )
             let containerVC = PaymentSheetContainerViewController(
                 content: contentVC,

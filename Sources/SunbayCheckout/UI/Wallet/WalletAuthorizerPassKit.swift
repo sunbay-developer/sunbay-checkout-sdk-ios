@@ -28,8 +28,9 @@ import PassKit
 ///   "callable / constructible".
 /// - `PKPayment` / `PKPaymentToken` are not `Sendable`. To keep them from crossing concurrency
 ///   boundaries, the delegate extracts `payment.token.paymentData` as `Data` (`Sendable`) while
-///   inside `@MainActor`, and only the `Data` (or error) is returned via the continuation. The
-///   returned token `Data` is never logged (§5).
+///   inside `@MainActor`, and only the `Data` is handed to `confirm`; only the resulting
+///   `CheckoutOutcome` (or an error) is returned via the continuation. The token `Data` is never
+///   logged (§5).
 struct WalletAuthorizer: WalletAuthorizing {
     /// Whether the device has Apple Pay payment capability.
     ///
@@ -38,20 +39,40 @@ struct WalletAuthorizer: WalletAuthorizing {
         PKPaymentAuthorizationController.canMakePayments()
     }
 
-    /// Starts Apple Pay authorization and returns the encrypted wallet token data.
-    ///
-    /// Constructs a `PKPaymentRequest` from the given `merchantId` + `amount`, presents the
-    /// system authorization sheet, and after authorization completes returns
-    /// `PKPayment.token.paymentData`.
+    /// Runs one Apple Pay authorization, confirming each token with the backend while the system
+    /// sheet is still open (see `WalletAuthorizing.authorize(amount:merchantId:confirm:)`).
     ///
     /// - Parameters:
     ///   - amount: The amount for this payment (in the smallest currency unit).
     ///   - merchantId: The resolved Apple Pay merchant id.
-    /// - Returns: The raw `Data` of the encrypted wallet token.
-    /// - Throws: Throws `CheckoutError` on user cancel / system authorization failure / a non-iOS platform.
-    func authorize(amount: Amount, merchantId: String) async throws -> Data {
+    ///   - confirm: Submits one token to the backend and returns its outcome.
+    /// - Returns: The outcome of the last confirm made in this authorization.
+    /// - Throws: `CheckoutError` only when no token was authorized (cancel / present failure / a
+    ///   non-iOS platform).
+    func authorize(
+        amount: Amount,
+        merchantId: String,
+        confirm: @escaping @Sendable (Data) async -> CheckoutOutcome
+    ) async throws -> CheckoutOutcome {
         let request = Self.makeRequest(amount: amount, merchantId: merchantId)
-        return try await Self.runAuthorization(request)
+        return try await Self.runAuthorization(request, confirm: confirm)
+    }
+
+    /// Maps a backend outcome to the status shown in the Apple Pay sheet (pure; both platforms).
+    ///
+    /// - `succeeded` → `.success`.
+    /// - `pending` / `unknown` → `.success`: the payment may already be in flight, so the sheet must
+    ///   close instead of inviting a retry that could double-charge. The host reconciles the final
+    ///   state via `retrievePayment()` / webhook; the SDK UI shows the "confirming" notice.
+    /// - `failed` / `canceled` → `.failure`: nothing was charged; the sheet lets the user retry with
+    ///   another card or cancel.
+    static func authorizationStatus(for outcome: CheckoutOutcome) -> PKPaymentAuthorizationStatus {
+        switch outcome {
+        case .succeeded, .pending, .unknown:
+            return .success
+        case .failed, .canceled:
+            return .failure
+        }
     }
 
     // MARK: - Construction (compiles on both platforms)
@@ -82,14 +103,21 @@ struct WalletAuthorizer: WalletAuthorizing {
     // MARK: - Authorization run (iOS-specific delegate flow)
 
     #if os(iOS)
-    private static func runAuthorization(_ request: PKPaymentRequest) async throws -> Data {
+    private static func runAuthorization(
+        _ request: PKPaymentRequest,
+        confirm: @escaping @Sendable (Data) async -> CheckoutOutcome
+    ) async throws -> CheckoutOutcome {
         try await withCheckedThrowingContinuation { continuation in
             Task { @MainActor in
                 let controller = PKPaymentAuthorizationController(paymentRequest: request)
-                let delegate = AuthorizationDelegate(continuation: continuation)
+                let delegate = AuthorizationDelegate(continuation: continuation, confirm: confirm)
                 controller.delegate = delegate
-                // The delegate must stay alive until authorization completes; retain it until the flow ends.
+                // `PKPaymentAuthorizationController.delegate` is WEAK, and this Task ends as soon as
+                // `present()` returns. Without an owner the delegate would be freed, `DidFinish` would
+                // never fire, `dismiss` would never run, and the system sheet could not be closed. The
+                // delegate therefore retains itself (and the controller) until the flow ends.
                 delegate.retainController = controller
+                delegate.retainSelf()
                 // Use the async `present()` variant: we are already inside a `@MainActor` Task,
                 // so this avoids the completion-handler form and keeps `finish(throwing:)` on the
                 // main actor (both the "async alternative" and "main actor-isolated call" warnings).
@@ -103,6 +131,7 @@ struct WalletAuthorizer: WalletAuthorizing {
                             traceId: nil
                         )
                     )
+                    delegate.release()
                 }
             }
         }
@@ -110,17 +139,47 @@ struct WalletAuthorizer: WalletAuthorizing {
 
     /// The `PKPaymentAuthorizationController` delegate.
     ///
-    /// Within `@MainActor`, it narrows the non-`Sendable` `PKPayment` down to `Data` before
-    /// returning it via the continuation, avoiding non-`Sendable` types crossing the concurrency
-    /// boundary. Ensures the continuation is resumed exactly once.
+    /// ## Confirm while the sheet is open (Apple's recommended order)
+    /// `didAuthorizePayment` narrows the non-`Sendable` `PKPayment` down to the token `Data`, submits
+    /// it through `confirm`, and only answers PassKit's `completion` once the backend outcome is known
+    /// (mapped by `WalletAuthorizer.authorizationStatus(for:)`). A `.failure` keeps the sheet open, so
+    /// the user may authorize again (another `didAuthorizePayment` → another confirm).
+    ///
+    /// ## Resolution
+    /// The continuation is resumed exactly once, in `DidFinish`: with the last confirm's outcome when
+    /// at least one token was submitted (awaiting a confirm still in flight, e.g. when PassKit timed the
+    /// sheet out), otherwise with `WALLET_CANCELED`.
     @MainActor
     private final class AuthorizationDelegate: NSObject, PKPaymentAuthorizationControllerDelegate {
-        private var continuation: CheckedContinuation<Data, Error>?
+        private var continuation: CheckedContinuation<CheckoutOutcome, Error>?
+        private let confirm: @Sendable (Data) async -> CheckoutOutcome
         /// Holds the controller until the authorization flow ends, avoiding premature release.
         var retainController: PKPaymentAuthorizationController?
+        /// Self-retention: PassKit holds the delegate weakly, so the delegate keeps itself alive
+        /// until `paymentAuthorizationControllerDidFinish` (or a failed present) releases it.
+        private var selfRetain: AuthorizationDelegate?
+        /// The outcome of the most recent completed confirm (nil = no token submitted yet).
+        private var lastOutcome: CheckoutOutcome?
+        /// The confirm currently in flight (nil when none).
+        private var inFlightConfirm: Task<CheckoutOutcome, Never>?
 
-        init(continuation: CheckedContinuation<Data, Error>) {
+        init(
+            continuation: CheckedContinuation<CheckoutOutcome, Error>,
+            confirm: @escaping @Sendable (Data) async -> CheckoutOutcome
+        ) {
             self.continuation = continuation
+            self.confirm = confirm
+        }
+
+        /// Keeps this delegate alive for the duration of the PassKit flow.
+        func retainSelf() {
+            selfRetain = self
+        }
+
+        /// Ends the flow: drops the controller and the self-retention.
+        func release() {
+            retainController = nil
+            selfRetain = nil
         }
 
         func finish(throwing error: Error) {
@@ -128,8 +187,8 @@ struct WalletAuthorizer: WalletAuthorizing {
             continuation = nil
         }
 
-        private func finish(returning data: Data) {
-            continuation?.resume(returning: data)
+        private func finish(returning outcome: CheckoutOutcome) {
+            continuation?.resume(returning: outcome)
             continuation = nil
         }
 
@@ -140,29 +199,57 @@ struct WalletAuthorizer: WalletAuthorizing {
         ) {
             // Extract only the token data (Sendable); do not log any sensitive content (§5).
             let tokenData = payment.token.paymentData
-            completion(PKPaymentAuthorizationResult(status: .success, errors: nil))
-            finish(returning: tokenData)
+            let confirm = confirm
+            let task = Task { await confirm(tokenData) }
+            inFlightConfirm = task
+            Task { @MainActor in
+                let outcome = await task.value
+                self.lastOutcome = outcome
+                if self.inFlightConfirm == task { self.inFlightConfirm = nil }
+                // Answer the sheet only now: it never shows a checkmark before the backend has spoken.
+                completion(
+                    PKPaymentAuthorizationResult(
+                        status: WalletAuthorizer.authorizationStatus(for: outcome),
+                        errors: nil
+                    )
+                )
+            }
         }
 
         func paymentAuthorizationControllerDidFinish(
             _ controller: PKPaymentAuthorizationController
         ) {
             controller.dismiss(completion: nil)
-            // Finishing without authorization → treated as a user cancel; a no-op if already resumed.
-            finish(
-                throwing: CheckoutError(
-                    code: "WALLET_CANCELED",
-                    message: "Apple Pay authorization was canceled.",
-                    category: .runtime,
-                    traceId: nil
-                )
-            )
-            retainController = nil
+            let pending = inFlightConfirm
+            Task { @MainActor in
+                // PassKit may finish (e.g. timeout) while a confirm is still in flight: the payment
+                // may be submitted, so wait for its outcome instead of reporting a cancel.
+                if let pending {
+                    self.lastOutcome = await pending.value
+                }
+                if let outcome = self.lastOutcome {
+                    self.finish(returning: outcome)
+                } else {
+                    // Finished without any authorized token → a user cancel.
+                    self.finish(
+                        throwing: CheckoutError(
+                            code: "WALLET_CANCELED",
+                            message: "Apple Pay authorization was canceled.",
+                            category: .runtime,
+                            traceId: nil
+                        )
+                    )
+                }
+                self.release()
+            }
         }
     }
     #else
     /// A non-iOS platform (such as the macOS unit-test host) has no available authorization presentation path; the on-device flow is covered by Task 14.
-    private static func runAuthorization(_ request: PKPaymentRequest) async throws -> Data {
+    private static func runAuthorization(
+        _ request: PKPaymentRequest,
+        confirm: @escaping @Sendable (Data) async -> CheckoutOutcome
+    ) async throws -> CheckoutOutcome {
         throw CheckoutError(
             code: "WALLET_UNSUPPORTED_PLATFORM",
             message: "Apple Pay authorization is only available on iOS.",

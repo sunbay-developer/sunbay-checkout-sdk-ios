@@ -16,14 +16,31 @@ protocol WalletAuthorizing: Sendable {
     /// Whether the device is capable of making Apple Pay payments (device-dependent).
     func canMakePayments() -> Bool
 
-    /// Initiates wallet authorization and returns the encrypted wallet token data (`PKPayment.token.paymentData`).
+    /// Runs one Apple Pay authorization, confirming each authorized token with the backend
+    /// **while the system sheet is still open**, and returns the final outcome once it closes.
+    ///
+    /// Flow (Apple's recommended order): the user authorizes → the encrypted token
+    /// (`PKPayment.token.paymentData`) is passed to `confirm` → the backend outcome decides the status
+    /// the system sheet shows (`succeeded` / `pending` / `unknown` → success, so the sheet closes and
+    /// no second charge is attempted; `failed` → failure, the user may retry with another card or
+    /// cancel inside the sheet, which calls `confirm` again with a new token). The sheet never shows a
+    /// checkmark before the backend has answered.
     ///
     /// - Parameters:
     ///   - amount: The amount of this payment.
     ///   - merchantId: The resolved Apple Pay merchant id (see `resolveMerchantId`).
-    /// - Returns: The raw `Data` of the encrypted wallet token (never logged, §5).
-    /// - Throws: Throws when authorization is canceled / fails.
-    func authorize(amount: Amount, merchantId: String) async throws -> Data
+    ///   - confirm: Submits one token to the backend and returns its outcome. The token is used only
+    ///     here and is never logged (§5).
+    /// - Returns: The outcome of the last confirm made in this authorization (if the system sheet
+    ///   timed out while a confirm was in flight, that confirm's outcome is awaited first).
+    /// - Throws: Only when the sheet closed **without any token** being authorized (user cancel →
+    ///   `CheckoutError` code `WALLET_CANCELED`; present/authorization failure → other codes). Once a
+    ///   token was submitted it never throws: the result is the backend outcome.
+    func authorize(
+        amount: Amount,
+        merchantId: String,
+        confirm: @escaping @Sendable (Data) async -> CheckoutOutcome
+    ) async throws -> CheckoutOutcome
 }
 
 /// Resolves the Apple Pay merchant id to use: the host configuration takes precedence over the session-provided one.
