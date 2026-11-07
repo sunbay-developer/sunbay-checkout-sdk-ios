@@ -48,7 +48,7 @@ A static JSON document, served as-is (no `{code,msg,data}` envelope).
       "lengths": [16, 18, 19],
       "groups": [4, 4, 4, 4],
       "cvv": { "name": "CVV", "sizes": [3] },
-      "autoAdvanceLength": 16
+      "autoAdvanceLength": 19
     },
     {
       "scheme": "amex",
@@ -60,7 +60,7 @@ A static JSON document, served as-is (no `{code,msg,data}` envelope).
       "autoAdvanceLength": 15
     },
     {
-      "scheme": "diners",
+      "scheme": "dinersclub",
       "displayName": "Diners Club",
       "patterns": [[300, 305], 36, 38, 39],
       "lengths": [14, 16, 19],
@@ -79,14 +79,14 @@ Fields:
 | `schemaVersion` | Integer. Bumped only for incompatible changes. A client that does not know the value ignores the document and keeps what it has. |
 | `version` | Opaque string for humans/diagnostics (date plus counter). Clients do not compare it. |
 | `generic` | Rules used when no brand matches. |
-| `brands[].scheme` | Lower-case key. Must equal the lower-cased `cardScheme` the BIN endpoint returns. Suggested set: `visa mastercard amex discover jcb unionpay diners maestro elo mir` (plus any the backend supports). |
+| `brands[].scheme` | Lower-case key. Must equal the lower-cased `cardScheme` the BIN endpoint returns. The backend returns exactly `VISA MASTERCARD AMEX DISCOVER JCB DINERSCLUB UNIONPAY`, or `null` when unrecognized, so those seven keys are `visa mastercard amex discover jcb dinersclub unionpay`. Rules may define more brands (for example `maestro elo mir`); the backend never returns those, so they are only ever matched locally from the prefix patterns. |
 | `brands[].patterns` | Prefix matchers. A number is a prefix (`4`, `34`). `[a, b]` is an inclusive range of prefixes (`[51, 55]`, `[2221, 2720]`). |
 | `brands[].lengths` | Valid PAN lengths. Informational (see principle 3). |
 | `brands[].groups` | Group sizes for display, e.g. `[4,6,5]` renders `3782 822463 10005`. Digits beyond the sum are grouped by 4. |
 | `brands[].groupsByLength` | Optional per-length override of `groups` (key = digit count as string). The override applies once the typed length is at least the key; otherwise `groups` applies. |
 | `brands[].cvv.name` | Brand's own name for the code (CVV, CVC, CID, CVN2…). English clients use it as the security-code field label, so the label follows the recognized brand (Visa → "CVV"); `generic.cvv.name` ("CVC") is the default before any brand is known. Localized UIs may keep their own word (zh: 安全码). |
 | `brands[].cvv.sizes` | Allowed code lengths. The input cap stays 4 regardless (principle 2). |
-| `brands[].autoAdvanceLength` | Optional. When the digit count reaches it, focus moves to the next field. Omit when lengths vary (e.g. UnionPay 16–19) so a longer number is never cut off. |
+| `brands[].autoAdvanceLength` | Optional. When the digit count reaches it, focus moves to the next field. **Set it to the largest value in `lengths`** (Visa 19, Amex 15, Mastercard 16, …). Nobody can type past the 19-digit universal cap, so a focus jump at a brand's maximum length can never hijack a legitimate longer number. Do not set it to a shorter length for brands whose length varies. Consequence: a 16-digit Visa does not auto-advance (only a 19-digit one does); this is accepted. |
 
 Sanity bounds a client applies when loading a document, discarding it (keeping the previous rules)
 if any check fails: `schemaVersion` known; every length in 12–19; every group size 1–19 and
@@ -143,7 +143,7 @@ Returns the rules document (section 2).
   body.
 - Errors use the standard envelope: `{ "code": "...", "msg": "...", "data": null, "traceId": "..." }`.
   Clients treat any non-200/304 response as "no update".
-- Public and unauthenticated (no sensitive data). Rate-limit per IP.
+- Public and unauthenticated (no sensitive data). Rate limiting is a deployment concern (gateway/CDN), not implemented in the route.
 
 ### 3.2 `POST /api/card/bin`
 
@@ -168,7 +168,7 @@ Response (standard HPP envelope, `code: "0"`):
 - The server calls the backend (`/checkout/web/card/bin/recognize`) internally; clients never call
   the backend directly. On backend failure the server returns `scheme: null` rather than an error
   where possible, so clients degrade to local matching.
-- Rate-limit per IP and per `sessionId`. **Do not log `bin`.**
+- Rate limiting, if any, is applied at the gateway; clients must treat `429` as "stop looking up for this session". **Do not log `bin`.**
 
 ## 4. Client behavior
 
@@ -183,8 +183,9 @@ Response (standard HPP envelope, `code: "0"`):
 4. Precedence: cached remote > bundled. Never block input on the network.
 
 Native SDKs: cache in the OS cache directory (purgeable); the data is public and non-sensitive.
-HPP front end: no bundled copy needed — the server renders the page with the rules injected, and
-the repo JSON is the server-side fallback.
+HPP front end: ships the rules statically in its bundle and does not fetch them. This is equivalent
+to the native flow because the bundle and `GET /api/card/rules` are built from the same repo JSON;
+changing a rule means redeploying HPP.
 
 ### 4.2 BIN recognition triggers
 
@@ -226,8 +227,8 @@ Formatting (scheme, digits, expected display):
 | visa | `4242424242424242` | `4242 4242 4242 4242` |
 | visa | `4242424242424242424` | `4242 4242 4242 4242 424` |
 | amex | `378282246310005` | `3782 822463 10005` |
-| diners | `36227206271667` | `3622 720627 1667` |
-| diners | `3622720627166712` | `3622 7206 2716 6712` |
+| dinersclub | `36227206271667` | `3622 720627 1667` |
+| dinersclub | `3622720627166712` | `3622 7206 2716 6712` |
 | unionpay | `6222021234567890123` | `6222 0212 3456 7890 123` |
 | (none) | `12345678901234567` | `1234 5678 9012 3456 7` |
 
@@ -239,10 +240,20 @@ Prefix matching (with the full production document, digits typed so far, expecte
 | `34`, `37` | amex |
 | `51`, `55`, `2221`, `2720` | mastercard |
 | `3` | none (ambiguous) |
-| `36` | diners |
+| `36` | dinersclub |
 | `6011` | discover |
 | `3528` | jcb |
 | `620` | unionpay |
+
+Auto-advance (number field, caret at the end, typing or pasting):
+
+| scheme | digits typed | advances? |
+|---|---|---|
+| visa | 16 | no |
+| visa | 19 | yes |
+| amex | 15 | yes |
+| mastercard | 16 | yes |
+| (none) | any | per the client's own fallback |
 
 Security code: amex allows 4 digits, every other brand 3; the input cap is always 4.
 
@@ -298,8 +309,17 @@ the iOS implementation's test cases; "caret" is the text cursor, offsets are in 
 - The field label is the brand's `cvv.name` in English (default "CVC", Visa "CVV"); other languages may
   keep one word (zh: 安全码).
 
-## 8. Open points for the HPP side
+## 8. Decisions and remaining open points
 
-- How `POST /api/card/bin` authenticates / validates `sessionId` before calling the backend.
-- The exact set of `scheme` strings the backend returns (must map 1:1 to `brands[].scheme`).
-- Rate-limit values.
+Decided:
+
+- **Scheme set:** the backend returns `VISA MASTERCARD AMEX DISCOVER JCB DINERSCLUB UNIONPAY` or `null`
+  (section 2, `brands[].scheme`). An unknown value must be treated as "no scheme" by every client.
+- **`sessionId`:** validated by the backend; HPP passes it through unchanged.
+- **Rate limiting:** not done in the route (section 3).
+- **Auto-advance:** at the brand's maximum length (`max(lengths)`), so a longer legitimate number is never hijacked; a 16-digit Visa therefore does not advance (section 2).
+
+Still open:
+
+- Whether the backend's `null` for a card it cannot recognize can later include more brands (the rules
+  already carry local-only brands such as Maestro, Elo and Mir).
