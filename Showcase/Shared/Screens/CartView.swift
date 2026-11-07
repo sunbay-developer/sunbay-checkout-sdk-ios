@@ -19,7 +19,7 @@ struct CartView: View {
 
     @State private var snapshot: OrderSnapshot?
     @State private var showResult = false
-    @State private var messageKey: String?
+    @State private var toast: PaymentToast?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -45,6 +45,7 @@ struct CartView: View {
             footer
         }
         .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
+        .paymentToast($toast, text: lang.t)
         .navigationTitle(lang.t("cart.title"))
         .navigationBarTitleDisplayMode(.inline)
         .background(
@@ -70,13 +71,6 @@ struct CartView: View {
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            if let key = messageKey {
-                Text(lang.t(key))
-                    .font(.footnote.weight(.medium))
-                    .foregroundColor(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityIdentifier("paymentMessage")
-            }
             Button { Task { await pay() } } label: {
                 Text(lang.t("action.pay"))
                     .font(.headline)
@@ -101,7 +95,7 @@ struct CartView: View {
     private var payDisabled: Bool { cart.isEmpty || presenter.isPresenting }
 
     private func pay() async {
-        messageKey = nil
+        toast = nil
         let amount = cart.totalMinor
         guard let result = await presenter.pay(
             amountMinor: amount,
@@ -109,7 +103,7 @@ struct CartView: View {
             language: lang,
             systemIsDark: colorScheme == .dark
         ) else {
-            messageKey = "payment.failed"
+            toast = PaymentToast(messageKey: "payment.failed", style: .error)
             return
         }
 
@@ -126,13 +120,13 @@ struct CartView: View {
             cart.clear()
             showResult = true
         case .canceled:
-            messageKey = "payment.canceled"
+            toast = PaymentToast(messageKey: "payment.canceled", style: .info)
         case .failed:
-            messageKey = "payment.failed"
+            toast = PaymentToast(messageKey: "payment.failed", style: .error)
         case .pending:
-            messageKey = "result.state.pending"
+            toast = PaymentToast(messageKey: "result.state.pending", style: .waiting)
         case .unknown:
-            messageKey = "result.state.unknown"
+            toast = PaymentToast(messageKey: "result.state.unknown", style: .waiting)
         }
     }
 }
