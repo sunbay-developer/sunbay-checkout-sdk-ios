@@ -17,6 +17,7 @@ enum SunbayUIStringKeys {
         "sunbay.sheet.back",
         "sunbay.sheet.close",
         "sunbay.sheet.saveThisCard",
+        "sunbay.sheet.saveThisCardHint",
         "sunbay.sheet.applePay",
         "sunbay.sheet.cancel",
         "sunbay.sheet.newCard",

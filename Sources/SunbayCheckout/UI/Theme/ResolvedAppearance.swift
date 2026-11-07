@@ -48,6 +48,8 @@
         /// Font for checkbox option labels such as "Save this card" (subheadline, regular).
         /// Smaller than the field font so opt-ins sit below the inputs in the visual hierarchy.
         let optionLabelFont: UIFont
+        /// Font for the one-line explanation under an option label (footnote, regular).
+        let optionHintFont: UIFont
         /// Color for checkbox option labels: the primary text color softened to 70% alpha, so it is
         /// lighter than field content but darker than `textSecondary` placeholders.
         var optionLabelColor: UIColor { text.withAlphaComponent(0.7) }
@@ -117,6 +119,8 @@
                 base: appearance.font.base, textStyle: .subheadline, scale: scale, weight: .semibold)
             let optionLabelFont = Self.font(
                 base: appearance.font.base, textStyle: .subheadline, scale: scale, weight: nil)
+            let optionHintFont = Self.font(
+                base: appearance.font.base, textStyle: .footnote, scale: scale, weight: nil)
             let ctaFont = Self.font(
                 base: appearance.font.base, textStyle: .headline, scale: scale, weight: nil)
 
@@ -140,6 +144,7 @@
                 sectionHeaderFont: sectionHeaderFont,
                 sectionTitleFont: sectionTitleFont,
                 optionLabelFont: optionLabelFont,
+                optionHintFont: optionHintFont,
                 ctaFont: ctaFont,
                 cornerRadius: appearance.cornerRadius,
                 borderWidth: appearance.borderWidth,

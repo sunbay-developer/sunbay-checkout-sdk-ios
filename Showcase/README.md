@@ -1,11 +1,11 @@
-# Sunbay Checkout - Showcase app
+# Sunbay Checkout Showcase
 
-A simulated merchant app that demonstrates the SunbayCheckout iOS SDK to leaders and customers.
+A simulated merchant app (a coffee shop, "Sunbay Coffee") that demonstrates the SunbayCheckout iOS SDK to leaders and customers.
 It consumes only the SDK's **public API**. **All payments are simulated; nothing is ever charged.**
 
 ## Flow
 
-Browse products -> add to cart -> Cart -> Pay -> native `PaymentSheet` (card form, saved cards,
+Browse the menu -> add to cart -> Cart -> Pay -> native `PaymentSheet` (card form, saved cards,
 Apple Pay) -> simulated success -> order confirmation, with a callback panel showing the
 transaction id and state transitions only (no card data). The cart is cleared after success.
 
@@ -25,7 +25,7 @@ tuist generate          # produces Showcase.xcworkspace / .xcodeproj (git-ignore
 Open the workspace in Xcode and run the `Showcase` scheme, or run the unit tests:
 
 ```bash
-xcodebuild test -scheme Showcase -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+xcodebuild test -scheme Showcase -destination 'platform=iOS Simulator,name=iPhone 17'
 ```
 
 Substitute the name of any simulator installed on your machine.
@@ -49,8 +49,8 @@ Merchant id flow: the generate-time value is written to the entitlement and to I
 - Test card: `4242 4242 4242 4242`, any future expiry date, any CVC. The same hint is shown on
   the Cart screen.
 - The Apple Pay row only appears with a real merchant id and a signed, Apple Pay-capable device.
-- The new-card form shows a collapsed "Shipping address" header with "Same as billing" checked.
-  This is the SDK default; the Showcase offers no shipping.
+- No shipping address is collected (`Appearance.shippingAddressMode = .off`); billing uses the
+  SDK default simple form (country / address / postal code).
 
 ## TestFlight
 

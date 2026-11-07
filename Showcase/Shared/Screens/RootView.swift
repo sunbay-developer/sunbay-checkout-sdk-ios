@@ -15,7 +15,9 @@ struct RootView: View {
         .environmentObject(theme)
         .environmentObject(lang)
         .environmentObject(presenter)
-        .preferredColorScheme(theme.swiftUIScheme)
         .tint(theme.primary)
+        // Window-level override (see `WindowAppearance`) so presented sheets follow the mode too.
+        .onAppear { WindowAppearance.applyToApp(theme.mode.userInterfaceStyle) }
+        .onChange(of: theme.mode) { WindowAppearance.applyToApp($0.userInterfaceStyle) }
     }
 }

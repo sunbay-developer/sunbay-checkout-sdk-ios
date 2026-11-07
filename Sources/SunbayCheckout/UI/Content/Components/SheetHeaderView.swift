@@ -135,13 +135,13 @@
                 // the close glyph's outer edge exactly on the content margin (the field borders below).
                 backButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -1),
                 backButton.centerYAnchor.constraint(equalTo: centerYAnchor),
-                backButton.widthAnchor.constraint(equalToConstant: 32),
-                backButton.heightAnchor.constraint(equalToConstant: 32),
+                backButton.widthAnchor.constraint(equalToConstant: 28),
+                backButton.heightAnchor.constraint(equalToConstant: 28),
 
                 closeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 2),
                 closeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
-                closeButton.widthAnchor.constraint(equalToConstant: 32),
-                closeButton.heightAnchor.constraint(equalToConstant: 32),
+                closeButton.widthAnchor.constraint(equalToConstant: 28),
+                closeButton.heightAnchor.constraint(equalToConstant: 28),
 
                 titleLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
                 titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -150,7 +150,7 @@
 
                 // Deterministic row height so the parent's header → scroll → bottom-bar vertical chain
                 // stays unambiguous. The title is single-line and truncates instead of growing.
-                heightAnchor.constraint(equalToConstant: 36),
+                heightAnchor.constraint(equalToConstant: 28),
             ])
         }
 

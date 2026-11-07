@@ -943,13 +943,26 @@
             label.translatesAutoresizingMaskIntoConstraints = false
             checkbox.attachLabel(label)
 
-            // Left-aligned: checkbox leads the label, with a trailing spacer so the row hugs the
-            // leading edge instead of stretching the label.
+            // One-line, merchant-neutral explanation of what saving does (Stripe-style).
+            let hint = UILabel()
+            hint.text = localize("sunbay.sheet.saveThisCardHint")
+            hint.font = appearance.optionHintFont
+            hint.textColor = appearance.textSecondary
+            hint.numberOfLines = 0
+            hint.translatesAutoresizingMaskIntoConstraints = false
+            checkbox.attachLabel(hint)
+
+            let texts = UIStackView(arrangedSubviews: [label, hint])
+            texts.axis = .vertical
+            texts.spacing = 2
+
+            // Left-aligned: checkbox leads the text, with a trailing spacer so the row hugs the
+            // leading edge. Top-aligned so the checkbox sits beside the title line, not the hint.
             let spacer = UIView()
             spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-            let row = UIStackView(arrangedSubviews: [checkbox, label, spacer])
+            let row = UIStackView(arrangedSubviews: [checkbox, texts, spacer])
             row.axis = .horizontal
-            row.alignment = .center
+            row.alignment = .top
             row.spacing = 8
             return row
         }
@@ -1000,6 +1013,8 @@
             case .full:
                 return DynamicAddressFormView(
                     appearance: appearance, localize: localize, service: addressService, locale: nil)
+            case .off:
+                return nil
             }
         }
 
