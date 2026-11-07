@@ -85,7 +85,7 @@ Fields:
 | `brands[].groups` | Group sizes for display, e.g. `[4,6,5]` renders `3782 822463 10005`. Digits beyond the sum are grouped by 4. |
 | `brands[].groupsByLength` | Optional per-length override of `groups` (key = digit count as string). The override applies once the typed length is at least the key; otherwise `groups` applies. |
 | `brands[].cvv.name` | Brand's own name for the code (CVV, CVC, CID, CVN2…). English clients use it as the security-code field label, so the label follows the recognized brand (Visa → "CVV"); `generic.cvv.name` ("CVC") is the default before any brand is known. Localized UIs may keep their own word (zh: 安全码). |
-| `brands[].cvv.sizes` | Allowed code lengths. The input cap stays 4 regardless (principle 2). |
+| `brands[].cvv.sizes` | The code lengths this brand normally uses. **A hint only**: it drives the placeholder example (`123` / `1234`). It is not enforced — typing is capped at 4 and submission accepts 3 or 4 for every brand (section 4.3). |
 | `brands[].autoAdvanceLength` | Optional. When the digit count reaches it, focus moves to the next field. **Set it to the largest value in `lengths`** (Visa 19, Amex 15, Mastercard 16, …). Nobody can type past the 19-digit universal cap, so a focus jump at a brand's maximum length can never hijack a legitimate longer number. Do not set it to a shorter length for brands whose length varies. Consequence: a 16-digit Visa does not auto-advance (only a 19-digit one does); this is accepted. |
 
 Sanity bounds a client applies when loading a document, discarding it (keeping the previous rules)
@@ -194,14 +194,18 @@ changing a rule means redeploying HPP.
 - Query at exactly 6 digits and at exactly 9 digits (the 9-digit BIN refines the result).
 - At 7 or 8 digits (or more than 9), query only if no scheme is known yet.
 - If the first 6 digits change after a scheme was resolved, drop the scheme and query again.
-- Debounce ~300 ms; ignore stale responses (keep a sequence number); cache results per BIN in memory
-  for the session; a `null` result keeps the current scheme.
+- Debounce ~300 ms; ignore stale responses (keep a sequence number).
+- Cache results per BIN in memory for the session, **including "unrecognized"** answers, so retyping
+  a BIN costs no request. A `null` result keeps the current scheme.
+- **The server does not rate-limit, so clients throttle themselves:** at most 20 lookups per session
+  (one session = one checkout screen), and no more lookups for the rest of the session after a `429`
+  or after 3 consecutive failures. Rules are fetched at most once per process / page load.
 - Any failure is silent: stay on local matching.
 
 ### 4.3 Validation (lenient)
 
 Block submission only when: number is outside 12–19 digits; number fails Luhn (UnionPay exempt);
-security code is not 3 or 4 digits;
+security code is not 3 or 4 digits (the same for every brand, never tighter);
 expiry is invalid or expired. Show the backend's error for everything else.
 
 ## 5. Bundled copy and drift
@@ -255,7 +259,10 @@ Auto-advance (number field, caret at the end, typing or pasting):
 | mastercard | 16 | yes |
 | (none) | any | per the client's own fallback |
 
-Security code: amex allows 4 digits, every other brand 3; the input cap is always 4.
+Security code (hints only — not validation): the example placeholder is `1234` for a brand whose
+`cvv.sizes` includes 4 (Amex) and `123` otherwise. Typing is capped at 4 digits for every brand, and
+submission accepts 3 or 4 digits for every brand (section 4.3); a brand's `cvv.sizes` is never used to
+reject a code, because a misrecognized brand must not block a valid card.
 
 ## 7. Input interaction behaviors
 

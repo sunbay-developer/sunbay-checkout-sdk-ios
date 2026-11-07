@@ -1,11 +1,20 @@
 import Foundation
 
+/// Errors a `CardBinService` adapter may throw to steer the resolver's throttling.
+enum CardBinServiceError: Error, Equatable {
+    /// The server answered `429` (too many requests): stop looking up for the rest of the session.
+    case rateLimited
+}
+
 /// Resolves the card scheme from the BIN using the HPP recognition endpoint (contract §4.2).
 ///
 /// Triggers: query at exactly 6 and 9 digits; at 7 / 8 (or more than 9) only while no scheme is
 /// known; below 6 digits cancel and drop the scheme; if the first 6 digits change, drop and query
-/// again. Debounced, stale responses are ignored, results are cached per BIN in memory. Any failure is
-/// silent (the caller keeps using local prefix matching). The BIN is never logged or persisted.
+/// again. Debounced, stale responses are ignored, results (including "unrecognized") are cached per BIN
+/// in memory. Any failure is silent (the caller keeps using local prefix matching). The server does not
+/// rate-limit, so the client throttles itself: at most `maxRequests` lookups per session, and no more
+/// lookups after a `rateLimited` error or `maxConsecutiveFailures` failures in a row. The BIN is never
+/// logged or persisted.
 @MainActor
 final class CardSchemeResolver {
     private let service: any CardBinService
@@ -18,16 +27,30 @@ final class CardSchemeResolver {
     private var sequence = 0
     private var task: Task<Void, Never>?
     private var cache: [String: String] = [:]
+    /// BINs the server could not recognize (negative cache), so retyping them costs nothing.
+    private var unrecognized: Set<String> = []
+
+    private let maxRequests: Int
+    private let maxConsecutiveFailures: Int
+    private var requestCount = 0
+    private var consecutiveFailures = 0
+    /// Set once throttling decides to stop; the resolver then only drops/keeps the scheme locally.
+    private var isStopped = false
 
     /// - Parameters:
     ///   - service: The recognition service.
     ///   - sessionId: The checkout session id.
     ///   - debounce: Debounce interval in seconds (about 0.3 in production).
+    ///   - maxRequests: Lookup budget for the whole session.
+    ///   - maxConsecutiveFailures: Failures in a row after which lookups stop.
     ///   - onChange: Called on the main actor whenever the resolved scheme changes (nil = dropped).
     init(
         service: any CardBinService, sessionId: String, debounce: TimeInterval = 0.3,
+        maxRequests: Int = 20, maxConsecutiveFailures: Int = 3,
         onChange: @escaping (String?) -> Void
     ) {
+        self.maxRequests = maxRequests
+        self.maxConsecutiveFailures = maxConsecutiveFailures
         self.service = service
         self.sessionId = sessionId
         self.debounceNanoseconds = UInt64(max(0, debounce) * 1_000_000_000)
@@ -59,18 +82,33 @@ final class CardSchemeResolver {
             apply(cached, bin6: prefix6)
             return
         }
+        guard !isStopped, !unrecognized.contains(bin), requestCount < maxRequests else { return }
         sequence += 1
         let mine = sequence
         task?.cancel()
         task = Task { [weak self] in
             guard let self else { return }
             try? await Task.sleep(nanoseconds: self.debounceNanoseconds)
-            guard !Task.isCancelled else { return }
-            let result = try? await self.service.recognize(bin: bin, sessionId: self.sessionId)
-            guard mine == self.sequence, let result, !result.isEmpty else { return }
-            let normalized = result.lowercased()
-            self.cache[bin] = normalized
-            self.apply(normalized, bin6: prefix6)
+            guard !Task.isCancelled, !self.isStopped else { return }
+            self.requestCount += 1
+            do {
+                let result = try await self.service.recognize(bin: bin, sessionId: self.sessionId)
+                self.consecutiveFailures = 0
+                // Cache the answer even if it is stale for the UI, but only apply a current one.
+                guard let result, !result.isEmpty else {
+                    self.unrecognized.insert(bin)
+                    return
+                }
+                let normalized = result.lowercased()
+                self.cache[bin] = normalized
+                if mine == self.sequence { self.apply(normalized, bin6: prefix6) }
+            } catch CardBinServiceError.rateLimited {
+                self.isStopped = true
+            } catch {
+                guard !(error is CancellationError) else { return }
+                self.consecutiveFailures += 1
+                if self.consecutiveFailures >= self.maxConsecutiveFailures { self.isStopped = true }
+            }
         }
     }
 

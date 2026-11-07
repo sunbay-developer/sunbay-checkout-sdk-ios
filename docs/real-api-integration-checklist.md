@@ -44,8 +44,9 @@ State today (what was built ahead of the API):
 - [ ] **Envelope:** `/api/card/rules` returns the raw rules document (no `{code,msg,data}`); only
       errors use the envelope. `/api/card/bin` always uses the envelope and success is `code == "0"`
       (string). Treat any other `code`, any non-2xx, and any decoding failure as "no result".
-- [ ] **Timeouts and retries:** short timeout (about 3 s), no retries, never block input. A `429`
-      means back off for the rest of the session (no more lookups).
+- [ ] **Timeouts and retries:** short timeout (about 3 s), no retries, never block input. The adapter
+      must throw `CardBinServiceError.rateLimited` on a `429` (the resolver then stops for the session);
+      any other error counts as a failure (3 in a row also stop it).
 - [ ] **Never log** the BIN, the request body, or the response of `/api/card/bin`. No analytics
       events carrying them.
 - [ ] Send the BIN only when `sessionId` is available; send at most 9 digits; never a full PAN.
