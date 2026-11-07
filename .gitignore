@@ -20,3 +20,9 @@ build/
 
 # Optional snapshot references are recorded on-demand (SUNBAY_SNAPSHOTS_RECORD=1), not committed.
 Tests/SunbayCheckoutTests/UI/Snapshots/__Snapshots__/
+
+# Showcase (Tuist-generated)
+Showcase/*.xcodeproj
+Showcase/*.xcworkspace
+Showcase/Derived/
+Showcase/.build/
