@@ -85,6 +85,8 @@
         /// Primary button corner radius, in points.
         let primaryButtonCornerRadius: CGFloat
 
+        /// Camera card-scanning policy (default `.automatic`; defaulted so other call sites are unchanged).
+        var cardScanning: Appearance.CardScanning = .automatic
         // MARK: - Resolution
 
         /// Resolves a public `Appearance` into concrete, non-optional values.
@@ -155,7 +157,8 @@
                 pageTransitionsEnabled: appearance.pageTransitionsEnabled,
                 primaryButtonBackground: primaryButtonBackground,
                 primaryButtonText: primaryButtonText,
-                primaryButtonCornerRadius: primaryButtonCornerRadius
+                primaryButtonCornerRadius: primaryButtonCornerRadius,
+                cardScanning: appearance.cardScanning
             )
         }
 

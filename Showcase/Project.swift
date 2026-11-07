@@ -32,7 +32,11 @@ let project = Project(
             infoPlist: .extendingDefault(
                 with: [
                     "CFBundleDisplayName": "SBC Showcase",
+                    "CFBundleDevelopmentRegion": "en",
+                    "CFBundleLocalizations": ["en", "zh-Hans"],
                     "ShowcaseMerchantId": .string(merchantId),
+                    // Enables the SDK's on-device "Scan card" button (it auto-hides without this key).
+                    "NSCameraUsageDescription": "Used to scan your card number on-device. Images are never stored or sent.",
                     "UILaunchScreen": [:],
                     "UIApplicationSceneManifest": [
                         "UIApplicationSupportsMultipleScenes": false,

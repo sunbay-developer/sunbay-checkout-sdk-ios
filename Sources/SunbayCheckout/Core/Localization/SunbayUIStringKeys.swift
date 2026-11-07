@@ -28,6 +28,10 @@ enum SunbayUIStringKeys {
         "sunbay.card.expiry",
         "sunbay.card.cvc",
         "sunbay.card.invalid",
+        "sunbay.card.scan",
+        "sunbay.card.scan.hint",
+        "sunbay.card.scan.tip",
+        "sunbay.card.scan.light",
         // Address
         "sunbay.address.billingTitle",
         "sunbay.address.shippingTitle",

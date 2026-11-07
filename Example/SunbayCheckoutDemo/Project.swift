@@ -58,6 +58,7 @@ let project = Project(
                 with: [
                     "UILaunchScreen": [:],
                     "SunbayDemoMerchantId": .string(merchantId),
+                    "NSCameraUsageDescription": "Used to scan your card number on-device. Images are never stored or sent.",
                     "UIApplicationSceneManifest": [
                         "UIApplicationSupportsMultipleScenes": false,
                     ],

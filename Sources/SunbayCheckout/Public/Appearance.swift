@@ -43,6 +43,9 @@
         /// Shipping address collection mode.
         public var shippingAddressMode: AddressCollectionMode = .simple
 
+        /// Whether the "Scan card" button is offered on the new-card page. Defaults to `.automatic`.
+        public var cardScanning: CardScanning = .automatic
+
         /// Bottom-sheet sizing: minimum height, maximum height fraction of the screen height, and mode.
         public var sheetSizing: SheetSizing = .init()
 
@@ -78,6 +81,16 @@
             case bottom
             /// Hidden.
             case off
+        }
+
+        /// Camera card scanning policy. Scanning is fully on-device (no network).
+        public enum CardScanning: Sendable {
+            /// Show "Scan card" only when it can work: the host app declares
+            /// `NSCameraUsageDescription` in its Info.plist, a camera exists, and camera access is not
+            /// denied or restricted. This is the default.
+            case automatic
+            /// Never show "Scan card".
+            case disabled
         }
 
         /// Address collection mode.

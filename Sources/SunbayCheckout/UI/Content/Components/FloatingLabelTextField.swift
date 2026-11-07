@@ -74,6 +74,16 @@
 
         // MARK: - Public API
 
+        /// Invoked when Backspace is pressed while the field is already empty (the owner can move focus
+        /// back to the previous field, as mainstream card forms do).
+        var onBackspaceWhenEmpty: (() -> Void)?
+
+        override func deleteBackward() {
+            let wasEmpty = (text ?? "").isEmpty
+            super.deleteBackward()
+            if wasEmpty { onBackspaceWhenEmpty?() }
+        }
+
         /// Marks (or clears) the field's error state, driving the floated label color. The owner calls
         /// this alongside its existing error styling (e.g. the group border); this type owns only the
         /// label color.

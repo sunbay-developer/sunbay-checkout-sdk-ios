@@ -82,11 +82,11 @@
 
             guard !pan.isEmpty, !cvv.isEmpty, !expiry.isEmpty else { return nil }
 
-            let parts = expiry.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
-            guard parts.count == 2 else { return nil }
-            let month = parts[0].trimmingCharacters(in: .whitespaces)
-            let year = parts[1].trimmingCharacters(in: .whitespaces)
-            guard !month.isEmpty, !year.isEmpty else { return nil }
+            // Expiry is shown as `MM/YY`; the backend contract wants the month and a 4-digit year
+            // separately. Reject malformed or already-expired values client-side.
+            guard let (month, year) = ExpiryFormatter.components(from: expiry),
+                ExpiryFormatter.isValid(month: month, year: year)
+            else { return nil }
 
             // Strip the display-only PAN grouping spaces before handing plaintext upstream.
             let digitsOnlyPan = pan.filter { !$0.isWhitespace }
@@ -124,6 +124,18 @@
             refreshGroupBorder()
         }
 
+        /// Fills the PAN (and expiry, when present) from a scan result, running the normal display
+        /// formatting, then moves focus to the CVC field. Plaintext only passes through the fields.
+        func applyScannedCard(_ card: ScannedCard) {
+            panField.text = Self.formatPAN(card.pan)
+            if let month = card.expiryMonth, let year = card.expiryYear {
+                expiryField.text = Self.formatExpiry(month + year)
+            }
+            showFieldError(.number, message: nil)
+            onEditingChanged?()
+            cvvField.becomeFirstResponder()
+        }
+
         #if DEBUG
             /// Test readout: whether a field error (red group + message) is currently shown.
             var hasFieldErrorForTest: Bool { hasFieldError && !errorLabel.isHidden }
@@ -159,6 +171,10 @@
                 field.addTarget(self, action: #selector(handleEditingDidBegin), for: .editingDidBegin)
                 field.addTarget(self, action: #selector(handleEditingDidEnd), for: .editingDidEnd)
             }
+
+            // Backspace on an empty field steps back to the previous one.
+            expiryField.onBackspaceWhenEmpty = { [weak self] in self?.panField.becomeFirstResponder() }
+            cvvField.onBackspaceWhenEmpty = { [weak self] in self?.expiryField.becomeFirstResponder() }
 
             panField.title = localize("sunbay.card.number")
             expiryField.title = localize("sunbay.card.expiry")
@@ -315,10 +331,21 @@
             case panField:
                 textField.text = Self.formatPAN(updated)
                 sendEditingChanged(textField)
+                // A number that is complete for its brand moves on to the expiry field.
+                if !string.isEmpty, Self.isCompletePAN(textField.text ?? "") { expiryField.becomeFirstResponder() }
                 return false
             case expiryField:
-                textField.text = Self.formatExpiry(updated)
+                guard
+                    let edit = ExpiryFormatter.apply(
+                        current: current, range: range, replacement: string)
+                else { return false }
+                textField.text = edit.text
+                Self.setCaret(in: textField, offset: edit.caret)
                 sendEditingChanged(textField)
+                // A full, month-valid MM/YY moves on to the CVC field.
+                if edit.isComplete, !string.isEmpty, edit.caret == (edit.text as NSString).length {
+                    cvvField.becomeFirstResponder()
+                }
                 return false
             case cvvField:
                 let digits = updated.filter(\.isNumber)
@@ -332,6 +359,28 @@
 
         private func sendEditingChanged(_ textField: UITextField) {
             textField.sendActions(for: .editingChanged)
+        }
+
+        /// Places the caret at a UTF-16 offset in the field.
+        static func setCaret(in textField: UITextField, offset: Int) {
+            guard let position = textField.position(from: textField.beginningOfDocument, offset: offset) else { return }
+            textField.selectedTextRange = textField.textRange(from: position, to: position)
+        }
+
+        /// Whether the (display) number is complete for its brand, so focus can move on. Only brands
+        /// with a fixed length qualify, so variable-length numbers (e.g. 16–19 digit UnionPay) are never
+        /// cut off mid-entry: Amex 15; Visa / Mastercard / Discover / JCB 16; UnionPay 19. Must pass Luhn.
+        static func isCompletePAN(_ display: String) -> Bool {
+            let digits = display.filter(\.isNumber)
+            guard CardScanParser.luhnValid(digits) else { return false }
+            if digits.hasPrefix("34") || digits.hasPrefix("37") { return digits.count == 15 }
+            if digits.hasPrefix("62") { return digits.count == 19 }
+            if digits.hasPrefix("4") || digits.hasPrefix("5") || digits.hasPrefix("6011")
+                || digits.hasPrefix("65") || digits.hasPrefix("35") || digits.hasPrefix("2")
+            {
+                return digits.count == 16
+            }
+            return false
         }
 
         /// Groups PAN digits into blocks of four separated by a single space (display only), capped at

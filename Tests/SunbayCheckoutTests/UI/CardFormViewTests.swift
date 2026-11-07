@@ -19,10 +19,10 @@
 
         func test_cardInputAssemblesWhenComplete() {
             let v = CardFormView(appearance: .resolve(.default), localize: { $0 })
-            v.setFieldsForTest(pan: "4242424242424242", expiry: "08/28", cvv: "123")
+            v.setFieldsForTest(pan: "4242424242424242", expiry: "08/99", cvv: "123")
             XCTAssertEqual(v.cardInput?.cardNumber, "4242424242424242")
             XCTAssertEqual(v.cardInput?.expiryMonth, "08")
-            XCTAssertEqual(v.cardInput?.expiryYear, "28")
+            XCTAssertEqual(v.cardInput?.expiryYear, "2099")
         }
     }
 #endif
