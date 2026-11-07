@@ -27,6 +27,19 @@ final class ShowcaseServicesTests: XCTestCase {
         XCTAssertEqual(txnId.count, 12)
     }
 
+    func testCancelledSubmitThrowsInsteadOfSucceeding() async {
+        let service = ShowcasePaymentService(amountMinor: 100, sessionId: "sess_c")
+        let request = makeRequest("sess_c")
+        let task = Task { try await service.submit(request) }
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("Cancelled submit must throw, not return a snapshot")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "Unexpected error: \(error)")
+        }
+    }
+
     func testGetResultReturnsSameTxnIdAsSubmit() async throws {
         let service = ShowcasePaymentService(amountMinor: 100, sessionId: "sess_3")
         let submitted = try await service.submit(makeRequest("sess_3"))

@@ -29,11 +29,13 @@ public final class ShowcasePaymentService: PaymentService, @unchecked Sendable {
     }
 
     public func submit(_ req: SubmitRequest) async throws -> PaymentSnapshot {
-        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        // The sessionId argument is ignored: this mock serves a single session.
+        try await Task.sleep(nanoseconds: 1_000_000_000)
         return PaymentSnapshot(sessionId: sessionId, status: .succeeded, txnId: currentTxnId())
     }
 
     public func getResult(sessionId: String) async throws -> PaymentSnapshot {
+        // The sessionId argument is ignored: this mock serves a single session.
         PaymentSnapshot(sessionId: self.sessionId, status: .succeeded, txnId: currentTxnId())
     }
 
