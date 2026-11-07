@@ -28,9 +28,10 @@
     /// if it changed, fires `onAvailabilityChange` on the main thread.
     ///
     /// ## Result (onResult)
-    /// Tap → `WalletAuthorizing.authorize(...)` to get the encrypted wallet token →
-    /// `controller.confirmWallet(token:)` → the backend-confirmed terminal state is mapped to a
-    /// `CheckoutOutcome` → `onResult` fires on the main thread. Wallet authorization success ≠
+    /// Tap → `WalletAuthorizing.authorize(...)` presents the Apple Pay sheet; each authorized token is
+    /// confirmed via `controller.confirmWallet(token:)` while the sheet is still open, the sheet shows
+    /// the backend-derived status, and once it closes the final `CheckoutOutcome` fires `onResult` on
+    /// the main thread. Wallet authorization success ≠
     /// transaction success (§3.2): the real conclusion comes from `confirmWallet`'s outcome. The user
     /// dismissing the sheet maps to `.canceled`; an authorization failure maps to `.failed`; both fire
     /// `onResult` and leave the control tappable again.
@@ -220,12 +221,15 @@
             Task { [weak self] in
                 let outcome: CheckoutOutcome
                 do {
-                    // Wallet token: flows only between authorize → confirmWallet, never enters onResult/logs (§5).
-                    let token = try await authorizer.authorize(
+                    // The token is confirmed while the Apple Pay sheet is still open; the sheet shows
+                    // success/failure only after the backend outcome is known. The token flows only
+                    // into confirmWallet, never into onResult/logs (§5).
+                    outcome = try await authorizer.authorize(
                         amount: amount,
                         merchantId: merchantId
-                    )
-                    outcome = await controller.confirmWallet(token: token)
+                    ) { token in
+                        await controller.confirmWallet(token: token)
+                    }
                 } catch {
                     // Authorization ended without a token. Distinguish a user cancel (→ `.canceled`,
                     // NOT a failure) from an authorization failure (→ `.failed`). The PassKit authorizer
