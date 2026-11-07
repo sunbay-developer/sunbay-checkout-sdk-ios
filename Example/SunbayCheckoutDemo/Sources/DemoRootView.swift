@@ -254,7 +254,7 @@ import SunbayCheckoutTestSupport
         private func makeCheckout() -> SunbayCheckout {
             let config = CheckoutConfiguration(
                 environment: settings.environment.configurationValue,
-                applePayMerchantId: "merchant.com.sunbay.demo",
+                applePayMerchantId: "merchant.native.com.sunbay.dev",
                 appearance: makeAppearance(),
                 locale: settings.locale.bcp47
             )

@@ -34,7 +34,7 @@ Environment variables read at generation time (no signing material is committed)
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `TUIST_SUNBAY_SHOWCASE_MERCHANT_ID` | `merchant.com.sunbay.demo` | Apple Pay merchant id (entitlement and SDK configuration) |
+| `TUIST_SUNBAY_SHOWCASE_MERCHANT_ID` | `merchant.native.com.sunbay.dev` | Apple Pay merchant id (entitlement and SDK configuration) |
 | `TUIST_SUNBAY_SHOWCASE_BUNDLE_ID` | `com.sunbay.checkout.showcase` | App bundle id (the test target uses it plus `.tests`) |
 | `TUIST_SUNBAY_SHOWCASE_DEVELOPMENT_TEAM` | empty | Apple development team id |
 
@@ -42,7 +42,7 @@ These names differ from the Example app's (`SUNBAY_DEMO_*` there, `SUNBAY_SHOWCA
 
 Merchant id flow: the generate-time value is written to the entitlement and to Info.plist as
 `ShowcaseMerchantId`; the app reads it from `Bundle.main` at runtime and passes it to the SDK
-(falling back to `merchant.com.sunbay.demo`).
+(falling back to `merchant.native.com.sunbay.dev`).
 
 ## Demo notes
 

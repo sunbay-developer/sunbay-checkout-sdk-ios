@@ -43,9 +43,9 @@ The manifest wires the SDK as a **local Swift package** at the repo root
 ## Running on a real device (Apple Pay signing)
 
 The simulator needs no signing, and by default the manifest ships a **placeholder** Apple Pay
-merchant id (`merchant.com.sunbay.demo`) and **no** signing team, so it commits clean and runs on
+merchant id (`merchant.native.com.sunbay.dev`) and **no** signing team, so it commits clean and runs on
 the simulator with zero setup. That placeholder is not registered with Apple, so building for a
-**real device** will fail to sign with errors like *"doesn't support merchant.com.sunbay.demo
+**real device** will fail to sign with errors like *"doesn't support merchant.native.com.sunbay.dev
 Merchant Identifier"* and *"doesn't include the com.apple.developer.in-app-payments entitlement"*.
 
 To sign for a real device, override the merchant id (and your team) via Tuist environment variables
@@ -108,7 +108,7 @@ The Apple Pay **row inside the PaymentSheet** is currently a cancel-only placeho
 ## Apple Pay on device
 
 The Tuist manifest sets a placeholder Apple Pay entitlement
-(`com.apple.developer.in-app-payments = ["merchant.com.sunbay.demo"]`). Real in-app Apple Pay on a
+(`com.apple.developer.in-app-payments = ["merchant.native.com.sunbay.dev"]`). Real in-app Apple Pay on a
 device requires the integrating developer to substitute their **own** merchant id and provision the
 matching merchant capability/certificate in their Apple Developer account. No real merchant
 certificates or secrets are committed (see AGENTS.md section 5).

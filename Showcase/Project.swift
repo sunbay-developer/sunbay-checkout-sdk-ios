@@ -4,11 +4,11 @@ import ProjectDescription
 // SunbayCheckout API from the Swift package at the repository root.
 //
 // No signing material is committed. Overrides (read at generate time via Tuist `Environment`):
-//   TUIST_SUNBAY_SHOWCASE_MERCHANT_ID       (default: merchant.com.sunbay.demo)
+//   TUIST_SUNBAY_SHOWCASE_MERCHANT_ID       (default: merchant.native.com.sunbay.dev)
 //   TUIST_SUNBAY_SHOWCASE_BUNDLE_ID         (default: com.sunbay.checkout.showcase)
 //   TUIST_SUNBAY_SHOWCASE_DEVELOPMENT_TEAM  (default: none; the simulator needs none)
 
-private let merchantId = Environment.sunbayShowcaseMerchantId.getString(default: "merchant.com.sunbay.demo")
+private let merchantId = Environment.sunbayShowcaseMerchantId.getString(default: "merchant.native.com.sunbay.dev")
 private let bundleId = Environment.sunbayShowcaseBundleId.getString(default: "com.sunbay.checkout.showcase")
 private let developmentTeam = Environment.sunbayShowcaseDevelopmentTeam.getString(default: "")
 

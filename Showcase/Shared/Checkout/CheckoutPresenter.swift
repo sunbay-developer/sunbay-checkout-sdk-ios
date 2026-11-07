@@ -13,7 +13,7 @@ struct PaymentResult {
 final class CheckoutPresenter: ObservableObject {
     @Published private(set) var isPresenting = false
 
-    static let defaultMerchantId = "merchant.com.sunbay.demo"
+    static let defaultMerchantId = "merchant.native.com.sunbay.dev"
     /// Merchant id baked into Info.plist (`ShowcaseMerchantId`) from the generate-time override.
     static var bundleMerchantId: String {
         let value = Bundle.main.object(forInfoDictionaryKey: "ShowcaseMerchantId") as? String

@@ -21,7 +21,7 @@ final class CheckoutPresenterTests: XCTestCase {
             theme: theme, language: .en, systemIsDark: false, merchantId: "merchant.com.example.custom")
         XCTAssertEqual(custom.applePayMerchantId, "merchant.com.example.custom")
         let fallback = CheckoutPresenter.makeConfiguration(theme: theme, language: .en, systemIsDark: false)
-        XCTAssertEqual(fallback.applePayMerchantId, "merchant.com.sunbay.demo")
+        XCTAssertEqual(fallback.applePayMerchantId, "merchant.native.com.sunbay.dev")
     }
 
     func testSystemModeDarkDeviceYieldsDarkAppearance() {

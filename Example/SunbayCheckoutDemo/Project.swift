@@ -18,12 +18,12 @@ import ProjectDescription
 // section 5.
 //
 // Overrides (Tuist reads TUIST_-prefixed env vars at generate time via the `Environment` API):
-//   TUIST_SUNBAY_DEMO_MERCHANT_ID       e.g. merchant.com.sunbay.dev   (default: merchant.com.sunbay.demo)
+//   TUIST_SUNBAY_DEMO_MERCHANT_ID       (default: merchant.native.com.sunbay.dev)
 //   TUIST_SUNBAY_DEMO_DEVELOPMENT_TEAM  your Apple Developer Team id    (default: none; the simulator needs none)
 
 // The Apple Pay merchant id. A real device needs one registered under the signing team; the
 // default is a non-functional placeholder suitable for the simulator and for committing.
-private let merchantId = Environment.sunbayDemoMerchantId.getString(default: "merchant.com.sunbay.demo")
+private let merchantId = Environment.sunbayDemoMerchantId.getString(default: "merchant.native.com.sunbay.dev")
 
 // Optional signing team. When set, it flows into the target's build settings so Xcode can produce
 // a provisioning profile that includes the Apple Pay capability for a real device. Left empty for
