@@ -35,20 +35,41 @@ enum ThemePreset: CaseIterable {
 /// Light/dark selection for the merchant app (and the SDK sheet).
 enum ModeChoice: CaseIterable {
     case system, light, dark
+
+    /// Window-level style for this mode. `.unspecified` follows the system.
+    var userInterfaceStyle: UIUserInterfaceStyle {
+        switch self {
+        case .system: return .unspecified
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
+/// Applies the merchant light/dark mode at the window level.
+///
+/// SwiftUI's `.preferredColorScheme` does not reliably reach an already presented sheet (and does not
+/// reset it when switching back to System), so the Settings sheet kept its old scheme. Overriding the
+/// window's style instead is inherited by every screen in the window, presented ones included.
+enum WindowAppearance {
+    static func apply(_ style: UIUserInterfaceStyle, to windows: [UIWindow]) {
+        for window in windows {
+            window.overrideUserInterfaceStyle = style
+        }
+    }
+
+    /// Applies `style` to every window of the app's connected scenes.
+    static func applyToApp(_ style: UIUserInterfaceStyle) {
+        let windows = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+        apply(style, to: windows)
+    }
 }
 
 final class ThemeStore: ObservableObject {
     @Published var preset: ThemePreset = .orange
     @Published var mode: ModeChoice = .system
-
-    /// `nil` follows the system.
-    var swiftUIScheme: ColorScheme? {
-        switch mode {
-        case .system: return nil
-        case .light: return .light
-        case .dark: return .dark
-        }
-    }
 
     var primary: Color { Color(UIColor(sunbayHex: preset.primaryHex) ?? .systemOrange) }
     var cornerRadius: CGFloat { preset.cornerRadius }

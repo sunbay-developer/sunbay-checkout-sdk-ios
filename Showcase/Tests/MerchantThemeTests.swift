@@ -25,16 +25,6 @@ final class MerchantThemeTests: XCTestCase {
         XCTAssertEqual(store.appearance(systemIsDark: false).colorScheme, .dark)
     }
 
-    func testSwiftUISchemeMapping() {
-        let store = ThemeStore()
-        store.mode = .system
-        XCTAssertNil(store.swiftUIScheme)
-        store.mode = .light
-        XCTAssertEqual(store.swiftUIScheme, .light)
-        store.mode = .dark
-        XCTAssertEqual(store.swiftUIScheme, .dark)
-    }
-
     func testPresetMapsPrimaryAndRadius() {
         let expected: [(ThemePreset, String, CGFloat)] = [
             (.orange, "#ff6000", 10), (.blue, "#2563eb", 3), (.green, "#16a34a", 20),
@@ -49,5 +39,22 @@ final class MerchantThemeTests: XCTestCase {
             XCTAssertNotNil(appearance.colors.primary)
             XCTAssertEqual(appearance.colors.primary, UIColor(sunbayHex: hex))
         }
+    }
+
+    /// The window-level style drives every presented screen (Settings sheet, SDK sheet) so they all
+    /// follow the merchant mode, including switching back to System.
+    func testModeMapsToWindowInterfaceStyle() {
+        XCTAssertEqual(ModeChoice.system.userInterfaceStyle, .unspecified)
+        XCTAssertEqual(ModeChoice.light.userInterfaceStyle, .light)
+        XCTAssertEqual(ModeChoice.dark.userInterfaceStyle, .dark)
+    }
+
+    func testApplyingStyleOverridesEveryWindow() {
+        let a = UIWindow(), b = UIWindow()
+        WindowAppearance.apply(.dark, to: [a, b])
+        XCTAssertEqual(a.overrideUserInterfaceStyle, .dark)
+        XCTAssertEqual(b.overrideUserInterfaceStyle, .dark)
+        WindowAppearance.apply(.unspecified, to: [a, b])
+        XCTAssertEqual(a.overrideUserInterfaceStyle, .unspecified, "System must clear the override.")
     }
 }
