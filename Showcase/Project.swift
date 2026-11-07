@@ -31,7 +31,7 @@ let project = Project(
             deploymentTargets: .iOS("15.0"),
             infoPlist: .extendingDefault(
                 with: [
-                    "CFBundleDisplayName": "Sunbay Checkout Showcase",
+                    "CFBundleDisplayName": "SBC Showcase",
                     "ShowcaseMerchantId": .string(merchantId),
                     "UILaunchScreen": [:],
                     "UIApplicationSceneManifest": [

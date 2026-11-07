@@ -1,5 +1,7 @@
 # Sunbay Checkout Showcase
 
+Home-screen name: **SBC Showcase** (short enough not to be truncated under the icon).
+
 A simulated merchant app (a coffee shop, "Sunbay Coffee") that demonstrates the SunbayCheckout iOS SDK to leaders and customers.
 It consumes only the SDK's **public API**. **All payments are simulated; nothing is ever charged.**
 
