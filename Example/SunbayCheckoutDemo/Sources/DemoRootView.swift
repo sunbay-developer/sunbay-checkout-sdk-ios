@@ -35,6 +35,13 @@ import SunbayCheckoutTestSupport
 
         // Fixed demo session identifier and COF credential (mock, not confidential).
         private let sessionId = "demo_session_001"
+
+        /// The Apple Pay merchant id baked into Info.plist (`SunbayDemoMerchantId`) by the Tuist
+        /// manifest, so it always matches the entitlement. Falls back to the committed placeholder.
+        private static let merchantId: String = {
+            let value = Bundle.main.object(forInfoDictionaryKey: "SunbayDemoMerchantId") as? String
+            return (value?.isEmpty == false ? value : nil) ?? "merchant.com.example.yourapp"
+        }()
         private let customerAccessSecret = "demo_secret"
 
         var body: some View {
@@ -254,7 +261,7 @@ import SunbayCheckoutTestSupport
         private func makeCheckout() -> SunbayCheckout {
             let config = CheckoutConfiguration(
                 environment: settings.environment.configurationValue,
-                applePayMerchantId: "merchant.native.com.sunbay.dev",
+                applePayMerchantId: Self.merchantId,
                 appearance: makeAppearance(),
                 locale: settings.locale.bcp47
             )

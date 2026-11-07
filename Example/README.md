@@ -43,10 +43,19 @@ The manifest wires the SDK as a **local Swift package** at the repo root
 ## Running on a real device (Apple Pay signing)
 
 The simulator needs no signing, and by default the manifest ships a **placeholder** Apple Pay
-merchant id (`merchant.native.com.sunbay.dev`) and **no** signing team, so it commits clean and runs on
+merchant id (`merchant.com.example.yourapp`) and **no** signing team, so it commits clean and runs on
 the simulator with zero setup. That placeholder is not registered with Apple, so building for a
-**real device** will fail to sign with errors like *"doesn't support merchant.native.com.sunbay.dev
+**real device** will fail to sign with errors like *"doesn't support merchant.com.example.yourapp
 Merchant Identifier"* and *"doesn't include the com.apple.developer.in-app-payments entitlement"*.
+
+**Integrators:** use your **own** merchant id, registered in your Apple Developer account. The
+manifest writes it to both the entitlement and Info.plist (`SunbayDemoMerchantId`); the app reads it
+from there for `CheckoutConfiguration.applePayMerchantId`, so the entitlement and the SDK
+configuration always match.
+
+**Sunbay engineers:** the internal test merchant `merchant.native.com.sunbay.dev` is for Sunbay's own testing
+and demos only; pass it through the same variable (with the internal team id) instead of
+committing it as a default.
 
 To sign for a real device, override the merchant id (and your team) via Tuist environment variables
 at generate time - these are read by the manifest's `Environment` API and never committed:
@@ -108,7 +117,7 @@ The Apple Pay **row inside the PaymentSheet** is currently a cancel-only placeho
 ## Apple Pay on device
 
 The Tuist manifest sets a placeholder Apple Pay entitlement
-(`com.apple.developer.in-app-payments = ["merchant.native.com.sunbay.dev"]`). Real in-app Apple Pay on a
+(`com.apple.developer.in-app-payments = ["merchant.com.example.yourapp"]`). Real in-app Apple Pay on a
 device requires the integrating developer to substitute their **own** merchant id and provision the
 matching merchant capability/certificate in their Apple Developer account. No real merchant
 certificates or secrets are committed (see AGENTS.md section 5).

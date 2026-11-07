@@ -17,7 +17,7 @@ Concretely it:
 
 - calls `PKPaymentAuthorizationController.canMakePayments()` and
   `canMakePayments(usingNetworks:)` (capability detection),
-- builds a `PKPaymentRequest` with **placeholder** merchant/gateway params (placeholder
+- builds a `PKPaymentRequest` with test merchant/gateway params (Sunbay's **internal test**
   `merchantIdentifier` `merchant.native.com.sunbay.dev`, TEST/placeholder country `US`, currency
   `USD`, supported networks visa / masterCard / amex, `.threeDSecure`, a single `1.00` summary
   item),
@@ -48,9 +48,10 @@ repo (no certificates/secrets are committed). To run it on a real device a devel
    bare SwiftPM executable product has no entitlement/`Info.plist`; to run on a device, wrap these
    sources in an Xcode **app** target (or add an app wrapper) and enable Apple Pay on it.
 2. **A real `merchantIdentifier`.** Register a merchant ID in the Apple Developer account (e.g.
-   `merchant.com.<yourorg>.<app>`), attach it to the capability, and replace the placeholder
+   `merchant.com.<yourorg>.<app>`), attach it to the capability, and replace
    `ProbeConfig.merchantIdentifier` (`merchant.native.com.sunbay.dev`) in `ApplePayProbe.swift` with it.
-   The placeholder will not produce a usable sheet on a device.
+   `merchant.native.com.sunbay.dev` is Sunbay's internal test merchant (this probe is an internal tool); it only
+   works when signed with Sunbay's own team.
 3. **A sandbox tester + a test card in Wallet.** Sign in to the device with an **Apple sandbox
    tester** account and add a **test card** to Wallet (per Apple's Apple Pay sandbox testing
    guide). Without a usable card the sheet reaches the no-card branch.
@@ -73,7 +74,7 @@ environment.
 ## 4. No real certificates / secrets
 
 This directory commits **no** merchant certificates, private keys, gateway credentials, or real
-card data. All merchant/gateway values in `ProbeConfig` are **placeholders** and are safe to
+card data. All merchant/gateway values in `ProbeConfig` are test values (a merchant id is an identifier, not a secret) and are safe to
 commit; they are not usable for a real charge. Do not add real certificates or secrets here — the
 real merchant ID and entitlement live in the developer's Apple Developer account and signed app
 target, not in this repository (AGENTS.md §5).
