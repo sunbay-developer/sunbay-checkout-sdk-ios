@@ -1,0 +1,104 @@
+# Real-API integration checklist
+
+Things the SDK builds against a mock or a bundled copy today, and what must be done when the real
+backend is ready. Read this before wiring any real endpoint. Add a section here whenever a feature
+is built ahead of its API, and remove the section only after the item is verified end to end.
+
+## 1. Card brand rules and BIN recognition
+
+Contract: `docs/card-rules-contract.md` (the HPP server hosts both endpoints; the SDK never calls
+the payment backend directly for this).
+
+State today (what was built ahead of the API):
+
+- `Core/CardBrand/`: rule model + loader + sanity checks (`CardRuleSet`), prefix matching, bundled
+  **draft** rules (`Resources/CardRules/card-brand-rules.json`), cache store and provider
+  (`CardRulesProvider`: cached remote > bundled > minimal), background refresher, BIN resolver
+  (`CardSchemeResolver`), and the **internal** protocols `CardRulesService` / `CardBinService` with
+  fail-soft empty defaults.
+- `CheckoutContentViewController` takes both services as init parameters defaulting to the empty
+  ones; nothing above it passes them yet. No real HTTP adapter exists.
+- `CardFormView` already groups, auto-advances and sizes the security-code hint from the rules, and
+  validates leniently (number 12–19 digits, security code 3–4 digits).
+
+### 1.1 Wire the real services
+
+- [ ] Add HTTP adapters for `GET /api/card/rules` and `POST /api/card/bin`, modeled on
+      `HTTPAddressMetadataService` (thin adapter, `baseURL` injected by the host, nothing hard-coded).
+- [ ] The protocols are `internal` today. Make them `public` and inject them through
+      `SunbayCheckout.init(...)` as optional parameters defaulting to `nil` (the fail-soft empty
+      implementation). This adds public API: minor version bump, and update
+      `docs/product-spec.md` §2 / §7.
+- [ ] Thread them down the same path as `addressMetadataService`: `SunbayCheckout` → `PaymentSheet`
+      (both its public and internal init) → the sheet runner → `CheckoutContentViewController`.
+- [ ] Update `docs/product-spec.md` §7: the two endpoints move from "mock baseline" to real, and
+      `AGENTS.md` rule 7 still applies (keep them behind protocols).
+
+### 1.2 Networking details that are easy to get wrong
+
+- [ ] **ETag with `URLSession`:** the shared `URLCache` can answer a conditional request itself and
+      hide the `304` (the app sees a `200`). Decide one approach and test it: either use an
+      ephemeral configuration with `requestCachePolicy = .reloadIgnoringLocalCacheData` and send
+      `If-None-Match` manually from our own stored ETag, or rely on `URLCache` and drop our ETag
+      store. Do not mix them.
+- [ ] **Envelope:** `/api/card/rules` returns the raw rules document (no `{code,msg,data}`); only
+      errors use the envelope. `/api/card/bin` always uses the envelope and success is `code == "0"`
+      (string). Treat any other `code`, any non-2xx, and any decoding failure as "no result".
+- [ ] **Timeouts and retries:** short timeout (about 3 s), no retries, never block input. A `429`
+      means back off for the rest of the session (no more lookups).
+- [ ] **Never log** the BIN, the request body, or the response of `/api/card/bin`. No analytics
+      events carrying them.
+- [ ] Send the BIN only when `sessionId` is available; send at most 9 digits; never a full PAN.
+
+### 1.3 Data
+
+- [ ] Replace the bundled draft rules with the production document from the HPP repo.
+- [ ] Add the release script that overwrites the bundled file from the live `GET /api/card/rules`
+      at SDK build time, and the CI check that compares the bundled file's SHA-256 with the live
+      ETag and warns on drift. The bundled file is never edited by hand.
+- [ ] Verify the backend's real `cardScheme` strings map 1:1 to `brands[].scheme` (lower-cased).
+      Any scheme without a rule falls back to `generic` — confirm that is what we want.
+- [ ] Run the contract's test vectors (section 6) against the Swift implementation using the
+      production document, not only the draft.
+
+### 1.4 Behavior to verify on a real device with the real API
+
+- [ ] Cold start offline: bundled rules, input works, no spinner or delay.
+- [ ] Cold start online: rules refresh in the background and apply the **next** time the card
+      component is shown, never mid-typing.
+- [ ] BIN conflict: the local prefix guess is replaced by the backend scheme at 6 digits; the
+      display re-groups without deleting any digit and without caret jumps.
+- [ ] Editing the first digits of a number that already resolved a scheme re-resolves it.
+- [ ] Backend returns `null` or fails: stays on the local guess, then on `generic`; payment is
+      never blocked by a rules/BIN failure.
+- [ ] The short-prefix flicker described in the contract (for example `62`) is acceptable.
+
+### 1.5 Privacy and security paperwork
+
+- [ ] `docs/security-and-pci.md`: add the BIN lookup (first 6–9 digits leave the device over TLS to
+      the HPP server, never logged or persisted) and the public, non-sensitive rules cache in the OS
+      cache directory.
+- [ ] The repo has no `PrivacyInfo.xcprivacy`. App Store rules for SDKs require one; when the SDK
+      starts making this network call, check what the manifest must declare and tell integrators
+      whether their privacy labels are affected.
+- [ ] Confirm the HPP endpoints are covered by the host app's ATS (HTTPS only) — no exceptions.
+
+### 1.6 Cleanup once the rules are live
+
+- [ ] Remove or shrink the local heuristics that exist only because no rules were available: the
+      prefix table in `CardFormView.isCompletePAN` and the length/prefix checks in
+      `CardScanParser` (`isPlausible`). They may stay as a last-resort fallback if the bundled
+      rules are ever empty, but they must not disagree with the rules document.
+- [ ] Scanning deliberately still requires Luhn for every brand (including UnionPay) as the guard against
+      misreads; non-Luhn UnionPay cards must be typed by hand. Revisit only if that proves to be a real problem.
+- [ ] Replace the demo/showcase mock BIN and rules services with the real adapters (Example and
+      Showcase), and keep a scriptable test double in `SunbayCheckoutTestSupport`.
+- [ ] Keep Android and HPP on the same document and the same test vectors; a behavior change starts
+      with the contract, then all three implementations.
+
+## 2. Other items built ahead of their API
+
+- Address metadata (`AddressMetadataService`): full-mode address is protocol, UI and cache only;
+  `HTTPAddressMetadataService` exists but is not wired to real data. See the UI redesign spec.
+- Payment and saved-card services (`PaymentService`, `CofService`): mock baseline per
+  `docs/product-spec.md` §7.

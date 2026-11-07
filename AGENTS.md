@@ -54,7 +54,9 @@ Full design: `docs/product-spec.md`. Security/PCI: `docs/security-and-pci.md`.
    they depend on protocols only. This is what makes L2 a zero-rework addition later.
 7. **Backend contract is not final.** The contract in `docs/product-spec.md` §7 is derived from
    existing web behavior and is a **mock baseline**. Build `PaymentService`/`CofService` behind
-   protocols so the mock can be swapped for the real adapter without touching Core/UI.
+   protocols so the mock can be swapped for the real adapter without touching Core/UI. Features
+   built ahead of their API are tracked in `docs/real-api-integration-checklist.md`; read it before
+   wiring any real endpoint and update it when you build something against a mock.
 
 ## 3. Code organization
 

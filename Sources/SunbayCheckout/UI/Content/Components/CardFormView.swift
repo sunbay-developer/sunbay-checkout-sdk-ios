@@ -29,6 +29,10 @@
         /// Invoked whenever any field's text changes (so the content VC can re-evaluate CTA state).
         var onEditingChanged: (() -> Void)?
 
+        /// Invoked with the card-number digits after every change (feeds BIN recognition). The owner must
+        /// only forward the leading BIN digits and must never log them.
+        var onPANDigitsChanged: ((String) -> Void)?
+
         // MARK: - Fields
 
         private let panField: FloatingLabelTextField
@@ -43,8 +47,20 @@
         private let columnDivider = UIView()
 
         private let appearance: ResolvedAppearance
+        private var localize: (String) -> String = { $0 }
         private var hasFieldError = false
         private var hasFocus = false
+
+        // MARK: - Card brand rules
+
+        /// The rules document in effect for this form (fixed while the form is on screen).
+        private let ruleSet: CardRuleSet
+        /// The scheme guessed locally from the typed prefix.
+        private var localScheme: String?
+        /// The scheme recognized by the backend; wins over the local guess.
+        private var backendScheme: String?
+        /// The effective rules for the card being typed.
+        private var rules: CardRules { ruleSet.rules(forScheme: backendScheme ?? localScheme) }
 
         // MARK: - Init
 
@@ -54,7 +70,13 @@
         ///   - appearance: The resolved appearance providing colors, fonts, corner radius, border width,
         ///     and the optional group shadow.
         ///   - localize: The localization closure for placeholders and the field error label.
-        init(appearance: ResolvedAppearance, localize: @escaping (String) -> String) {
+        ///   - ruleSet: The card-brand rules (grouping, auto-advance, security-code length). Defaults to
+        ///     the cached remote rules, else the bundled ones.
+        init(
+            appearance: ResolvedAppearance, localize: @escaping (String) -> String,
+            ruleSet: CardRuleSet = CardRulesProvider.activeRuleSet()
+        ) {
+            self.ruleSet = ruleSet
             self.appearance = appearance
             self.panField = FloatingLabelTextField(appearance: appearance)
             self.expiryField = FloatingLabelTextField(appearance: appearance)
@@ -91,12 +113,50 @@
             // Strip the display-only PAN grouping spaces before handing plaintext upstream.
             let digitsOnlyPan = pan.filter { !$0.isWhitespace }
 
+            // Lenient client-side checks (contract principle 3): the impossible is rejected, the rest is
+            // left to the backend. No brand-length enforcement. The Luhn check applies to every card
+            // except UnionPay, whose numbers are not always Luhn-valid.
+            guard (12...19).contains(digitsOnlyPan.count), digitsOnlyPan.allSatisfy(\.isASCIIDigit),
+                (3...4).contains(cvv.count), cvv.allSatisfy(\.isASCIIDigit)
+            else { return nil }
+            if rules.scheme != "unionpay", !CardScanParser.luhnValid(digitsOnlyPan) { return nil }
+
             return CardInput(
                 cardNumber: digitsOnlyPan,
                 expiryMonth: month,
                 expiryYear: year,
                 cvv: cvv
             )
+        }
+
+        /// Applies the scheme recognized by the backend (nil drops it, falling back to the local guess).
+        /// Re-groups the number without changing any digit, keeping the caret beside the same digit.
+        func setBackendScheme(_ scheme: String?) {
+            guard scheme != backendScheme else { return }
+            backendScheme = scheme
+            reapplyRules()
+        }
+
+        /// Re-groups the number field and refreshes the security-code hints after the rules changed.
+        private func reapplyRules() {
+            let caret = panField.selectedTextRange.map {
+                panField.offset(from: panField.beginningOfDocument, to: $0.start)
+            } ?? (panField.text as NSString?)?.length ?? 0
+            let edit = PANFormatter.reformat(panField.text ?? "", caret: caret, rules: rules)
+            if edit.text != panField.text {
+                panField.text = edit.text
+                if panField.isFirstResponder { Self.setCaret(in: panField, offset: edit.caret) }
+            }
+            applyRulesToSecurityCode()
+        }
+
+        /// The security-code example follows the brand (`1234` for Amex, else `123`).
+        private func applyRulesToSecurityCode() {
+            cvvField.floatedPlaceholder = rules.cvvPlaceholder
+            // English follows the brand's own name (CVC by default, CVV for Visa…); the localized format
+            // lets other languages keep a single word (zh: 安全码).
+            let format = localize("sunbay.card.cvc.titleFormat")
+            cvvField.title = format.contains("%@") ? String(format: format, rules.cvvName) : format
         }
 
         /// Shows or clears a per-field error: a non-nil `message` turns the group border danger and
@@ -127,7 +187,10 @@
         /// Fills the PAN (and expiry, when present) from a scan result, running the normal display
         /// formatting, then moves focus to the CVC field. Plaintext only passes through the fields.
         func applyScannedCard(_ card: ScannedCard) {
-            panField.text = Self.formatPAN(card.pan)
+            localScheme = ruleSet.detectScheme(digits: card.pan)
+            panField.text = PANFormatter.format(card.pan, rules: rules)
+            onPANDigitsChanged?(card.pan)
+            applyRulesToSecurityCode()
             if let month = card.expiryMonth, let year = card.expiryYear {
                 expiryField.text = Self.formatExpiry(month + year)
             }
@@ -178,7 +241,8 @@
 
             panField.title = localize("sunbay.card.number")
             expiryField.title = localize("sunbay.card.expiry")
-            cvvField.title = localize("sunbay.card.cvc")
+            self.localize = localize
+            applyRulesToSecurityCode()
 
             // In-field example hints, shown only once the label has floated up and the field is still
             // empty (focused + empty). Static format examples — no sensitive data.
@@ -329,14 +393,22 @@
 
             switch textField {
             case panField:
-                guard let edit = PANFormatter.apply(current: current, range: range, replacement: string)
+                // Guess the scheme from the digits the field will hold after this edit, so the edit is
+                // formatted with the right grouping straight away.
+                let probe = updated.filter(\.isASCIIDigit)
+                localScheme = ruleSet.detectScheme(digits: probe)
+                guard
+                    let edit = PANFormatter.apply(
+                        current: current, range: range, replacement: string, rules: rules)
                 else { return false }
                 textField.text = edit.text
                 Self.setCaret(in: textField, offset: edit.caret)
+                applyRulesToSecurityCode()
                 sendEditingChanged(textField)
-                // A number that is complete for its brand moves on to the expiry field (only when typing
-                // at the end, so editing a digit in the middle never steals focus).
-                if !string.isEmpty, edit.caretAtEnd, Self.isCompletePAN(edit.text) {
+                onPANDigitsChanged?(edit.text.filter(\.isASCIIDigit))
+                // Move on to the expiry field when the number reaches its brand's length, but only when
+                // typing at the end, so editing a digit in the middle never steals focus.
+                if !string.isEmpty, edit.caretAtEnd, shouldAdvanceFromPAN(edit.text) {
                     expiryField.becomeFirstResponder()
                 }
                 return false
@@ -373,14 +445,24 @@
             textField.selectedTextRange = textField.textRange(from: position, to: position)
         }
 
-        /// Whether the (display) number is complete for its brand, so focus can move on. Only brands
-        /// with a fixed length qualify, so variable-length numbers (e.g. 16–19 digit UnionPay) are never
-        /// cut off mid-entry: Amex 15; Visa / Mastercard / Discover / JCB 16; UnionPay 19. Must pass Luhn.
+        /// Whether focus should move on from the number field. With a known scheme: the digit count equals
+        /// the brand's `autoAdvanceLength` (omitted for variable-length brands). Without one: the local
+        /// heuristic fallback.
+        private func shouldAdvanceFromPAN(_ display: String) -> Bool {
+            let rules = self.rules
+            if rules.scheme != nil {
+                return display.filter(\.isASCIIDigit).count == rules.autoAdvanceLength
+            }
+            return Self.isCompletePAN(display)
+        }
+
+        /// Fallback heuristic when no scheme is known: whether the (display) number is complete for its brand. Only brands
+        /// with a fixed length qualify, so variable-length numbers (e.g. UnionPay) are never
+        /// cut off mid-entry: Amex 15; Visa / Mastercard / Discover / JCB 16. Must pass Luhn.
         static func isCompletePAN(_ display: String) -> Bool {
             let digits = display.filter(\.isNumber)
             guard CardScanParser.luhnValid(digits) else { return false }
             if digits.hasPrefix("34") || digits.hasPrefix("37") { return digits.count == 15 }
-            if digits.hasPrefix("62") { return digits.count == 19 }
             if digits.hasPrefix("4") || digits.hasPrefix("5") || digits.hasPrefix("6011")
                 || digits.hasPrefix("65") || digits.hasPrefix("35") || digits.hasPrefix("2")
             {
