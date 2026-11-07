@@ -69,6 +69,7 @@ enum Strings {
 
         "result.orderNumber": ("Order number", "订单号"),
         "result.amount": ("Amount", "金额"),
+        "result.thanks": ("Thank you for your order", "感谢您的订单"),
         "result.callback": ("Callback", "回调"),
         "result.state.succeeded": ("Payment succeeded", "支付成功"),
         "result.state.pending": ("Payment pending", "支付处理中"),

@@ -44,3 +44,10 @@ final class CartStoreTests: XCTestCase {
         XCTAssertEqual(Set(Catalog.products.map(\.id)).count, 5)
     }
 }
+
+final class MoneyFormatTests: XCTestCase {
+    func testFormatUSD() {
+        XCTAssertEqual(formatUSD(minor: 14_900), "$149.00")
+        XCTAssertEqual(formatUSD(minor: 1_205), "$12.05")
+    }
+}
