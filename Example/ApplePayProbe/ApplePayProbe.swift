@@ -26,7 +26,8 @@ import Foundation
     /// device requires the developer to replace merchantIdentifier and enable the Apple Pay capability on the app
     /// target (see README.md).
     enum ProbeConfig {
-        /// Placeholder merchant id (on a real device, replace with a real id registered in Apple Developer).
+        /// Sunbay's INTERNAL test merchant id (internal testing only). This probe is an internal tool;
+        /// anyone else must replace it with a merchant id registered in their own Apple Developer account.
         static let merchantIdentifier = "merchant.native.com.sunbay.dev"
         /// Placeholder country/region (TEST).
         static let countryCode = "US"

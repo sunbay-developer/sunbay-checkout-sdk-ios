@@ -40,6 +40,10 @@ Environment variables read at generation time (no signing material is committed)
 
 These names differ from the Example app's (`SUNBAY_DEMO_*` there, `SUNBAY_SHOWCASE_*` here).
 
+The default `merchant.native.com.sunbay.dev` is Sunbay's **internal** test merchant: the Showcase
+is an internal demo app, so it ships with it. It only works on a device signed with Sunbay's team.
+Integrators should not copy it; see `Example/README.md` for the integrator setup.
+
 Merchant id flow: the generate-time value is written to the entitlement and to Info.plist as
 `ShowcaseMerchantId`; the app reads it from `Bundle.main` at runtime and passes it to the SDK
 (falling back to `merchant.native.com.sunbay.dev`).

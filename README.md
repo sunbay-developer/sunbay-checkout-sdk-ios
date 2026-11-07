@@ -39,6 +39,21 @@ let button = ApplePayButton(checkout: checkout, sessionId: sessionId)
 button.onResult = { outcome in /* ... */ }
 ```
 
+## Apple Pay merchant id
+
+Apple Pay needs **your own** merchant id, registered in your Apple Developer account and added to
+your app's Apple Pay capability (`com.apple.developer.in-app-payments`). Pass it to the SDK:
+
+```swift
+let checkout = SunbayCheckout(
+    configuration: .init(applePayMerchantId: "merchant.com.yourcompany.yourapp")
+)
+```
+
+If you omit it, the SDK uses the merchant id delivered with the session. The id in your
+entitlement and the one you pass here must match. The example app uses the placeholder
+`merchant.com.example.yourapp`; replace it with yours (see `Example/README.md`).
+
 ## Theming (`Appearance`)
 
 `Appearance` is a Stripe-style nested value type, consumed by the UI layer and injected into every

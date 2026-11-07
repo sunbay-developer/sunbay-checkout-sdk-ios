@@ -18,12 +18,15 @@ import ProjectDescription
 // section 5.
 //
 // Overrides (Tuist reads TUIST_-prefixed env vars at generate time via the `Environment` API):
-//   TUIST_SUNBAY_DEMO_MERCHANT_ID       (default: merchant.native.com.sunbay.dev)
+//   TUIST_SUNBAY_DEMO_MERCHANT_ID       your Apple Pay merchant id     (default: merchant.com.example.yourapp, a placeholder)
 //   TUIST_SUNBAY_DEMO_DEVELOPMENT_TEAM  your Apple Developer Team id    (default: none; the simulator needs none)
 
-// The Apple Pay merchant id. A real device needs one registered under the signing team; the
-// default is a non-functional placeholder suitable for the simulator and for committing.
-private let merchantId = Environment.sunbayDemoMerchantId.getString(default: "merchant.native.com.sunbay.dev")
+// The Apple Pay merchant id. The default is a PLACEHOLDER (not registered with Apple): it builds and
+// runs on the simulator, but a real device needs a merchant id registered under the signing team.
+// Integrators pass their own id. Sunbay engineers use the internal test merchant via the env var.
+// The same value goes into the entitlement and into Info.plist (`SunbayDemoMerchantId`), which the
+// app reads at runtime for `CheckoutConfiguration.applePayMerchantId`, so the two never disagree.
+private let merchantId = Environment.sunbayDemoMerchantId.getString(default: "merchant.com.example.yourapp")
 
 // Optional signing team. When set, it flows into the target's build settings so Xcode can produce
 // a provisioning profile that includes the Apple Pay capability for a real device. Left empty for
@@ -54,6 +57,7 @@ let project = Project(
             infoPlist: .extendingDefault(
                 with: [
                     "UILaunchScreen": [:],
+                    "SunbayDemoMerchantId": .string(merchantId),
                     "UIApplicationSceneManifest": [
                         "UIApplicationSupportsMultipleScenes": false,
                     ],
