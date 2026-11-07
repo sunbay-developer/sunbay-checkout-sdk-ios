@@ -943,9 +943,9 @@
             label.translatesAutoresizingMaskIntoConstraints = false
             checkbox.attachLabel(label)
 
-            // One-line explanation of what saving does (Stripe-style), naming the merchant.
+            // One-line, merchant-neutral explanation of what saving does (Stripe-style).
             let hint = UILabel()
-            hint.text = String(format: localize("sunbay.sheet.saveThisCardHint"), session.merchantName)
+            hint.text = localize("sunbay.sheet.saveThisCardHint")
             hint.font = appearance.optionHintFont
             hint.textColor = appearance.textSecondary
             hint.numberOfLines = 0

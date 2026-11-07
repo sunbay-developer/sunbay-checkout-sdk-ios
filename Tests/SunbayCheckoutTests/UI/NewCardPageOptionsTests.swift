@@ -58,15 +58,12 @@
             XCTAssertFalse(texts.contains("sunbay.address.country"), "No address fields when off.")
         }
 
-        func test_saveThisCard_showsOneLineHintWithMerchantName() {
-            let vc = makeNewCardVC(billing: .off, shipping: .off, cofEnabled: true, localize: { key in
-                key == "sunbay.sheet.saveThisCardHint" ? "Pay faster at %@ next time." : key
-            })
+        func test_saveThisCard_showsNeutralOneLineHint() {
+            let vc = makeNewCardVC(billing: .off, shipping: .off, cofEnabled: true)
             let texts = visibleTexts(in: vc.view)
             XCTAssertTrue(texts.contains("sunbay.sheet.saveThisCard"), "The opt-in title stays.")
-            XCTAssertTrue(
-                texts.contains("Pay faster at Demo Merchant next time."),
-                "A one-line hint names the merchant. Got: \(texts)")
+            XCTAssertTrue(texts.contains("sunbay.sheet.saveThisCardHint"), "A one-line hint sits under it.")
+            XCTAssertFalse(texts.contains { $0.contains("Demo Merchant") }, "The hint is merchant-neutral.")
         }
     }
 #endif
