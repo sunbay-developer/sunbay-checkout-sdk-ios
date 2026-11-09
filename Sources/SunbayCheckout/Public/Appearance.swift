@@ -39,10 +39,12 @@
         /// Where the express-checkout (wallet) row is placed on the home page (top / bottom / off).
         public var expressPosition: ExpressPosition = .top
         /// Billing address collection mode. Defaults to `.automatic` (follows the session's
-        /// `collectBillingAddress` flag).
+        /// `collectBillingAddress` flag). The default was `.simple` in earlier versions; hosts that
+        /// switch exhaustively over ``AddressCollectionMode`` must handle the `.automatic` case.
         public var billingAddressMode: AddressCollectionMode = .automatic
         /// Shipping address collection mode. Defaults to `.automatic` (follows the session's
-        /// `collectShippingAddress` flag).
+        /// `collectShippingAddress` flag). The default was `.simple` in earlier versions; hosts that
+        /// switch exhaustively over ``AddressCollectionMode`` must handle the `.automatic` case.
         public var shippingAddressMode: AddressCollectionMode = .automatic
 
         /// Whether the "Scan card" button is offered on the new-card page. Defaults to `.automatic`.

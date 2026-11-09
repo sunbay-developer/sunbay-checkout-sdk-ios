@@ -380,6 +380,11 @@
         /// The text-field types currently rendered (names appear only when the options collect them).
         var renderedFieldTypesForTest: Set<AddressFieldType> { Set(textFields.keys) }
 
+        /// Sets a rendered text field's value directly (bypassing keystrokes) for tests.
+        func setTextForTest(_ type: AddressFieldType, _ value: String) {
+            textFields[type]?.text = value
+        }
+
         /// Sets the postal-code field text directly (bypassing keystrokes) for tests.
         func setPostalCodeForTest(_ value: String) {
             textFields[.postalCode]?.text = value

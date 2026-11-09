@@ -98,6 +98,11 @@
                 field.autocorrectionType = .no
                 field.translatesAutoresizingMaskIntoConstraints = false
             }
+            for field in [firstNameField, lastNameField] {
+                field.autocapitalizationType = .words
+            }
+            firstNameField.textContentType = .givenName
+            lastNameField.textContentType = .familyName
             postalField.keyboardType = .numbersAndPunctuation
             KeyboardDismissal.installDoneAccessory(on: postalField)
 

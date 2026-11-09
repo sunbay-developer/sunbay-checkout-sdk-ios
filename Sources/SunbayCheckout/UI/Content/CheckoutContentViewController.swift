@@ -294,6 +294,9 @@
             var shippingAddressViewForTest: UIView? { shippingAddressView }
 
             /// Sets the "same as billing" checkbox and applies its effect.
+            var hasSameAsBillingCheckboxForTest: Bool { shippingSameAsBillingSwitch != nil }
+            var isSameAsBillingOnForTest: Bool { shippingSameAsBillingSwitch?.isOn ?? false }
+
             func setSameAsBillingForTest(_ on: Bool) {
                 shippingSameAsBillingSwitch?.isOn = on
                 handleSameAsBillingChanged()
@@ -568,7 +571,7 @@
             let shipping: AddressInput?
             if shippingAddressView == nil {
                 shipping = nil
-            } else if shippingSameAsBillingSwitch?.isOn ?? true {
+            } else if let sameAsBilling = shippingSameAsBillingSwitch, sameAsBilling.isOn {
                 shipping = billing
             } else {
                 shipping = formAddress(from: shippingAddressView)
@@ -1252,6 +1255,17 @@
             guard let shipping = makeAddressView(mode: shippingMode, options: .shipping) else { return nil }
             shippingAddressView = shipping
 
+            // Without a billing form there is nothing to copy from: show the shipping form directly,
+            // with no "same as billing" checkbox, and Pay uses the shipping form's own values.
+            if billingAddressView == nil {
+                let title = makeSectionTitle("sunbay.address.shippingTitle")
+                let container = UIStackView(arrangedSubviews: [title, shipping])
+                container.axis = .vertical
+                container.spacing = 12
+                shippingContainer = container
+                return container
+            }
+
             let title = makeSectionTitle("sunbay.address.shippingTitle")
             title.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
@@ -1284,7 +1298,7 @@
         }
 
         @objc private func handleSameAsBillingChanged() {
-            let sameAsBilling = shippingSameAsBillingSwitch?.isOn ?? true
+            guard let sameAsBilling = shippingSameAsBillingSwitch?.isOn else { return }
             shippingAddressView?.isHidden = sameAsBilling
         }
 
