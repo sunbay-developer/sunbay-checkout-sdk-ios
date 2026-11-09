@@ -57,6 +57,12 @@ let package = Package(
             dependencies: ["SunbayCheckout", "SunbayCheckoutTestSupport"],
             path: "Tests/SunbayCheckoutE2ETests"
         ),
+        // Opt-in real-API tests: skip unless SUNBAY_DEV_SERVER_URL is set (see scripts/run-dev-e2e.sh).
+        .testTarget(
+            name: "SunbayCheckoutRealAPITests",
+            dependencies: ["SunbayCheckout", "SunbayCheckoutTestSupport"],
+            path: "Tests/SunbayCheckoutRealAPITests"
+        ),
         // The SunbayCheckoutDemo executable target has been migrated to a standalone Tuist-generated
         // Xcode app (see Example/SunbayCheckoutDemo/Project.swift); it is no longer a SwiftPM target.
         // Apple Pay 真机探针目标:**无 dependencies**(直连 PassKit,独立于 SunbayCheckout),
