@@ -19,7 +19,7 @@ final class ContractCodableTests: XCTestCase {
               ],
               "merchantName": "Acme Store",
               "rsaPublicKey": "MIIBIjANBgkqh-base64-key",
-              "cofEnabled": true
+              "supportStoreCard": true
             }
             """
 
@@ -36,6 +36,99 @@ final class ContractCodableTests: XCTestCase {
         XCTAssertTrue(session.methods.contains(.applePay))
         XCTAssertFalse(session.methods.contains(.savedCard))
         XCTAssertEqual(session.methods.count, 2)
+    }
+
+    // MARK: - Real contract session
+
+    private func sessionJSON(
+        expiresAt: String = "2026-11-09T10:00:00+08:00",
+        totalAmount: String = "1050",
+        extra: String = "",
+        methods: String = #"[{"method":"VISA","type":"CARD"}]"#,
+        rsa: String = #""rsaPublicKey": "key","#
+    ) -> Data {
+        Data(
+            """
+            {
+              "sessionId": "sess_1",
+              "currency": "USD",
+              "totalAmount": \(totalAmount),
+              "expiresAt": "\(expiresAt)",
+              "merchantName": "Acme",
+              \(rsa)
+              \(extra)
+              "paymentMethods": \(methods)
+            }
+            """.utf8)
+    }
+
+    func test_decodeSession_supportStoreCardFalse_disablesCof() throws {
+        let session = try ContractDecoding.decodeSession(
+            from: sessionJSON(extra: #""supportStoreCard": false,"#))
+        XCTAssertFalse(session.cofEnabled)
+    }
+
+    func test_decodeSession_supportStoreCardAbsent_defaultsToTrue() throws {
+        let session = try ContractDecoding.decodeSession(from: sessionJSON())
+        XCTAssertTrue(session.cofEnabled)
+    }
+
+    func test_decodeSession_expiresAtOffsetVariants_parseToSameInstant() throws {
+        let colon = try ContractDecoding.decodeSession(
+            from: sessionJSON(expiresAt: "2026-11-09T10:00:00+08:00")).expiresAt
+        let noColon = try ContractDecoding.decodeSession(
+            from: sessionJSON(expiresAt: "2026-11-09T10:00:00+0800")).expiresAt
+        let fractional = try ContractDecoding.decodeSession(
+            from: sessionJSON(expiresAt: "2026-11-09T10:00:00.123+08:00")).expiresAt
+        XCTAssertEqual(colon.timeIntervalSince1970, noColon.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(colon.timeIntervalSince1970, fractional.timeIntervalSince1970, accuracy: 0.123 + 0.001)
+    }
+
+    func test_decodeSession_fractionalNoColonOffset_parses() throws {
+        let base = try ContractDecoding.decodeSession(
+            from: sessionJSON(expiresAt: "2026-11-09T10:00:00+0800")).expiresAt
+        let frac = try ContractDecoding.decodeSession(
+            from: sessionJSON(expiresAt: "2026-11-09T10:00:00.123+0800")).expiresAt
+        XCTAssertEqual(base.timeIntervalSince1970, frac.timeIntervalSince1970, accuracy: 0.124)
+    }
+
+    func test_decodeSession_integralTotalAmount_mapsMinorUnits() throws {
+        let session = try ContractDecoding.decodeSession(from: sessionJSON(totalAmount: "1050"))
+        XCTAssertEqual(session.amount, Amount(minorUnits: 1050, currencyCode: "USD"))
+    }
+
+    func test_decodeSession_fractionalTotalAmount_throwsDecodingError() {
+        XCTAssertThrowsError(
+            try ContractDecoding.decodeSession(from: sessionJSON(totalAmount: "10.5"))
+        ) { error in
+            XCTAssertTrue(error is DecodingError)
+        }
+    }
+
+    func test_decodeSession_onlyUnknownMethods_yieldsEmptySet() throws {
+        let session = try ContractDecoding.decodeSession(
+            from: sessionJSON(methods: #"[{"method":"MYSTERY","type":"APM"}]"#))
+        XCTAssertTrue(session.methods.isEmpty)
+    }
+
+    func test_decodeSession_nullRsaPublicKey_isNil() throws {
+        let session = try ContractDecoding.decodeSession(
+            from: sessionJSON(rsa: #""rsaPublicKey": null,"#))
+        XCTAssertNil(session.rsaPublicKey)
+    }
+
+    func test_decodeResult_unknownTxnStatus_throws() {
+        let json = #"{"txnStatus":"Z","sessionId":"sess_1"}"#
+        XCTAssertThrowsError(try ContractDecoding.decodeResult(from: Data(json.utf8)))
+    }
+
+    func test_decodeResult_redirectWithoutOptionalFields_mapsRedirect() throws {
+        let json = """
+            {"txnStatus":"R","sessionId":"sess_1",
+             "action":{"type":"redirect","redirectUrl":"https://x.test/p"}}
+            """
+        let envelope = try ContractDecoding.decodeResult(from: Data(json.utf8))
+        XCTAssertEqual(envelope.action, .redirect(url: URL(string: "https://x.test/p")!))
     }
 
     func test_decodeResult_requiresAction_redirect() throws {
