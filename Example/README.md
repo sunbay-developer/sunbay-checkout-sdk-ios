@@ -12,11 +12,12 @@ environment picker. A persistent red DEV ONLY banner is always shown.
 
 ## Run flow
 
-Start the dev server first, then run the app:
+Configure and start the dev server first, then run the app:
 
 ```bash
-cd Example/DevServer && cp .env.example .env.local && node server.mjs
-# fill in .env.local (git-ignored) with your sandbox credentials
+cd Example/DevServer && cp .env.example .env.local
+# fill in .env.local (git-ignored) with your sandbox credentials, then:
+node server.mjs
 ```
 
 The default server URL is `http://127.0.0.1:8095` (editable in the app). The Example enables
@@ -24,6 +25,7 @@ The default server URL is `http://127.0.0.1:8095` (editable in the app). The Exa
 
 **Real device:** the phone cannot reach `127.0.0.1` on your Mac. Start the server with `HOST=0.0.0.0`
 (for example `HOST=0.0.0.0 node server.mjs`) and enter the Mac's LAN address as the server URL.
+Caution: `HOST=0.0.0.0` exposes an unauthenticated, credential-backed endpoint on your LAN (see `Example/DevServer/.env.example`); use it only on a trusted network.
 
 **Production integration.** Your host app fetches the session from its own backend and hands it to the SDK:
 

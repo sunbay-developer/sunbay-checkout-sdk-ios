@@ -95,7 +95,7 @@ The tree also now includes:
 ## 4. Testing & verification
 
 - XCTest covering state machine, RSA encryption, idempotency/dedup, recovery. `swift test` must pass.
-- First release verification: mock example app (full UI/state flow incl. COF) + Apple Pay
+- First release verification: real dev-backend example app (orders created through the local dev server; full UI/state flow incl. COF) + Apple Pay
   **real-device probe** (capability → wallet sheet → token, no real backend). Real/sandbox
   end-to-end is a release gate after the backend is ready.
 - Do not add tests beyond what is asked; when changing tested logic, update its tests.

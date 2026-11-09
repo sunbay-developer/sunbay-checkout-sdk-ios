@@ -357,13 +357,16 @@ import SunbayCheckoutTestSupport
         let onOutcome: (CheckoutOutcome) -> Void
         let onState: (CheckoutPresentationState) -> Void
         @State private var errorMessage: String?
+        @State private var isBusy = false
 
         var body: some View {
             VStack(alignment: .leading) {
                 Button("Pay (sheet)") {
-                    guard let presenter = topViewController() else { return }
+                    guard !isBusy, let presenter = topViewController() else { return }
                     errorMessage = nil
+                    isBusy = true
                     Task { @MainActor in
+                        defer { isBusy = false }
                         let session: DevSession
                         do {
                             session = try await request.create()
@@ -383,6 +386,7 @@ import SunbayCheckoutTestSupport
                     }
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(isBusy)
                 if let errorMessage {
                     Text(errorMessage).font(.footnote).foregroundColor(.red)
                 }
@@ -400,13 +404,17 @@ import SunbayCheckoutTestSupport
         @State private var session: DevSession?
         @State private var errorMessage: String?
         @State private var available = false
+        @State private var isBusy = false
 
         var body: some View {
             VStack(alignment: .leading, spacing: 8) {
                 Button("Create session") {
+                    guard !isBusy else { return }
                     errorMessage = nil
                     session = nil
+                    isBusy = true
                     Task { @MainActor in
+                        defer { isBusy = false }
                         do {
                             session = try await request.create()
                         } catch {
@@ -415,6 +423,7 @@ import SunbayCheckoutTestSupport
                     }
                 }
                 .buttonStyle(.bordered)
+                .disabled(isBusy)
                 if let session {
                     Text(available
                         ? "Available - tap to drive the wallet authorization end-to-end (confirmWallet)."
