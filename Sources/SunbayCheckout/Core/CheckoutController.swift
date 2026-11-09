@@ -115,7 +115,7 @@ actor CheckoutController {
     /// - Parameters:
     ///   - paymentService: The backend payment capability (mock/real interchangeable).
     ///   - cofService: The saved-card listing capability.
-    ///   - credentials: The in-memory credential holder (cleared on terminal state).
+    ///   - credentials: The in-memory credential holder (cleared on success / dismiss / expiry).
     ///   - actionHandler: The `requiresAction` dispatcher.
     init(
         paymentService: any PaymentService,
@@ -137,12 +137,20 @@ actor CheckoutController {
     ///
     /// - Parameters:
     ///   - sessionId: Session identifier.
-    ///   - customerAccessSecret: COF credential (optional); held in memory only, cleared on terminal state / close.
+    ///   - customerAccessSecret: COF credential (optional); held in memory only, cleared on success / dismiss / session expiry.
+    ///   - checkoutClientSecret: Session client secret (optional); held in memory only, cleared together with the other secret.
     /// - Returns: The loaded session.
     /// - Throws: Load failures propagate; if the session has expired, throws `CheckoutError` (`.validation`).
-    func start(sessionId: String, customerAccessSecret: String?) async throws -> CheckoutSession {
+    func start(
+        sessionId: String,
+        customerAccessSecret: String?,
+        checkoutClientSecret: String? = nil
+    ) async throws -> CheckoutSession {
         if let secret = customerAccessSecret {
             await credentials.hold(customerAccessSecret: secret)
+        }
+        if let clientSecret = checkoutClientSecret {
+            await credentials.hold(checkoutClientSecret: clientSecret)
         }
 
         let loaded = try await paymentService.loadSession(sessionId)
@@ -187,7 +195,7 @@ actor CheckoutController {
     /// New-card payment (optionally saving the card).
     ///
     /// Encrypts the card data locally (plaintext lives in memory only at this moment, released with the scope), and submits it as `cardEncryptedData`.
-    func confirmNewCard(_ input: CardInput, save: Bool, consent: Consent?) async -> CheckoutOutcome {
+    func confirmNewCard(_ input: CardInput, save: Bool) async -> CheckoutOutcome {
         guard let session else {
             return .failed(txnId: nil, error: CheckoutErrors.sessionExpired())
         }
@@ -199,14 +207,12 @@ actor CheckoutController {
 
         // Encryption (§7.2): missing public key or encryption failure → do not submit, fail directly (terminal state, clear the credential).
         guard let rsaKey = session.rsaPublicKey else {
-            await terminalCleanup()
             return .failed(txnId: nil, error: CheckoutErrors.encryptionFailed())
         }
         let encrypted: String
         do {
             encrypted = try CardEncryptor.encrypt(input, rsaPublicKeyBase64: rsaKey)
         } catch {
-            await terminalCleanup()
             return .failed(txnId: nil, error: CheckoutErrors.encryptionFailed())
         }
 
@@ -215,13 +221,14 @@ actor CheckoutController {
             paymentMethod: "CARD",
             attemptId: attemptId,
             cardEncryptedData: encrypted,
-            savePaymentMethod: save ? true : nil,
-            consent: consent
+            storeCard: (save && session.cofEnabled) ? true : nil,
+            checkoutClientSecret: await credentials.currentCheckoutClientSecret(),
+            sessionType: session.sessionType
         )
         return await submitAndResolve(request)
     }
 
-    /// COF saved-card quick payment (zero verification). Carries only `paymentMethodId`, no card data.
+    /// COF saved-card quick payment (zero verification). Carries the saved card id (`savedCardId`) and credentials, no card data.
     func confirmSavedCard(paymentMethodId: String) async -> CheckoutOutcome {
         guard let session else {
             return .failed(txnId: nil, error: CheckoutErrors.sessionExpired())
@@ -234,9 +241,12 @@ actor CheckoutController {
 
         let request = SubmitRequest(
             sessionId: session.id,
-            paymentMethod: "CARD",
+            paymentMethod: "TOKEN",
             attemptId: attemptId,
-            paymentMethodId: paymentMethodId
+            savedCardId: paymentMethodId,
+            customerAccessSecret: await credentials.current(),
+            checkoutClientSecret: await credentials.currentCheckoutClientSecret(),
+            sessionType: session.sessionType
         )
         return await submitAndResolve(request)
     }
@@ -256,7 +266,9 @@ actor CheckoutController {
             sessionId: session.id,
             paymentMethod: "APPLE_PAY",
             attemptId: attemptId,
-            walletToken: token
+            walletToken: token,
+            checkoutClientSecret: await credentials.currentCheckoutClientSecret(),
+            sessionType: session.sessionType
         )
         return await submitAndResolve(request)
     }
@@ -307,12 +319,15 @@ actor CheckoutController {
         let snapshot: PaymentSnapshot
         do {
             snapshot = try await paymentService.submit(request)
+        } catch let error as CheckoutError where error.category != .network {
+            // Definite server rejection: nothing was charged and the outcome is known; no result query.
+            // Secrets are kept so the host-visible retry (e.g. a second Apple Pay tap) still carries them.
+            return .failed(txnId: nil, error: error)
         } catch {
             // Query once on failure; never blindly resend the same attemptId.
             do {
                 snapshot = try await paymentService.getResult(sessionId: request.sessionId)
             } catch {
-                await terminalCleanupIfTerminal(.unknown(sessionId: request.sessionId))
                 return .unknown(sessionId: request.sessionId)
             }
         }
@@ -321,12 +336,11 @@ actor CheckoutController {
 
     /// Snapshot → outcome mapping.
     ///
-    /// - `S` → `.succeeded` (terminal, clear credential)
-    /// - `F` → `.failed` (terminal, clear credential)
+    /// - `S` → `.succeeded` (terminal, clear secrets)
+    /// - `F` → `.failed` (secrets kept for retry)
     /// - `I` → `.pending`: the request returned non-terminal. The SDK does NOT poll — it reports
-    ///   `pending` immediately and the host reconciles via `retrievePayment` / webhook. The credential
-    ///   is cleared (this UI can no longer advance the session).
-    /// - `R` → delegate to `ActionHandling`: `.pending` → `.pending`, `.failed(err)` → `.failed`.
+    ///   `pending` immediately and the host reconciles via `retrievePayment` / webhook. Secrets are kept.
+    /// - `R` → delegate to `ActionHandling`: `.pending` → `.pending`, `.failed(err)` → `.failed` (secrets kept).
     private func mapSnapshot(_ snapshot: PaymentSnapshot) async -> CheckoutOutcome {
         switch snapshot.status {
         case .succeeded:
@@ -335,13 +349,11 @@ actor CheckoutController {
             return .succeeded(txnId: txnId)
 
         case .failed:
-            await terminalCleanup()
             return .failed(txnId: snapshot.txnId, error: CheckoutErrors.paymentFailed())
 
         case .initial:
-            // Non-terminal: report pending at once (no client polling). Clear the UI-side credential;
-            // the host resolves the final state out of band.
-            await terminalCleanup()
+            // Non-terminal: report pending at once (no client polling); the host resolves the final
+            // state out of band. Secrets are not cleared (only success / dismiss / expiry clear them).
             return .pending(txnId: snapshot.txnId)
 
         case .requiresAction:
@@ -354,25 +366,15 @@ actor CheckoutController {
                 // requiresAction itself is non-terminal: await the host / webhook; do not clear the credential.
                 return .pending(txnId: snapshot.txnId)
             case .failed(let error):
-                await terminalCleanup()
                 return .failed(txnId: snapshot.txnId, error: error)
             }
         }
     }
 
-    /// Terminal cleanup: clear the credential (§4.2 cleared on terminal state). The active lock is released by each confirm's `defer { endAttempt() }`.
+    /// Success cleanup: clears both secrets (a charged session needs no further retry). Secrets are NOT cleared on
+    /// `.failed` / `.unknown` / `.pending` (ruling R7) so a host-visible retry still carries them; they are cleared
+    /// only here, on `dismiss()` and on session expiry. The active lock is released by each confirm's `defer`.
     private func terminalCleanup() async {
         await credentials.clear()
-    }
-
-    /// Cleans up if the given outcome is terminal. `unknown` is not a transaction terminal state, but per spec the UI-side credential should also be cleared on a network interruption:
-    /// here `unknown` likewise clears the credential (the session can no longer be advanced in this UI).
-    private func terminalCleanupIfTerminal(_ outcome: CheckoutOutcome) async {
-        switch outcome {
-        case .succeeded, .failed, .unknown:
-            await credentials.clear()
-        case .pending, .canceled:
-            break
-        }
     }
 }

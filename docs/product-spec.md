@@ -86,8 +86,16 @@ public struct CheckoutConfiguration {
 }
 
 public final class SunbayCheckout {
+    /// Builds the default HTTP services for the configured environment (the real backend).
     public init(configuration: CheckoutConfiguration)
+    /// Injects scripted services (examples, e2e, test support).
+    public init(configuration: CheckoutConfiguration, paymentService: any PaymentService, cofService: any CofService, addressMetadataService: (any AddressMetadataService)? = nil)
 }
+
+// The host backend creates the session and returns sessionId + checkoutClientSecret
+// (+ customerAccessSecret). Both secrets are held in memory only.
+PaymentSheet(checkout:sessionId:customerAccessSecret:checkoutClientSecret:)
+ApplePayButton(checkout:sessionId:...checkoutClientSecret:)
 ```
 
 #### `Appearance`(Stripe 风格嵌套;UI 层已消费)
@@ -285,20 +293,22 @@ Controller → PaymentService.loadSession(sessionId)
 Controller → 校验 session 有效/未过期;可用方式 = 授权 ∩ 设备能力
 UI → 渲染新卡表单(CardField:关纠错/关学习/CVV 不自动填充)
 User → 输入卡号/有效期/CVV [可勾选"保存此卡"]
-UI → Controller.confirmNewCard(cardInput, save?, consent?)
+UI → Controller.confirmNewCard(cardInput, save?)
 Controller → CardEncryptor.encrypt(card, rsaPublicKey)   # 明文仅此刻在内存
           → 立即清空表单与中间变量
 Controller → 生成 attemptId(幂等键),单活跃锁
-Controller → PaymentService.submit({ cardEncryptedData, sessionId, attemptId,
-                                     savePaymentMethod?, consent? })
+Controller → PaymentService.submit({ paymentMethod:"CARD", cardEncryptedData, sessionId,
+                                     attemptId, storeCard?, checkoutClientSecret? })
           ├─ 成功响应 → map 四态(按 action 分发,见 §4.5)
           └─ 网络失败/超时 → 不重发, getResult(sessionId) 对账
 Controller → 结果去重(sessionId+attemptId/txnId,终态只回调一次)
 PaymentSheet → return Outcome
 ```
 
-**存卡无独立接口**:仅作为新卡支付的布尔选项 `savePaymentMethod=true` + `consent{version,
-futureUsage:'ON_SESSION'}`,支付成功后由后端保存(Phase 1 无 SetupIntent 式独立绑卡)。
+**Saving a card has no separate endpoint**: it is only a boolean option on the new-card payment,
+`storeCard=true` (sent only when the session has `supportStoreCard`); the backend stores the card after a
+successful payment. There is no consent object on the wire. Whether the backend requires a consent record is an
+open item (see `docs/real-api-integration-checklist.md`).
 
 ### 3.2 Apple Pay(L1 页内 或 L3 独立按钮)
 
@@ -309,7 +319,8 @@ UI → 仅 available 时显示 Apple Pay 按钮
 User → 点击 → PassKit PKPaymentAuthorizationController(系统 sheet)
 系统 → 授权 → PKPayment.token(加密钱包 token)
 Controller → 生成 attemptId
-Controller → PaymentService.submit({ walletToken, sessionId, attemptId })  # 字段待后端确认
+Controller → PaymentService.submit({ paymentMethod:"APPLE_PAY", walletToken, sessionId, attemptId,
+                                     checkoutClientSecret? })
           └─ 失败/超时 → getResult 对账
 Controller → 四态去重 → Outcome
 ```
@@ -327,10 +338,11 @@ Controller → CofService.listPaymentMethods(customerAccessSecret)  # 直连 PSP
 UI → 渲染已绑卡列表(选卡后点 Pay 即付,无 CVC / 无 3DS)
 User → 选卡 → 点 Pay → Controller.confirmSavedCard(paymentMethodId)
 Controller → 生成 attemptId
-Controller → PaymentService.submit({ paymentMethodId, sessionId, attemptId })
+Controller → PaymentService.submit({ paymentMethod:"TOKEN", savedCardId, customerAccessSecret,
+                                     sessionId, attemptId, checkoutClientSecret? })
           ├─ 后端风控放行 → 四态
           └─ 后端风控要求 step-up → TxnStatus='R' → ActionHandler(首期无 step-up UI → pending)
-Controller → 终态 → 清 CredentialStore → Outcome
+Controller → 成功 → 清 CredentialStore → Outcome(失败/unknown 保留凭证以便重试)
 ```
 
 - 列卡返回的 `paymentMethodId` 在后端已凭 `customerAccessSecret` 绑定本 session + Customer,
@@ -338,7 +350,7 @@ Controller → 终态 → 清 CredentialStore → Outcome
 - `paymentMethodId` 是**临时、交易级**引用(绑 session/customer/固定金额),非长期可复用扣款凭证。
 
 **三条路径共性**:单活跃会话、一次点击一个 attemptId、提交失败先查询不盲目重发、终态去重只回调一次、
-终态即清凭证。
+成功/dismiss/过期才清凭证(失败/unknown 保留,供宿主可见的重试,ruling R7)。
 
 ---
 
@@ -370,7 +382,7 @@ idle → loadingSession → ready → authorizing → submitting → 终态
 | 一次点击一个 attemptId | 同一次点击只生成一个幂等键;重复点击被单活跃锁挡 |
 | 提交失败先查询 | submit 失败/超时 → 绝不盲目重发 → getResult 对账 |
 | 结果去重 | 以 sessionId + attemptId/txnId 识别,终态只回调一次 |
-| 终态即清凭证 | 终态/UI 关闭/session 过期 → 清 CredentialStore |
+| 成功/关闭/过期清凭证 | 支付成功/UI 关闭/session 过期 → 清 CredentialStore;失败/unknown 保留以便重试 |
 
 载体:`actor CheckoutController`,Swift actor 天然串行化,无需手写锁。
 
@@ -378,20 +390,21 @@ idle → loadingSession → ready → authorizing → submitting → 终态
 
 | 事件 | 行为 |
 |---|---|
-| 进后台 | 停止 UI 轮询;不丢失 attemptId |
-| 回前台 | 若 submitting/pending → 先 getResult 对账再决定 UI |
+| 进后台 | The SDK does not poll; nothing to stop. The in-flight attempt keeps its attemptId |
+| 回前台 | If an attempt was in flight, the SDK makes at most one `getResult` query, then reports `unknown`; the host reconciles via `retrievePayment` / webhook |
 | App 被杀→重启 | UI 会话丢失;宿主用 retrievePayment(sessionId) 恢复。**不持久化任何敏感数据**;仅非敏感 sessionId 由宿主自存 |
-| 轮询 | 有上限 + 退避;达上限 → unknown |
+| Polling | None. The SDK never client-polls: a non-terminal result is `pending`; a lost response gets one query, then `unknown` |
 
-### 4.4 轮询默认参数(可配置,后端 ready 后微调)
+### 4.4 No client polling
 
-初始 1s → 退避至最大 5s;总上限 ~90s 或 N 次;达上限 → unknown(非失败);进后台暂停,回前台先对账。
+The SDK has no polling parameters. A non-terminal submit result maps to `pending`; after a lost response the SDK
+queries once, then reports `unknown` (never `failed`). The host reconciles via `retrievePayment` / webhook.
 
 ### 4.5 ActionHandler:`requiresAction`(R) 按类型分发
 
 | action.type | 行为 | 首版 |
 |---|---|---|
-| `redirect`(第三方 APM 跳转,如支付宝 web;**非 3DS 专属**,场景少) | 用系统 `ASWebAuthenticationSession`(带 returnUrl 回跳)打开支付页 → pending → 轮询/回跳确认终态 | **实现** |
+| `redirect`(第三方 APM 跳转,如支付宝 web;**非 3DS 专属**,场景少) | 用系统 `ASWebAuthenticationSession`(带 returnUrl 回跳)打开支付页 → pending → the host confirms the final state via `retrievePayment` / webhook (no SDK polling) | **实现** |
 | `qrCode` / `showContent` | failed(UNSUPPORTED_CAPABILITY),不静默 | 不实现 |
 | 未知类型 | failed(UNSUPPORTED_CAPABILITY) | — |
 
@@ -479,32 +492,38 @@ checkout-sdk-native/ios/
 
 ---
 
-## 7. 后端契约对齐基线(内联;源自现有 web 行为,SDK 正式契约待后端确认)
+## 7. Backend contract (verified live against dev for the core payment path)
 
-> 这是 mock 建模依据。真实接口 ready 后只替换 `PaymentService`/`CofService` 适配器实现,不动 Core/UI。
-> 现有 web 的具体路径(如 `/checkout/web/...`)仅作参考,Native 的最终 URL/鉴权/错误码由后端评审确定。
+> Core payment path (load session, submit, result) is implemented by `HTTPPaymentService` over the
+> internal `SunbayAPIClient` and verified against dev. Saved-card list and other items remain a mock
+> baseline behind `CofService`. Open items: `docs/real-api-integration-checklist.md` §2.
+> Hosts: dev `https://checkout.sunbay-dev.com`, test `https://checkout.sunbay-uat.us`, production
+> `https://checkout.sunbay.us`; routes under `/api/checkout/web/...`. Envelope `{code,msg,data,traceId}`;
+> success is `code == "0"` (string).
 
-### 7.1 加载会话
+### 7.1 Load session
 
-现有 web 行为:`POST /checkout/web/session/{sessionId}` → Session。关键字段(内联自 web 类型):
+`POST /api/checkout/web/session/{sessionId}` with the `checkoutClientSecret` in the body. Key fields:
 
 ```
 Session {
-  sessionId, sessionType, currency, totalAmount,
-  productList: [{ amount, name, num }],
-  taxAmount, productAmount, surchargeAmount?, tipAmount?,
-  description, expiresAt (ISO 8601),
+  sessionId, currency,
+  totalAmount,      // decimal STRING in MAJOR units; so are the other amount fields,
+                    // including productList[].amount and productList[].num (also strings)
+  expiresAt,        // "yyyy-MM-dd HH:mm:ss" in UTC
   collectBillingAddress, collectShippingAddress,
-  paymentMethods: [{ method, type, name, logoUrl, ewalletParam? }],
-  merchantName, merchantLogoUrl, merchantReturnUrl?,
-  rsaPublicKey?,        // Base64 RSA public key, used to encrypt card data
-  cofEnabled            // COF 新增:mode∈{EMBED,SDK} 且有有效 Grant 时 true
+  paymentMethods: [{ method, type, name, logoUrl }],
+  merchantName, merchantLogoUrl,
+  rsaPublicKey,     // Base64, per session; used to encrypt card data
+  supportStoreCard? // absent => true; false forces saved cards off
 }
-PaymentMethod.method 例:'VISA' | 'AMEX' | 'MASTERCARD' | 'GOOGLE_PAY' | 'APPLE_PAY'
-PaymentMethod.type   例:'CARD' | 'E_WALLET' | 'APM'
 ```
 
-- 金额使用最小货币单位(整数),避免浮点舍入。
+- The SDK converts amount strings to minor units by the currency's fraction digits.
+- The backend response still carries the legacy `storeCard` and not yet `supportStoreCard` (rename
+  pending). The SDK reads only `supportStoreCard`; absent means `true`.
+- Session creation is the host backend's job: open API `create-session` with `sessionType: "sdk"` and
+  `customerId` returns `sessionId`, `checkoutClientSecret` (`ccs_`) and `customerAccessSecret` (`cas_`).
 
 ### 7.2 卡数据 RSA 本地加密(复刻 web `encryptCardData`,逻辑完全内联)
 
@@ -526,52 +545,37 @@ PaymentMethod.type   例:'CARD' | 'E_WALLET' | 'APM'
 - **padding 等细节待后端确认**(web 的 JSEncrypt 默认 PKCS#1 v1.5);iOS `SecKeyCreateEncryptedData`
   需选用与后端解密一致的算法(如 `.rsaEncryptionPKCS1`)。**这是必须与后端对齐的点,实现前确认。**
 
-### 7.3 提交支付
+### 7.3 Submit payment
 
-现有 web 行为:`POST /checkout/web/payment/submit`。请求(内联自 web `SubmitPaymentReq` + COF 扩展):
+`POST /api/checkout/web/payment/submit`. The public `SubmitRequest` (obsolete `paymentMethodId`,
+`savePaymentMethod` and `Consent` were removed):
 
-```jsonc
-{
-  "sessionId": "...", "sessionType": "...",
-  "paymentMethod": "...",               // 'VISA' / 'APPLE_PAY' / ...
-  "customerEmail": "...?", "customerName": "...?",
-  "payerBillingInfo": { ... }?,         // AddressInfo
-  "payerShippingAddress": { ... }?,
-  "userDeviceInfo": { ... }?,
-  "cardEncryptedData": "...?",          // 卡密文(§7.2);钱包 tokenizationData 现状也复用此字段
-
-  // ---- COF 扩展(见 §7.6) ----
-  "paymentMethodId": "...?",            // 用历史卡(与 savePaymentMethod 互斥)
-  "savePaymentMethod": true?,           // 用新卡时请求保存
-  "consent": { "version": "...", "futureUsage": "ON_SESSION" }?  // save 时必填
-}
-AddressInfo { country, state?, city, line1, line2?, postalCode, district?,
-              firstName?, lastName?, recipientName?, phone? }
+```swift
+SubmitRequest(
+    sessionId, paymentMethod,       // "CARD" / "APPLE_PAY" / "TOKEN" (saved card)
+    attemptId,                      // SDK-local in-flight guard only; not sent
+    cardEncryptedData,              // new card ciphertext (§7.2)
+    walletToken,                    // Apple Pay token; sent in cardEncryptedData
+    savedCardId,                    // with paymentMethod "TOKEN"
+    storeCard,                      // save this payment's card
+    customerAccessSecret,           // saved-card path
+    checkoutClientSecret
+)
 ```
 
-> 注:web 侧提交时把地址 `line1/line2` 转成 `address/address2`。Native 的字段映射以后端最终契约为准。
-> 钱包 token 提交字段(复用 cardEncryptedData 还是单列)待后端确认(P1)。
+- The body also carries an optional `userDeviceInfo` (see `security-and-pci.md` §4.1).
+- A 5xx or lost response is ambiguous: at most one result query, then `unknown`. A non-network business
+  error is a definite failure. The SDK never blindly resubmits.
+- Open: Apple Pay token wire format, `paymentMethod` for new cards (`CARD` vs brand), whether submit
+  needs `sessionType`.
 
-### 7.4 查询结果
+### 7.4 Payment result
 
-现有 web 行为:`POST /checkout/web/payment/result/{sessionId}` → PaymentResult:
-
-```jsonc
-{
-  "txnId": "...", "txnStatus": "I|S|F|R",
-  "sessionId": "...", "totalAmount": 0, "currency": "...",
-  "failureReason": "...?", "resultUrl": "...?",
-  "action": {                           // txnStatus='R' 时携带
-    "type": "redirect|qrCode|showContent",
-    "redirectUrl": "...?",
-    "qrData": { "qrCode": "...", "qrUrl": "..." }?,
-    "content": { ... }?
-  }?
-}
-```
-
-**四态映射**:`S → succeeded` / `F → failed` / `I → pending` / `R → requiresAction`
-(ActionHandler 按 `action.type` 分发,见 §4.5)。
+`POST /api/checkout/web/payment/result/{sessionId}` returns `txnId`, `txnStatus`, `sessionId`,
+`totalAmount`, `currency`, optional `failureReason`, `resultUrl` and `action`. `txnStatus` is `S`, `F` or
+`R` only; there is no `I`. Mapping: `S` succeeded, `F` failed (only from an explicit `F`), `R` with a known
+action goes to `ActionHandler` (§4.5), `R` with an unknown action or an undetermined result is
+pending/unknown, resolved by the host via `retrievePayment` / webhook.
 
 ### 7.5 列卡(COF)
 

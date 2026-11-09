@@ -29,3 +29,7 @@ Showcase/*.xcodeproj
 Showcase/*.xcworkspace
 Showcase/Derived/
 Showcase/.build/
+
+# Dev session server (local credentials)
+Example/DevServer/.env.local
+Example/DevServer/node_modules/

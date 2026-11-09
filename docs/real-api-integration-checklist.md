@@ -80,9 +80,9 @@ State today (what was built ahead of the API):
 - [ ] `docs/security-and-pci.md`: add the BIN lookup (first 6–9 digits leave the device over TLS to
       the HPP server, never logged or persisted) and the public, non-sensitive rules cache in the OS
       cache directory.
-- [ ] The repo has no `PrivacyInfo.xcprivacy`. App Store rules for SDKs require one; when the SDK
-      starts making this network call, check what the manifest must declare and tell integrators
-      whether their privacy labels are affected.
+- [ ] `PrivacyInfo.xcprivacy` now ships (no tracking, no collected data types). When the BIN call is
+      added, re-check what the manifest must declare and tell integrators whether their privacy
+      labels are affected.
 - [ ] Confirm the HPP endpoints are covered by the host app's ATS (HTTPS only) — no exceptions.
 
 ### 1.6 Cleanup once the rules are live
@@ -98,9 +98,51 @@ State today (what was built ahead of the API):
 - [ ] Keep Android and HPP on the same document and the same test vectors; a behavior change starts
       with the contract, then all three implementations.
 
-## 2. Other items built ahead of their API
+## 2. Payment and saved-card services
 
+Phase 1 (core payment path) is implemented: `SunbayAPIClient`, `HTTPPaymentService` (load, submit,
+result), `SunbayCheckout(configuration:)` defaulting to the real backend, `checkoutClientSecret`
+plumbing, device info, dev server (`Example/DevServer`) and the opt-in `SunbayCheckoutRealAPITests`
+(`scripts/run-dev-e2e.sh`). Contract: `docs/product-spec.md` §7.
+
+Verified live against dev:
+
+- [x] Load session: `totalAmount` and other amount fields are decimal STRINGS in MAJOR units; the SDK
+      converts to minor units by currency fraction digits. `expiresAt` is `yyyy-MM-dd HH:mm:ss` in UTC.
+- [x] Create session with `sessionType: "sdk"` + `customerId` returns `checkoutClientSecret` (`ccs_`) and
+      `customerAccessSecret` (`cas_`).
+- [x] A 5xx on submit is ambiguous (one result query, then `unknown`).
+
+Open verification items:
+
+- [ ] Apple Pay token wire format in `cardEncryptedData` (today: UTF-8 of the token JSON via `WalletTokenEncoder`).
+- [x] `paymentMethod` value for new cards is `CARD` (same as the web SDK submit controller).
+- [x] Submit requires `sessionType`: without it the backend returns `C16` "Parameter cannot be
+      empty:sessionType" (observed 2026-11-09). The SDK echoes the `sessionType` from the load-session
+      response on every submit path.
+- [ ] Backend renames session `storeCard` to `supportStoreCard`. The response still carries legacy
+      `storeCard`; the SDK reads only `supportStoreCard` (absent means `true`). Re-check after deployment.
+- [ ] Unknown or malformed currency codes are now rejected (`INVALID_RESPONSE`); confirm the backend's
+      currency table only issues codes Foundation knows.
+- [ ] Release gate: confirm with the backend that no submit business code means in-doubt (processing,
+      acquirer timeout, upstream unavailable); any such code must be mapped to ambiguous. Until confirmed,
+      the SDK treats a non-network business error on submit as a definite failure. Concrete candidate:
+      `E03` "System busy, please try again later" on HTTP 200 (observed 2026-11-09 on a submit with an
+      invalid ciphertext); ask whether `E03` can be returned after the payment was processed.
+- [ ] `getResult` after a lost submit may return a previous attempt's terminal state for the same session
+      (confirm with the backend).
+- [ ] Release gate: the `PrivacyInfo.xcprivacy` collected-data declaration (payment info, device info sent
+      to the backend) is OPEN and must be decided before an App Store release (ruling R8).
+- [ ] Product/legal must confirm whether the backend requires a consent record when `storeCard` is true
+      (the UI checkbox still reads as consent).
+- [ ] Real new-card payment end to end (needs `SUNBAY_TEST_CARD_*` env for the opt-in tests).
+- [ ] Apple Pay real-device verification (capability, wallet sheet, token accepted by the backend).
+- [x] Dev origin accepts SDK requests (observed 2026-11-09, no WAF block).
+- [ ] WAF behavior for native clients on test and production (headers, rate limits).
+
+Still built ahead of their API (phase 2+):
+
+- Saved-card list (`CofService`): mock baseline; `HTTPCofService` is phase 2 (`POST card/list`).
 - Address metadata (`AddressMetadataService`): full-mode address is protocol, UI and cache only;
   `HTTPAddressMetadataService` exists but is not wired to real data. See the UI redesign spec.
-- Payment and saved-card services (`PaymentService`, `CofService`): mock baseline per
-  `docs/product-spec.md` §7.
+- Card rules and BIN: section 1.

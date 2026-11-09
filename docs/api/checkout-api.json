@@ -1,0 +1,750 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "默认模块",
+    "description": "",
+    "version": "1.0.0"
+  },
+  "tags": [],
+  "paths": {
+    "/checkout/web/session/{sessionId}": {
+      "post": {
+        "summary": "加载 Checkout 会话",
+        "deprecated": false,
+        "description": "<p>\n此接口用于前端支付页面加载会话信息，\n返回渲染页面所需的所有信息（如商品信息、支持的支付方式等）",
+        "tags": [],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "description": "HPP 会话 ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoadSessionReq",
+                "description": ""
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultLoadSessionResp",
+                  "description": "会话信息"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/checkout/web/link/{linkId}": {
+      "post": {
+        "summary": "加载 Pay By Link 会话",
+        "deprecated": false,
+        "description": "<p>\n此接口用于 Pay By Link 加载前端页面，\n返回渲染页面所需的所有信息（如商品信息、支持的支付方式等）",
+        "tags": [],
+        "parameters": [
+          {
+            "name": "linkId",
+            "in": "path",
+            "description": "链接 ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoadSessionReq",
+                "description": ""
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultLoadSessionResp",
+                  "description": "会话信息"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/checkout/web/payment/submit": {
+      "post": {
+        "summary": "提交支付",
+        "deprecated": false,
+        "description": "<p>\n此接口用于前端提交支付信息：验证 Session 有效性、验证地址采集配置、\n调用交易系统创建订单、更新 Session 状态、返回支付结果",
+        "tags": [],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitSessionPaymentReq",
+                "description": "支付请求"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultSubmitSessionPaymentResp",
+                  "description": "支付结果"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/checkout/web/payment/result/{sessionId}": {
+      "post": {
+        "summary": "查询支付结果",
+        "deprecated": false,
+        "description": "<p>\n此接口用于前端查询支付结果，主要用于轮询或异步获取支付状态",
+        "tags": [],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "description": "会话ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoadSessionReq",
+                "description": ""
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultSubmitSessionPaymentResp",
+                  "description": "支付结果"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/checkout/web/card/list": {
+      "post": {
+        "summary": "列出已保存卡片（Card on File）",
+        "deprecated": false,
+        "description": "<p>\niOS SDK 携带有效的 customerAccessSecret（含 card:list scope）调用本接口，\n返回当前 Customer 在本商户下已保存的卡片列表。\n响应中使用不透明的 savedCardId，不暴露真实 tokenId。",
+        "tags": [],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CardListReq",
+                "description": "列卡请求（含 sessionId 和 customerAccessSecret）"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultCardListResp",
+                  "description": "卡片列表"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Product": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "description": "商品金额"
+          },
+          "name": {
+            "type": "string",
+            "description": "商品名称"
+          },
+          "num": {
+            "type": "string",
+            "description": "商品数量"
+          },
+          "type": {
+            "type": "string",
+            "description": "商品类型"
+          }
+        }
+      },
+      "QrData": {
+        "type": "object",
+        "properties": {
+          "qrCode": {
+            "type": "string",
+            "description": ""
+          },
+          "qrUrl": {
+            "type": "string",
+            "description": ""
+          }
+        }
+      },
+      "PaymentMethodInfo": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "description": "支付方式类型（ VISA, MASTERCARD,GOOGLE_PAY, ALIPAY, WECHAT_PAY, PAYPAL 等）"
+          },
+          "type": {
+            "type": "string",
+            "description": "CARD,E_WALLET,APM"
+          },
+          "name": {
+            "type": "string",
+            "description": "支付方式显示名称"
+          },
+          "ewalletParam": {
+            "type": "string",
+            "description": "渠道参数 GOOGLE_PAY,APPLE_PAY 返回参数\n示例 GOOGLE_PAY{\\\"environment\\\":\\\"TEST\\\",\\\"merchantName\\\":\\\"City Mall\\\",\\\"gatewayId\\\":\\\"sunbay\\\",\\\"allowedCardNetworks\\\":[\\\"VISA\\\",\\\"MASTERCARD\\\",\\\"DISCOVER\\\",\\\"AMEX\\\",\\\"JCB\\\"],\\\"allowedCardAuthMethods\\\":[\\\"PAN_ONLY\\\",\\\"CRYPTOGRAM_3DS\\\"]}"
+          },
+          "logoUrl": {
+            "type": "string",
+            "description": "支付方式 Logo URL"
+          }
+        }
+      },
+      "MapString": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          }
+        }
+      },
+      "ActionDTO": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "动作类型\nqrCode\nredirect\nshowContent"
+          },
+          "redirectUrl": {
+            "type": "string",
+            "description": ""
+          },
+          "qrData": {
+            "$ref": "#/components/schemas/QrData",
+            "description": ""
+          },
+          "content": {
+            "$ref": "#/components/schemas/MapString",
+            "description": ""
+          }
+        }
+      },
+      "AddressInfo": {
+        "type": "object",
+        "properties": {
+          "country": {
+            "type": "string",
+            "description": "国家代码"
+          },
+          "state": {
+            "type": "string",
+            "description": "二级行政区 - 可选，美国为 State，中国为省，日本为都道府县。建议存储代码（如 CA）"
+          },
+          "city": {
+            "type": "string",
+            "description": "城市"
+          },
+          "address": {
+            "type": "string",
+            "description": "核心地址信息 - 必填，街道名称、门牌号、村落等 address Line 1"
+          },
+          "address2": {
+            "type": "string",
+            "description": "补充信息 - 可选，公寓、套房、单元、楼层等 Line 2"
+          },
+          "postalCode": {
+            "type": "string",
+            "description": "邮政编码"
+          },
+          "firstName": {
+            "type": "string",
+            "description": "名字"
+          },
+          "lastName": {
+            "type": "string",
+            "description": "姓氏"
+          },
+          "phone": {
+            "type": "string",
+            "description": "电话号码"
+          },
+          "email": {
+            "type": "string",
+            "description": ""
+          }
+        }
+      },
+      "UserDeviceInfo": {
+        "type": "object",
+        "properties": {
+          "deviceType": {
+            "type": "string",
+            "description": "设备基本信息"
+          },
+          "deviceModel": {
+            "type": "string",
+            "description": "设备型号"
+          },
+          "deviceOs": {
+            "type": "string",
+            "description": "设备操作系统"
+          },
+          "deviceOsVersion": {
+            "type": "string",
+            "description": "设备操作系统版本"
+          },
+          "deviceBrowser": {
+            "type": "string",
+            "description": "设备浏览器"
+          },
+          "deviceBrowserVersion": {
+            "type": "string",
+            "description": "设备浏览器版本"
+          },
+          "deviceResolution": {
+            "type": "string",
+            "description": "设备分辨率"
+          },
+          "screenWidth": {
+            "type": "string",
+            "description": "设备显示信息"
+          },
+          "screenHeight": {
+            "type": "string",
+            "description": "屏幕高度"
+          },
+          "colorDepth": {
+            "type": "string",
+            "description": "颜色深度"
+          },
+          "ip": {
+            "type": "string",
+            "description": "设备网络信息"
+          },
+          "userAgent": {
+            "type": "string",
+            "description": "用户代理"
+          },
+          "accept": {
+            "type": "string",
+            "description": "接受类型"
+          },
+          "javaEnabled": {
+            "type": "string",
+            "description": "设备环境信息"
+          },
+          "timeZoneOffset": {
+            "type": "string",
+            "description": "时区偏移"
+          },
+          "language": {
+            "type": "string",
+            "description": "语言"
+          }
+        }
+      },
+      "LoadSessionResp": {
+        "type": "object",
+        "properties": {
+          "linkId": {
+            "type": "string",
+            "description": "链接ID"
+          },
+          "sessionId": {
+            "type": "string",
+            "description": "会话ID"
+          },
+          "rsaPublicKey": {
+            "type": "string",
+            "description": "手输卡号加密key"
+          },
+          "sessionType": {
+            "type": "string",
+            "description": "会话类型"
+          },
+          "currency": {
+            "type": "string",
+            "description": "货币类型"
+          },
+          "totalAmount": {
+            "type": "number",
+            "description": "支付总金额（用户全部支付金额）"
+          },
+          "productAmount": {
+            "type": "number",
+            "description": "商品小计（major units，不含税费）"
+          },
+          "productList": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Product",
+              "description": "com.sunmi.common.facade.entity.transaction.Product"
+            },
+            "description": "商品列表"
+          },
+          "taxAmount": {
+            "type": "number",
+            "description": "税费金额"
+          },
+          "surchargeAmount": {
+            "type": "number",
+            "description": "附加费金额"
+          },
+          "tipAmount": {
+            "type": "number",
+            "description": "小费金额"
+          },
+          "description": {
+            "type": "string",
+            "description": "订单描述"
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "过期时间"
+          },
+          "collectBillingAddress": {
+            "type": "boolean",
+            "description": "是否采集账单地址"
+          },
+          "collectShippingAddress": {
+            "type": "boolean",
+            "description": "是否采集邮寄地址"
+          },
+          "storeCard": {
+            "type": "boolean",
+            "description": "是否保存该卡片（Store Card / Card on File），用于后续交易复用",
+            "default": false
+          },
+          "paymentMethods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PaymentMethodInfo",
+              "description": "支付方式信息"
+            },
+            "description": "支持的支付方式列表（根据用户国家或商户国家返回）"
+          },
+          "merchantName": {
+            "type": "string",
+            "description": "商户名称"
+          },
+          "merchantLogoUrl": {
+            "type": "string",
+            "description": "商户 Logo URL"
+          },
+          "merchantReturnUrl": {
+            "type": "string",
+            "description": "商户返回 URL"
+          }
+        }
+      },
+      "ResultLoadSessionResp": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": ""
+          },
+          "msg": {
+            "type": "string",
+            "description": ""
+          },
+          "data": {
+            "$ref": "#/components/schemas/LoadSessionResp",
+            "description": ""
+          },
+          "traceId": {
+            "type": "string",
+            "description": ""
+          }
+        }
+      },
+      "LoadSessionReq": {
+        "type": "object",
+        "properties": {
+          "checkoutClientSecret": {
+            "type": "string",
+            "description": "SDK 场景下携带；HPP 场景不传，服务端跳过校验"
+          }
+        }
+      },
+      "ResultSubmitSessionPaymentResp": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": ""
+          },
+          "msg": {
+            "type": "string",
+            "description": ""
+          },
+          "data": {
+            "$ref": "#/components/schemas/SubmitSessionPaymentResp",
+            "description": ""
+          },
+          "traceId": {
+            "type": "string",
+            "description": ""
+          }
+        }
+      },
+      "SubmitSessionPaymentReq": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "description": "会话ID（必填）"
+          },
+          "sessionType": {
+            "type": "string",
+            "description": "会话类型"
+          },
+          "customerEmail": {
+            "type": "string",
+            "description": "客户邮箱",
+            "format": "email"
+          },
+          "customerName": {
+            "type": "string",
+            "description": "客户姓名（可选）"
+          },
+          "paymentMethod": {
+            "type": "string",
+            "description": "支付方式（必填）\nCARD  (visa,Mastercard)\nGOOGLE_PAY\nWECHAT_PAY\nALIPAY\nAPPLE_PAY\n等等"
+          },
+          "cardEncryptedData": {
+            "type": "string",
+            "description": "Digital Wallet 加密卡数据 当支付方式为GOOGLE_PAY,APPLE_PAY的时候使用"
+          },
+          "storeCard": {
+            "type": "boolean",
+            "description": "是否保存该卡片（Store Card / Card on File）",
+            "default": false
+          },
+          "payerBillingInfo": {
+            "$ref": "#/components/schemas/AddressInfo",
+            "description": "账单地址（如果 Session 配置需要采集）"
+          },
+          "payerShippingAddress": {
+            "$ref": "#/components/schemas/AddressInfo",
+            "description": "邮寄地址（如果 Session 配置需要采集）"
+          },
+          "userDeviceInfo": {
+            "$ref": "#/components/schemas/UserDeviceInfo",
+            "description": "用户设备信息 （后期风控）\n浏览器信息 、IP 、语言 、时区 、屏幕分辨率 、屏幕大小 、颜色深度 、java 启用状态 、用户代理 、Accept 、等等"
+          },
+          "savedCardId": {
+            "type": "string",
+            "description": "已存卡隐藏 ID，paymentMethod = \"TOKEN\" 时必填，由 /card/list 返回，不透明"
+          },
+          "customerAccessSecret": {
+            "type": "string",
+            "description": "Customer 访问密钥，paymentMethod = \"TOKEN\" 时必填，用于鉴权 COF 操作"
+          },
+          "checkoutClientSecret": {
+            "type": "string",
+            "description": "Checkout 客户端密钥，新卡支付 SDK 场景携带；HPP 不传则跳过校验"
+          }
+        },
+        "required": [
+          "sessionId",
+          "sessionType",
+          "paymentMethod"
+        ]
+      },
+      "ResultCardListResp": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": ""
+          },
+          "msg": {
+            "type": "string",
+            "description": ""
+          },
+          "data": {
+            "$ref": "#/components/schemas/CardListResp",
+            "description": ""
+          },
+          "traceId": {
+            "type": "string",
+            "description": ""
+          }
+        }
+      },
+      "SubmitSessionPaymentResp": {
+        "type": "object",
+        "properties": {
+          "txnId": {
+            "type": "string",
+            "description": "sunbay 交易流水号"
+          },
+          "linkId": {
+            "type": "string",
+            "description": "链接ID"
+          },
+          "txnStatus": {
+            "type": "string",
+            "description": "支付状态\nS - 成功，F - 失败，R - 需要后续操作"
+          },
+          "action": {
+            "$ref": "#/components/schemas/ActionDTO",
+            "description": "后续动作（仅状态为 R 时返回）"
+          },
+          "sessionId": {
+            "type": "string",
+            "description": "会话ID"
+          },
+          "totalAmount": {
+            "type": "number",
+            "description": "总金额（含税）"
+          },
+          "currency": {
+            "type": "string",
+            "description": "货币类型"
+          },
+          "failureReason": {
+            "type": "string",
+            "description": "失败原因（仅状态为 F 时返回）"
+          },
+          "tokenId": {
+            "type": "string",
+            "description": "已存卡 Token（storeCard=true 且交易成功时返回）"
+          },
+          "resultUrl": {
+            "type": "string",
+            "description": "查询支付结果 (如果返回R时候 可以通过resultUrl查询支付结果)\n/web/checkout/payment/result/{sessionId}"
+          }
+        }
+      },
+      "CardItem": {
+        "type": "object",
+        "properties": {
+          "savedCardId": {
+            "type": "string",
+            "description": "前端不透明卡片 ID，格式：sc_{uuid}。\n不暴露真实 tokenId；用卡支付时将此值传入 SubmitSessionPaymentReq.savedCardId。"
+          },
+          "maskedCardNumber": {
+            "type": "string",
+            "description": "脱敏卡号，如 **** **** **** 4242"
+          },
+          "cardBrand": {
+            "type": "string",
+            "description": "卡品牌：visa / mastercard / amex ..."
+          },
+          "expiryMonth": {
+            "type": "string",
+            "description": "过期月 MM"
+          },
+          "expiryYear": {
+            "type": "string",
+            "description": "过期年 YY"
+          },
+          "cardholderName": {
+            "type": "string",
+            "description": "持卡人姓名"
+          }
+        }
+      },
+      "CardListResp": {
+        "type": "object",
+        "properties": {
+          "cards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CardItem",
+              "description": "单张卡片信息"
+            },
+            "description": ""
+          }
+        }
+      },
+      "CardListReq": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "description": "关联的 Session ID（必填）"
+          },
+          "customerAccessSecret": {
+            "type": "string",
+            "description": "Customer 访问密钥，须含 card:list scope（必填）"
+          }
+        },
+        "required": [
+          "sessionId",
+          "customerAccessSecret"
+        ]
+      }
+    },
+    "responses": {},
+    "securitySchemes": {}
+  },
+  "servers": [],
+  "security": []
+}

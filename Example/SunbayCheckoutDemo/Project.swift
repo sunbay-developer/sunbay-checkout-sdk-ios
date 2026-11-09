@@ -59,6 +59,11 @@ let project = Project(
                     "UILaunchScreen": [:],
                     "SunbayDemoMerchantId": .string(merchantId),
                     "NSCameraUsageDescription": "Used to scan your card number on-device. Images are never stored or sent.",
+                    // Example app only (never the SDK): lets Real (dev server) mode reach the
+                    // local dev server over plain HTTP on 127.0.0.1 / LAN.
+                    "NSAppTransportSecurity": [
+                        "NSAllowsLocalNetworking": true,
+                    ],
                     "UIApplicationSceneManifest": [
                         "UIApplicationSupportsMultipleScenes": false,
                     ],

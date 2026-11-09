@@ -42,8 +42,8 @@
     /// ## Security (§5)
     /// Card plaintext is only encrypted via `CardInput → CardEncryptor` (inside
     /// `CheckoutController.confirmNewCard`), and is never logged/persisted/returned;
-    /// `customerAccessSecret` is held in memory only (`CredentialStore`, cleared at the terminal
-    /// state), and does not enter `CheckoutOutcome`, logs, or any public return value.
+    /// `customerAccessSecret` is held in memory only (`CredentialStore`, cleared on success / dismiss /
+    /// session expiry, not on failure), and does not enter `CheckoutOutcome`, logs, or any public return value.
     ///
     /// iOS-only: the whole thing is `#if canImport(UIKit)`; it does not compile under the macOS host (Core stays independent of UIKit).
     public final class PaymentSheet {
@@ -88,6 +88,8 @@
         private let sessionId: String
         /// COF credential (optional); held in memory only and passed to `CheckoutController.start`, never logged/returned (§5).
         private let customerAccessSecret: String?
+        /// Client secret issued by the host backend with the session (optional); memory only, never logged/returned.
+        private let checkoutClientSecret: String?
         /// Localized-string provider handed to the content VC so its copy renders in the configured
         /// locale. Built from a `LocalizationResolver`; maps a `sunbay.*` key to its localized
         /// string. Core stays UI-agnostic — the resolver lives in Core, the closure is consumed only
@@ -116,6 +118,8 @@
         private let walletAuthorizer: any WalletAuthorizing
         /// The resolved Apple Pay merchant id (host configuration first); nil hides the Apple Pay row.
         private let walletMerchantId: String?
+        /// Screen metrics snapshot shared with the checkout's default payment service; recorded in `present`.
+        private let screenMetrics: ScreenMetricsStore?
         // MARK: - Public observation
 
         /// Observes the coarse-grained in-sheet presentation state (spec §3.4).
@@ -136,16 +140,18 @@
         /// Assembles a real `CheckoutController` through the `SunbayCheckout.makeController` seam
         /// (injecting a real `ActionHandler` + `WebAuthOpener` and an in-memory
         /// `CredentialStore`); the controller uses the backend services held by the `checkout`
-        /// instance (the host-injected ones or the fail-closed defaults).
+        /// instance (the host-injected ones or the default real-backend services).
         ///
         /// - Parameters:
         ///   - checkout: The SDK public entry point (holding the host configuration and injected backend services).
         ///   - sessionId: The session identifier to check out.
         ///   - customerAccessSecret: COF credential (optional); delivered by the host backend over HTTPS, held in memory only, never logged.
+        ///   - checkoutClientSecret: Client secret issued by the host backend together with the session (optional); kept in memory only, never logged.
         public convenience init(
             checkout: SunbayCheckout,
             sessionId: String,
-            customerAccessSecret: String? = nil
+            customerAccessSecret: String? = nil,
+            checkoutClientSecret: String? = nil
         ) {
             let controller = checkout.makeController(
                 credentials: CredentialStore(),
@@ -155,6 +161,7 @@
                 controller: controller,
                 sessionId: sessionId,
                 customerAccessSecret: customerAccessSecret,
+                checkoutClientSecret: checkoutClientSecret,
                 localize: LocalizationResolver(explicitLocale: checkout.configuration.locale).localizedNoComment,
                 localeCode: checkout.configuration.locale,
                 appearance: checkout.configuration.appearance ?? .default,
@@ -164,7 +171,8 @@
                 walletMerchantId: resolveMerchantId(
                     configured: checkout.configuration.applePayMerchantId,
                     sessionProvided: nil
-                )
+                ),
+                screenMetrics: checkout.screenMetrics
             )
         }
 
@@ -176,6 +184,7 @@
         ///   - controller: The payment orchestrator.
         ///   - sessionId: The session identifier.
         ///   - customerAccessSecret: COF credential (optional).
+        ///   - checkoutClientSecret: Client secret issued by the host backend with the session (optional).
         ///   - localize: Localized-string provider for the content copy; defaults to a nil-locale
         ///     resolver (system-preferred languages, then the `en` development localization), so
         ///     existing internal-init call sites compile unchanged.
@@ -192,19 +201,23 @@
             controller: CheckoutController,
             sessionId: String,
             customerAccessSecret: String? = nil,
+            checkoutClientSecret: String? = nil,
             localize: @escaping (String) -> String = LocalizationResolver(explicitLocale: nil).localizedNoComment,
             localeCode: String? = nil,
             appearance: Appearance = .default,
             paymentSheetTitle: String? = nil,
             addressMetadataService: any AddressMetadataService = EmptyAddressMetadataService(),
             walletAuthorizer: any WalletAuthorizing = WalletAuthorizer(),
-            walletMerchantId: String? = nil
+            walletMerchantId: String? = nil,
+            screenMetrics: ScreenMetricsStore? = nil
         ) {
+            self.screenMetrics = screenMetrics
             self.walletAuthorizer = walletAuthorizer
             self.walletMerchantId = walletMerchantId
             self.controller = controller
             self.sessionId = sessionId
             self.customerAccessSecret = customerAccessSecret
+            self.checkoutClientSecret = checkoutClientSecret
             self.localize = localize
             self.localeCode = localeCode
             self.appearance = appearance
@@ -245,6 +258,8 @@
         ///   attempt → `.canceled`; close after `.pending` / `.unknown` → that outcome).
         @MainActor
         public func present(from presenter: UIViewController) async -> CheckoutOutcome {
+            // Snapshot the screen on the main actor; the submit path reads it off the main thread.
+            screenMetrics?.recordMainScreen(presenter.view.window?.screen ?? UIScreen.main)
             let coordinator = PresentationCoordinator(
                 presenter: presenter,
                 appearance: appearance,
@@ -339,7 +354,7 @@
         /// The testable core logic that drives one checkout (touches no real UIKit presentation).
         ///
         /// Flow:
-        /// 1. `controller.start(sessionId:customerAccessSecret:)` loads and validates the session;
+        /// 1. `controller.start(sessionId:customerAccessSecret:checkoutClientSecret:)` loads and validates the session;
         ///    on a load failure → failures other than `.canceled` are thrown by start, and here
         ///    they are mapped as a fallback to `.unknown`/`.failed` (see below).
         /// 2. **Automatic COF inclusion**: when `customerAccessSecret != nil && session.cofEnabled`,
@@ -370,7 +385,8 @@
             do {
                 session = try await controller.start(
                     sessionId: sessionId,
-                    customerAccessSecret: customerAccessSecret
+                    customerAccessSecret: customerAccessSecret,
+                    checkoutClientSecret: checkoutClientSecret
                 )
             } catch let error as CheckoutError {
                 return .startFailed(.failed(txnId: nil, error: error))
@@ -397,9 +413,8 @@
         func execute(_ action: UserAction) async -> AttemptResult {
             switch action {
             case let .confirmNewCard(input, save):
-                // When checked to save, attach consent (§7.3; COF save requires consent).
-                let consent = save ? Consent(version: "1.0") : nil
-                return .outcome(await controller.confirmNewCard(input, save: save, consent: consent))
+                // `save` maps to `storeCard` in the controller (only when the session supports storing cards).
+                return .outcome(await controller.confirmNewCard(input, save: save))
             case let .confirmSavedCard(paymentMethodId):
                 return .outcome(await controller.confirmSavedCard(paymentMethodId: paymentMethodId))
             case let .confirmWallet(token):

@@ -32,7 +32,7 @@ let package = Package(
         .target(
             name: "SunbayCheckout",
             path: "Sources/SunbayCheckout",
-            resources: [.process("Resources/Localizations"), .process("Resources/CardRules")]
+            resources: [.process("Resources/Localizations"), .process("Resources/CardRules"), .copy("Resources/PrivacyInfo.xcprivacy")]
         ),
         // TEST/EXAMPLE SCAFFOLDING ONLY: scriptable service doubles + demo fixtures
         // (ScriptablePaymentService, ScriptableCofService, DemoSessionFactory). Depends only on
@@ -56,6 +56,12 @@ let package = Package(
             name: "SunbayCheckoutE2ETests",
             dependencies: ["SunbayCheckout", "SunbayCheckoutTestSupport"],
             path: "Tests/SunbayCheckoutE2ETests"
+        ),
+        // Opt-in real-API tests: skip unless SUNBAY_DEV_SERVER_URL is set (see scripts/run-dev-e2e.sh).
+        .testTarget(
+            name: "SunbayCheckoutRealAPITests",
+            dependencies: ["SunbayCheckout", "SunbayCheckoutTestSupport"],
+            path: "Tests/SunbayCheckoutRealAPITests"
         ),
         // The SunbayCheckoutDemo executable target has been migrated to a standalone Tuist-generated
         // Xcode app (see Example/SunbayCheckoutDemo/Project.swift); it is no longer a SwiftPM target.

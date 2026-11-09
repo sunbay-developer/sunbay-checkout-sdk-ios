@@ -47,6 +47,7 @@ import SunbayCheckoutTestSupport
         var body: some View {
             NavigationView {
                 Form {
+                    modeSection
                     environmentSection
                     localeSection
                     appearanceSection
@@ -60,8 +61,73 @@ import SunbayCheckoutTestSupport
                     outcomeSection
                 }
                 .navigationTitle("Sunbay Checkout Demo")
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if isRealMode { devOnlyBanner }
+                }
             }
             .navigationViewStyle(.stack)
+        }
+
+        // MARK: - Real (dev server) mode
+
+        /// True only in DEBUG builds with the real dev-server mode selected.
+        private var isRealMode: Bool {
+            #if DEBUG
+                return settings.mode == .realDevServer
+            #else
+                return false
+            #endif
+        }
+
+        /// Persistent warning shown on screen while the real dev-server mode is active.
+        private var devOnlyBanner: some View {
+            Text("DEV ONLY: sessions are created by a local dev server that holds your API key. In production, create the session in your own backend.")
+                .font(.footnote.bold())
+                .foregroundColor(.white)
+                .multilineTextAlignment(.leading)
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.red)
+        }
+
+        /// Mode picker and dev server URL. Compiled out of release builds.
+        @ViewBuilder
+        private var modeSection: some View {
+            #if DEBUG
+                Section {
+                    Picker("Mode", selection: $settings.mode) {
+                        ForEach(DemoSettings.DemoMode.allCases) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    if settings.mode == .realDevServer {
+                        HStack {
+                            Text("Server URL")
+                            Spacer()
+                            TextField("http://127.0.0.1:8095", text: $settings.devServerURL)
+                                .multilineTextAlignment(.trailing)
+                                .keyboardType(.URL)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled(true)
+                        }
+                    }
+                } header: {
+                    Text("Backend")
+                } footer: {
+                    Text("Mock (default) uses scripted results. Real (dev server) pays against the Dev/Test backend through the local Example/DevServer.")
+                }
+                .onChange(of: settings.mode) { mode in
+                    if mode == .realDevServer, settings.environment == .production {
+                        settings.environment = .dev
+                    }
+                }
+            #endif
+        }
+
+        /// Environments offered by the picker: Dev/Test only in real mode.
+        private var availableEnvironments: [DemoSettings.DemoEnvironment] {
+            isRealMode ? [.dev, .test] : DemoSettings.DemoEnvironment.allCases
         }
 
         // MARK: - Config sections
@@ -69,7 +135,7 @@ import SunbayCheckoutTestSupport
         private var environmentSection: some View {
             Section("Environment") {
                 Picker("Environment", selection: $settings.environment) {
-                    ForEach(DemoSettings.DemoEnvironment.allCases) { env in
+                    ForEach(availableEnvironments) { env in
                         Text(env.label).tag(env)
                     }
                 }
@@ -136,20 +202,26 @@ import SunbayCheckoutTestSupport
 
         private var amountSection: some View {
             Section("Amount") {
-                HStack {
-                    Text("Currency")
-                    Spacer()
-                    TextField("USD", text: $settings.currencyCode)
-                        .multilineTextAlignment(.trailing)
-                        .textInputAutocapitalization(.characters)
-                        .autocorrectionDisabled(true)
-                }
-                HStack {
-                    Text("Minor units")
-                    Spacer()
-                    TextField("4299", text: amountText)
-                        .multilineTextAlignment(.trailing)
-                        .keyboardType(.numberPad)
+                if isRealMode {
+                    Text("Real mode: the dev server creates the session in its own currency (default USD) with a fixed amount of 1.05; these knobs apply to Mock mode only.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    HStack {
+                        Text("Currency")
+                        Spacer()
+                        TextField("USD", text: $settings.currencyCode)
+                            .multilineTextAlignment(.trailing)
+                            .textInputAutocapitalization(.characters)
+                            .autocorrectionDisabled(true)
+                    }
+                    HStack {
+                        Text("Minor units")
+                        Spacer()
+                        TextField("4299", text: amountText)
+                            .multilineTextAlignment(.trailing)
+                            .keyboardType(.numberPad)
+                    }
                 }
             }
         }
@@ -192,6 +264,9 @@ import SunbayCheckoutTestSupport
                     checkout: makeCheckout(),
                     sessionId: sessionId,
                     customerAccessSecret: settings.cofEnabled ? customerAccessSecret : nil,
+                    isRealMode: isRealMode,
+                    realServerURL: URL(string: settings.devServerURL),
+                    realAmountMajorUnits: 1.05,
                     onOutcome: { lastOutcome = describe($0) },
                     onState: { lastState = describeState($0) }
                 )
@@ -200,18 +275,24 @@ import SunbayCheckoutTestSupport
 
         private var applePaySection: some View {
             Section("Standalone ApplePayButton (L3)") {
-                Text(applePayAvailable
-                    ? "Available - tap to drive the wallet authorization end-to-end (confirmWallet)."
-                    : "Hidden/unavailable (device cannot make payments, merchant-id not configured, or Apple Pay method off).")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                ApplePayButtonView(
-                    checkout: makeCheckout(),
-                    sessionId: sessionId,
-                    onResult: { lastOutcome = describe($0) },
-                    onAvailabilityChange: { applePayAvailable = $0 }
-                )
-                .frame(height: 48)
+                if isRealMode {
+                    Text("Not available in Real (dev server) mode: the standalone button needs a session up front. Use the Apple Pay entry in the sheet on a real device.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text(applePayAvailable
+                        ? "Available - tap to drive the wallet authorization end-to-end (confirmWallet)."
+                        : "Hidden/unavailable (device cannot make payments, merchant-id not configured, or Apple Pay method off).")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    ApplePayButtonView(
+                        checkout: makeCheckout(),
+                        sessionId: sessionId,
+                        onResult: { lastOutcome = describe($0) },
+                        onAvailabilityChange: { applePayAvailable = $0 }
+                    )
+                    .frame(height: 48)
+                }
             }
         }
 
@@ -265,6 +346,10 @@ import SunbayCheckoutTestSupport
                 appearance: makeAppearance(),
                 locale: settings.locale.bcp47
             )
+            if isRealMode {
+                // Real backend adapters (default services); no scripted doubles.
+                return SunbayCheckout(configuration: config)
+            }
             return SunbayCheckout(
                 configuration: config,
                 paymentService: makePaymentService(),
@@ -407,24 +492,65 @@ import SunbayCheckoutTestSupport
         let checkout: SunbayCheckout
         let sessionId: String
         let customerAccessSecret: String?
+        /// True in Real (dev server) mode; `realServerURL` is then required to be a valid URL.
+        let isRealMode: Bool
+        /// Parsed dev-server URL (nil when the text is malformed).
+        let realServerURL: URL?
+        let realAmountMajorUnits: Double
         let onOutcome: (CheckoutOutcome) -> Void
         let onState: (CheckoutPresentationState) -> Void
+        @State private var errorMessage: String?
 
         var body: some View {
-            Button("Pay (sheet)") {
-                guard let presenter = topViewController() else { return }
-                let sheet = PaymentSheet(
-                    checkout: checkout,
-                    sessionId: sessionId,
-                    customerAccessSecret: customerAccessSecret
-                )
-                sheet.onStateChange = onState
-                Task { @MainActor in
-                    let outcome = await sheet.present(from: presenter)
-                    onOutcome(outcome)
+            VStack(alignment: .leading) {
+                Button("Pay (sheet)") {
+                    guard let presenter = topViewController() else { return }
+                    errorMessage = nil
+                    Task { @MainActor in
+                        let sheet: PaymentSheet
+                        #if DEBUG
+                            if isRealMode {
+                                guard let serverURL = realServerURL else {
+                                    errorMessage = "Invalid server URL"
+                                    return
+                                }
+                                do {
+                                    let session = try await DevSessionClient(serverURL: serverURL)
+                                        .createSession(amountMajorUnits: realAmountMajorUnits)
+                                    sheet = PaymentSheet(
+                                        checkout: checkout,
+                                        sessionId: session.sessionId,
+                                        customerAccessSecret: session.customerAccessSecret,
+                                        checkoutClientSecret: session.checkoutClientSecret
+                                    )
+                                } catch {
+                                    errorMessage = "Dev server session failed: \(error)"
+                                    return
+                                }
+                            } else {
+                                sheet = PaymentSheet(
+                                    checkout: checkout,
+                                    sessionId: sessionId,
+                                    customerAccessSecret: customerAccessSecret
+                                )
+                            }
+                        #else
+                            sheet = PaymentSheet(
+                                checkout: checkout,
+                                sessionId: sessionId,
+                                customerAccessSecret: customerAccessSecret
+                            )
+                        #endif
+                        sheet.onStateChange = onState
+                        let outcome = await sheet.present(from: presenter)
+                        onOutcome(outcome)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                if let errorMessage {
+                    Text(errorMessage).font(.footnote).foregroundColor(.red)
                 }
             }
-            .buttonStyle(.borderedProminent)
         }
     }
 

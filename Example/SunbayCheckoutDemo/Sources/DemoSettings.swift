@@ -39,6 +39,25 @@ struct DemoSettings: Codable, Equatable {
         }
     }
 
+    // MARK: Backend mode
+
+    /// Where sessions and payments come from. `mock` (default) uses scripted doubles. `realDevServer`
+    /// is DEBUG-only: a local dev server creates the session and the SDK talks to the real backend.
+    enum DemoMode: String, Codable, CaseIterable, Identifiable {
+        case mock
+        case realDevServer
+
+        var id: String { rawValue }
+
+        /// A short display label.
+        var label: String {
+            switch self {
+            case .mock: return "Mock"
+            case .realDevServer: return "Real (dev server)"
+            }
+        }
+    }
+
     // MARK: Locale
 
     /// Locale knob. The raw value is a BCP-47 code passed straight into
@@ -218,6 +237,10 @@ struct DemoSettings: Codable, Equatable {
     var shippingAddressMode: DemoAddressMode
     /// The scripted submit scenario.
     var scenario: DemoScenario
+    /// Backend mode. Mock stays the default; the real mode is only reachable in DEBUG builds.
+    var mode: DemoMode = .mock
+    /// Base URL of the local dev session server (real mode only).
+    var devServerURL: String = "http://127.0.0.1:8095"
 
     /// Default settings mirroring the previous demo backend (42.99 USD, all methods, COF on, succeeded).
     static let `default` = DemoSettings(

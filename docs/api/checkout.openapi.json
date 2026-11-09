@@ -1,0 +1,922 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "默认模块",
+    "description": "",
+    "version": "1.0.0"
+  },
+  "tags": [],
+  "paths": {
+    "/v1/checkout/create-session": {
+      "post": {
+        "summary": "创建托管支付会话",
+        "deprecated": false,
+        "description": "",
+        "tags": [],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenCreateSessionReq",
+                "description": "对外请求（金额为 minor units）"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultOpenCreateSessionRes",
+                  "description": "会话信息（含 checkoutUrl 和 expiresAt）"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/v1/checkout/sale": {
+      "post": {
+        "summary": "直接支付（Sale）",
+        "deprecated": false,
+        "description": "<p>\n无需提前创建 Session，直接携带支付信息发起一笔完整的支付交易。\n金额使用最小货币单位（minor units），如 USD 的 cents。\n<p>\n支付状态说明：\n<ul>\n  <li>S - 支付成功</li>\n  <li>F - 支付失败，见 failureReason</li>\n  <li>R - 需要后续操作（如 3DS 跳转），见 action 字段</li>\n</ul>",
+        "tags": [],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenSaleReq",
+                "description": "直接支付请求（金额为 minor units）"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultOpenSaleRes",
+                  "description": "支付结果（含 txnId、txnStatus，状态为 R 时含 action）"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/v1/checkout/refund": {
+      "post": {
+        "summary": "线上退款（Refund）",
+        "deprecated": false,
+        "description": "<p>\n基于原支付交易发起退款，无需携带支付方式信息。\n金额使用最小货币单位（minor units），如 USD 的 cents。\n支持部分退款：退款金额须 ≤ 原支付金额。",
+        "tags": [],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenRefundReq",
+                "description": "退款请求（金额为 minor units）"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultOpenRefundRes",
+                  "description": "退款结果（含退款交易 ID 和状态）"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/v1/checkout/expire-session": {
+      "post": {
+        "summary": "使 Checkout Session 提前失效（Expire a Checkout Session）",
+        "deprecated": false,
+        "description": "<p>\n使指定会话立即超时，不可再用于支付；若会话已关联下游未完成的交易，将同步调用交易系统关闭该交易。\n若会话已处于终态（已支付完成/已失效），则幂等返回当前状态。",
+        "tags": [],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenExpireSessionReq",
+                "description": "失效请求（含 merchantId 与 sessionId）"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultOpenExpireSessionRes",
+                  "description": "失效结果（含会话状态与失效时间）"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "OpenCreateSessionRes": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "回显请求中的应用 ID"
+          },
+          "transactionRequestId": {
+            "type": "string",
+            "description": "回显请求中的交易请求 ID"
+          },
+          "transactionId": {
+            "type": "string",
+            "description": "当前销售交易的SUNBAY交易流水号，用于后续查询和通知"
+          },
+          "referenceOrderId": {
+            "type": "string",
+            "description": "回显请求中的参考订单 ID"
+          },
+          "merchantId": {
+            "type": "string",
+            "description": "回显请求中的商户 ID"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/OpenAmountInfo",
+            "description": "交易金额信息（最小货币单位，与请求一致）"
+          },
+          "description": {
+            "type": "string",
+            "description": "回显请求中的订单描述"
+          },
+          "productList": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenProductItem",
+              "description": "OpenAPI 公共商品明细（金额使用最小货币单位 minor units）\n<p>\n供{@link OpenCreateSessionReq}、{@link OpenSaleReq} 等接口复用。"
+            },
+            "description": "回显请求中的商品列表"
+          },
+          "collectBillingAddress": {
+            "type": "boolean",
+            "description": "是否启用账单地址收集"
+          },
+          "collectShippingAddress": {
+            "type": "boolean",
+            "description": "是否启用收货地址收集"
+          },
+          "storeCard": {
+            "type": "boolean",
+            "description": "是否保存该卡片（Store Card / Card on File）"
+          },
+          "merchantReturnUrl": {
+            "type": "string",
+            "description": "回显请求中的商户返回 URL"
+          },
+          "notifyUrl": {
+            "type": "string",
+            "description": "回显请求中的通知 URL"
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "会话过期时间，格式：yyyy-MM-DDTHH:mm:ss+TIMEZONE（ISO 8601）"
+          },
+          "sessionId": {
+            "type": "string",
+            "description": "创建的会话 ID"
+          },
+          "checkoutUrl": {
+            "type": "string",
+            "description": "托管结账页面 URL，将客户重定向到此 URL 完成支付"
+          },
+          "checkoutClientSecret": {
+            "type": "string",
+            "description": "Checkout 客户端密钥，用于 Embedded SDK / iOS SDK 完成当前 Session 支付。\n仅在 sessionType 为 EMBEDDED 或 SDK 时签发，HPP 场景返回 null。\n格式：\"ccs_\" + UUID"
+          },
+          "customerAccessSecret": {
+            "type": "string",
+            "description": "Customer 访问密钥，用于 iOS SDK 执行 COF 操作（列卡/存卡/用卡）。\n仅当请求体携带 customerId 时签发，否则返回 null。\n格式：\"cas_\" + UUID"
+          }
+        }
+      },
+      "QrData": {
+        "type": "object",
+        "properties": {
+          "qrCode": {
+            "type": "string",
+            "description": ""
+          },
+          "qrUrl": {
+            "type": "string",
+            "description": ""
+          }
+        }
+      },
+      "MapString": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          }
+        }
+      },
+      "ActionDTO": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "动作类型\nqrCode\nredirect\nshowContent"
+          },
+          "redirectUrl": {
+            "type": "string",
+            "description": ""
+          },
+          "qrData": {
+            "$ref": "#/components/schemas/QrData",
+            "description": ""
+          },
+          "content": {
+            "$ref": "#/components/schemas/MapString",
+            "description": ""
+          }
+        }
+      },
+      "AddressInfo": {
+        "type": "object",
+        "properties": {
+          "country": {
+            "type": "string",
+            "description": "国家代码"
+          },
+          "state": {
+            "type": "string",
+            "description": "二级行政区 - 可选，美国为 State，中国为省，日本为都道府县。建议存储代码（如 CA）"
+          },
+          "city": {
+            "type": "string",
+            "description": "城市"
+          },
+          "address": {
+            "type": "string",
+            "description": "核心地址信息 - 必填，街道名称、门牌号、村落等 address Line 1"
+          },
+          "address2": {
+            "type": "string",
+            "description": "补充信息 - 可选，公寓、套房、单元、楼层等 Line 2"
+          },
+          "postalCode": {
+            "type": "string",
+            "description": "邮政编码"
+          },
+          "firstName": {
+            "type": "string",
+            "description": "名字"
+          },
+          "lastName": {
+            "type": "string",
+            "description": "姓氏"
+          },
+          "phone": {
+            "type": "string",
+            "description": "电话号码"
+          },
+          "email": {
+            "type": "string",
+            "description": ""
+          }
+        }
+      },
+      "OpenAmountInfo": {
+        "type": "object",
+        "properties": {
+          "orderAmount": {
+            "type": "integer",
+            "description": "订单金额（商品金额 必填，最小货币单位，须 >= 0）",
+            "minimum": 0,
+            "format": "int64"
+          },
+          "taxAmount": {
+            "type": "integer",
+            "description": "税费金额（最小货币单位，可选，须 >= 0）",
+            "minimum": 0,
+            "format": "int64"
+          },
+          "surchargeAmount": {
+            "type": "integer",
+            "description": "附加费金额（最小货币单位，可选，须 >= 0）",
+            "minimum": 0,
+            "format": "int64"
+          },
+          "tipAmount": {
+            "type": "integer",
+            "description": "小费金额（最小货币单位，可选，须 >= 0）\n明确不收小费时传 0；不传则视为不涉及小费。",
+            "minimum": 0,
+            "format": "int64"
+          },
+          "priceCurrency": {
+            "type": "string",
+            "description": "ISO 4217 货币代码，如 USD / CNY / EUR",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "totalAmount": {
+            "type": "integer",
+            "description": "订单总金额（最小货币单位，可选，须 > 0） orderAmount + taxAmount + surchargeAmount + tipAmount\n如果 商品含税费 或者不单独算其他税费的时候 orderAmount = totalAmount",
+            "minimum": 0,
+            "format": "int64"
+          }
+        },
+        "required": [
+          "orderAmount",
+          "priceCurrency"
+        ]
+      },
+      "OpenProductItem": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "description": "商品单价（最小货币单位，须 > 0）",
+            "minimum": 1,
+            "format": "int64"
+          },
+          "name": {
+            "type": "string",
+            "description": "商品名称",
+            "maxLength": 128
+          },
+          "num": {
+            "type": "integer",
+            "description": "商品数量（须 >= 1）",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "amount",
+          "name",
+          "num"
+        ]
+      },
+      "ResultOpenCreateSessionRes": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": ""
+          },
+          "msg": {
+            "type": "string",
+            "description": ""
+          },
+          "data": {
+            "$ref": "#/components/schemas/OpenCreateSessionRes",
+            "description": ""
+          },
+          "traceId": {
+            "type": "string",
+            "description": ""
+          }
+        }
+      },
+      "OpenCreateSessionReq": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "",
+            "maxLength": 32,
+            "pattern": "^[a-zA-Z0-9_\\-]+$"
+          },
+          "transactionRequestId": {
+            "type": "string",
+            "description": "",
+            "maxLength": 64,
+            "pattern": "^[a-zA-Z0-9_\\-]+$"
+          },
+          "referenceOrderId": {
+            "type": "string",
+            "description": "",
+            "minLength": 6,
+            "maxLength": 32,
+            "pattern": "^[a-zA-Z0-9_\\-\\|\\*]+$"
+          },
+          "merchantId": {
+            "type": "string",
+            "description": "",
+            "maxLength": 32,
+            "pattern": "^[a-zA-Z0-9_\\-]+$"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/OpenAmountInfo",
+            "description": ""
+          },
+          "description": {
+            "type": "string",
+            "description": "",
+            "maxLength": 128
+          },
+          "productList": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenProductItem",
+              "description": "OpenAPI 公共商品明细（金额使用最小货币单位 minor units）\n<p>\n供{@link OpenCreateSessionReq}、{@link OpenSaleReq} 等接口复用。"
+            },
+            "description": "商品列表（可选，若上送则所有商品金额之和须等于 amount.orderAmount）"
+          },
+          "collectBillingAddress": {
+            "type": "boolean",
+            "description": "是否在结账页面收集账单地址，默认 false",
+            "default": false
+          },
+          "collectShippingAddress": {
+            "type": "boolean",
+            "description": "是否在结账页面收集收货地址，默认 false",
+            "default": false
+          },
+          "storeCard": {
+            "type": "boolean",
+            "description": "是否保存该卡片（Store Card / Card on File），用于后续交易复用\n默认：false",
+            "default": false
+          },
+          "merchantReturnUrl": {
+            "type": "string",
+            "description": "",
+            "maxLength": 256
+          },
+          "notifyUrl": {
+            "type": "string",
+            "description": "",
+            "maxLength": 256
+          },
+          "customerId": {
+            "type": "string",
+            "description": "客户 ID（商户侧唯一标识），可选。\n传入后，响应中同步返回 customerAccessSecret，SDK 可执行 COF 操作。\n不传则响应中 customerAccessSecret 为 null，SDK 仅支持新卡支付。",
+            "maxLength": 64
+          },
+          "sessionType": {
+            "type": "string",
+            "description": "会话类型，可选。不传时默认 hosted_page（HPP 托管支付页）。\n<ul>\n  <li>{@code hosted_page} - 托管支付页（默认）</li>\n  <li>{@code embedded}    - 嵌入式 Checkout（签发 checkoutClientSecret / customerAccessSecret）</li>\n  <li>{@code sdk}         - 移动端 SDK（与 embedded 后台逻辑一致）</li>\n</ul>",
+            "pattern": "^(hosted_page|embedded|sdk)$"
+          }
+        },
+        "required": [
+          "appId",
+          "transactionRequestId",
+          "referenceOrderId",
+          "merchantId",
+          "amount",
+          "description"
+        ]
+      },
+      "OpenSaleRes": {
+        "type": "object",
+        "properties": {
+          "transactionId": {
+            "type": "string",
+            "description": "Sunbay Nexus 交易流水号\nExample: \"TXN20231119001\""
+          },
+          "transactionRequestId": {
+            "type": "string",
+            "description": "商户侧幂等请求号（回传请求值）\nExample: \"PAY_REQ_20231119001\""
+          },
+          "referenceOrderId": {
+            "type": "string",
+            "description": "商户订单号（回传请求值）\nExample: \"ORDER20231119001\""
+          },
+          "transactionStatus": {
+            "type": "string",
+            "description": "交易状态\n<ul>\n  <li>SUCCESS - 交易成功</li>\n  <li>FAILED  - 交易失败，见 transactionResultMsg</li>\n  <li>PENDING - 需要后续操作（如 3DS 跳转），见 action 字段</li>\n</ul>\nExample: \"SUCCESS\""
+          },
+          "transactionType": {
+            "type": "string",
+            "description": "交易类型\nExample: \"SALE\""
+          },
+          "action": {
+            "$ref": "#/components/schemas/ActionDTO",
+            "description": "后续动作（仅 transactionStatus = PENDING 时返回，如 3DS 重定向）"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/OpenAmountInfo",
+            "description": "交易金额详情（最小货币单位）"
+          },
+          "createTime": {
+            "type": "string",
+            "description": "交易创建时间，格式：yyyy-MM-DDTHH:mm:ss+TIMEZONE（ISO 8601）\nExample: \"2023-11-19T10:30:00+08:00\""
+          },
+          "completeTime": {
+            "type": "string",
+            "description": "交易完成时间，格式：yyyy-MM-DDTHH:mm:ss+TIMEZONE（ISO 8601）\n仅终态（SUCCESS/FAILED）时返回。\nExample: \"2023-11-19T10:32:00+08:00\""
+          },
+          "maskedPan": {
+            "type": "string",
+            "description": "脱敏卡号（前6位 + ****** + 后4位）\nExample: \"411111******1111\""
+          },
+          "cardNetworkType": {
+            "type": "string",
+            "description": "银行卡受理网络类型\nExample: \"CREDIT\""
+          },
+          "paymentMethodId": {
+            "type": "string",
+            "description": "支付方式 ID\nExample: \"VISA\""
+          },
+          "subPaymentMethodId": {
+            "type": "string",
+            "description": "子支付方式 ID\nExample: \"CREDIT\""
+          },
+          "voucherNo": {
+            "type": "string",
+            "description": "凭证号\nExample: \"V20231119001\""
+          },
+          "stan": {
+            "type": "string",
+            "description": "系统追踪号（STAN）\nExample: \"STAN20231119001\""
+          },
+          "rrn": {
+            "type": "string",
+            "description": "参考号（RRN）\nExample: \"RRN20231119001\""
+          },
+          "authCode": {
+            "type": "string",
+            "description": "授权码\nExample: \"AUTH20231119001\""
+          },
+          "entryMode": {
+            "type": "string",
+            "description": "输入方式\nExample: \"ECOMMERCE\""
+          },
+          "authenticationMethod": {
+            "type": "string",
+            "description": "认证方式\nExample: \"3DS\""
+          },
+          "transactionResultCode": {
+            "type": "string",
+            "description": "交易结果码\nExample: \"00\""
+          },
+          "transactionResultMsg": {
+            "type": "string",
+            "description": "交易结果信息\nExample: \"Transaction successful\""
+          },
+          "description": {
+            "type": "string",
+            "description": "商品描述（回传请求值）\nExample: \"Product purchase\""
+          }
+        }
+      },
+      "ResultOpenSaleRes": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": ""
+          },
+          "msg": {
+            "type": "string",
+            "description": ""
+          },
+          "data": {
+            "$ref": "#/components/schemas/OpenSaleRes",
+            "description": ""
+          },
+          "traceId": {
+            "type": "string",
+            "description": ""
+          }
+        }
+      },
+      "OpenSaleReq": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "",
+            "maxLength": 32,
+            "pattern": "^[a-zA-Z0-9_\\-]+$"
+          },
+          "merchantId": {
+            "type": "string",
+            "description": "",
+            "maxLength": 32,
+            "pattern": "^[a-zA-Z0-9_\\-]+$"
+          },
+          "transactionRequestId": {
+            "type": "string",
+            "description": "商户侧幂等请求号，同一 transactionRequestId 重复提交返回相同结果",
+            "maxLength": 64,
+            "pattern": "^[a-zA-Z0-9_\\-]+$"
+          },
+          "referenceOrderId": {
+            "type": "string",
+            "description": "商户订单号",
+            "minLength": 6,
+            "maxLength": 32,
+            "pattern": "^[a-zA-Z0-9_\\-\\|\\*]+$"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/OpenAmountInfo",
+            "description": ""
+          },
+          "description": {
+            "type": "string",
+            "description": "订单描述",
+            "maxLength": 128
+          },
+          "productList": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpenProductItem",
+              "description": "OpenAPI 公共商品明细（金额使用最小货币单位 minor units）\n<p>\n供{@link OpenCreateSessionReq}、{@link OpenSaleReq} 等接口复用。"
+            },
+            "description": "商品明细（可选，若上送则所有商品金额之和须等于 amount.orderAmount）"
+          },
+          "paymentMethod": {
+            "type": "string",
+            "description": "支付方式，如 CARD / GOOGLE_PAY / APPLE_PAY / TOKEN",
+            "maxLength": 32
+          },
+          "cardEncryptedData": {
+            "type": "string",
+            "description": "加密卡数据（paymentMethod = GOOGLE_PAY / APPLE_PAY /CARD 时使用）"
+          },
+          "tokenId": {
+            "type": "string",
+            "description": "已存卡 Token（paymentMethod = TOKEN 时必填）"
+          },
+          "customerEmail": {
+            "type": "string",
+            "description": "购买人邮箱",
+            "maxLength": 128,
+            "format": "email"
+          },
+          "customerName": {
+            "type": "string",
+            "description": "购买人姓名",
+            "maxLength": 64
+          },
+          "billingAddress": {
+            "$ref": "#/components/schemas/AddressInfo",
+            "description": "账单地址"
+          },
+          "shippingAddress": {
+            "$ref": "#/components/schemas/AddressInfo",
+            "description": "邮寄地址"
+          },
+          "notifyUrl": {
+            "type": "string",
+            "description": "支付结果异步通知地址（服务端 Webhook）",
+            "maxLength": 256
+          },
+          "merchantReturnUrl": {
+            "type": "string",
+            "description": "支付完成后前端跳转地址（可选）",
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "appId",
+          "merchantId",
+          "transactionRequestId",
+          "referenceOrderId",
+          "amount",
+          "description",
+          "paymentMethod",
+          "notifyUrl"
+        ]
+      },
+      "OpenRefundRes": {
+        "type": "object",
+        "properties": {
+          "transactionId": {
+            "type": "string",
+            "description": "本次退款的 Sunbay Nexus 交易流水号\nExample: \"TXN20231119002\""
+          },
+          "transactionRequestId": {
+            "type": "string",
+            "description": "商户侧幂等请求号（回传请求值）\nExample: \"PAY_REQ_20231119006\""
+          },
+          "originalTransactionId": {
+            "type": "string",
+            "description": "原支付交易 ID（回传请求值）\nExample: \"TXN20231119001\""
+          },
+          "transactionStatus": {
+            "type": "string",
+            "description": "退款交易状态\n<ul>\n  <li>SUCCESS - 退款成功</li>\n  <li>FAILED  - 退款失败，见 transactionResultMsg</li>\n  <li>PENDING - 处理中</li>\n</ul>\nExample: \"SUCCESS\""
+          },
+          "transactionType": {
+            "type": "string",
+            "description": "交易类型，固定为 REFUND\nExample: \"REFUND\""
+          },
+          "amount": {
+            "$ref": "#/components/schemas/OpenAmountInfo",
+            "description": "退款金额详情（最小货币单位）"
+          },
+          "createTime": {
+            "type": "string",
+            "description": "退款创建时间，格式：yyyy-MM-DDTHH:mm:ss+TIMEZONE（ISO 8601）\nExample: \"2023-11-19T10:30:00+08:00\""
+          },
+          "completeTime": {
+            "type": "string",
+            "description": "退款完成时间，格式：yyyy-MM-DDTHH:mm:ss+TIMEZONE（ISO 8601）\n仅终态（SUCCESS/FAILED）时返回。\nExample: \"2023-11-19T10:32:00+08:00\""
+          },
+          "transactionResultCode": {
+            "type": "string",
+            "description": "交易结果码\nExample: \"00\""
+          },
+          "transactionResultMsg": {
+            "type": "string",
+            "description": "交易结果信息\nExample: \"Refund successful\""
+          },
+          "description": {
+            "type": "string",
+            "description": "退款描述（回传请求值）\nExample: \"Product return\""
+          }
+        }
+      },
+      "ResultOpenRefundRes": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": ""
+          },
+          "msg": {
+            "type": "string",
+            "description": ""
+          },
+          "data": {
+            "$ref": "#/components/schemas/OpenRefundRes",
+            "description": ""
+          },
+          "traceId": {
+            "type": "string",
+            "description": ""
+          }
+        }
+      },
+      "OpenRefundReq": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "",
+            "maxLength": 32,
+            "pattern": "^[a-zA-Z0-9_\\-]+$"
+          },
+          "merchantId": {
+            "type": "string",
+            "description": "",
+            "maxLength": 32,
+            "pattern": "^[a-zA-Z0-9_\\-]+$"
+          },
+          "originalTransactionId": {
+            "type": "string",
+            "description": "原支付交易 ID（Sunbay 交易流水号）",
+            "maxLength": 64,
+            "pattern": "^[a-zA-Z0-9_\\-]+$"
+          },
+          "originalTransactionRequestId": {
+            "type": "string",
+            "description": "原支付请求交易ID",
+            "maxLength": 64,
+            "pattern": "^[a-zA-Z0-9_\\-]+$"
+          },
+          "transactionRequestId": {
+            "type": "string",
+            "description": "本次退款的商户侧幂等请求号，同一 transactionRequestId 重复提交返回相同结果",
+            "maxLength": 64,
+            "pattern": "^[a-zA-Z0-9_\\-]+$"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/OpenAmountInfo",
+            "description": ""
+          },
+          "description": {
+            "type": "string",
+            "description": "退款描述（必填，透传至下游作为退款原因）",
+            "maxLength": 128
+          },
+          "attach": {
+            "type": "string",
+            "description": "附加数据（透传，原样返回）",
+            "maxLength": 256
+          },
+          "notifyUrl": {
+            "type": "string",
+            "description": "退款结果异步通知地址（服务端 Webhook）",
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "appId",
+          "merchantId",
+          "transactionRequestId",
+          "amount",
+          "description"
+        ]
+      },
+      "OpenExpireSessionRes": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "description": "回显请求中的会话 ID"
+          },
+          "transactionRequestId": {
+            "type": "string",
+            "description": "创建该会话时的交易请求 ID（transactionRequestId）"
+          },
+          "sessionStatus": {
+            "type": "string",
+            "description": "失效后的会话状态，固定为 EXPIRED"
+          },
+          "transactionId": {
+            "type": "string",
+            "description": "会话关联的 SUNBAY 交易流水号（若存在）"
+          },
+          "expiredAt": {
+            "type": "string",
+            "description": "会话关闭时间，格式：yyyy-MM-DDTHH:mm:ss+TIMEZONE（ISO 8601）"
+          }
+        }
+      },
+      "ResultOpenExpireSessionRes": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": ""
+          },
+          "msg": {
+            "type": "string",
+            "description": ""
+          },
+          "data": {
+            "$ref": "#/components/schemas/OpenExpireSessionRes",
+            "description": ""
+          },
+          "traceId": {
+            "type": "string",
+            "description": ""
+          }
+        }
+      },
+      "OpenExpireSessionReq": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "",
+            "maxLength": 32,
+            "pattern": "^[a-zA-Z0-9_\\-]+$"
+          },
+          "merchantId": {
+            "type": "string",
+            "description": "",
+            "maxLength": 32,
+            "pattern": "^[a-zA-Z0-9_\\-]+$"
+          },
+          "sessionId": {
+            "type": "string",
+            "description": "待失效的会话 ID（创建会话时返回）",
+            "maxLength": 64
+          },
+          "reason": {
+            "type": "string",
+            "description": "失效原因（可选，透传至下游作为关闭交易原因）",
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "appId",
+          "merchantId",
+          "sessionId"
+        ]
+      }
+    },
+    "responses": {},
+    "securitySchemes": {}
+  },
+  "servers": [],
+  "security": []
+}

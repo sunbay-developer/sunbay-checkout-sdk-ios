@@ -1,5 +1,9 @@
 # Sunbay Checkout iOS SDK — Security & PCI (self-contained)
 
+> **DEV ONLY: `Example/DevServer`.** This server holds merchant API credentials. In production, create the
+> session in YOUR backend; never put the API key in an app. Credentials live in a git-ignored
+> `.env.local` and must never reach an app or this repository.
+
 > Status: discussion draft (feeds a dedicated security review meeting)
 > Date: 2026-10-26
 > Scope: Native SDK security & PCI compliance — **unified, platform-agnostic**. iOS and Android
@@ -54,12 +58,12 @@
 2. **键盘/系统缓存防护**:PAN/CVV/有效期关 autocorrection + spellChecking + smart 系列;
    **CVV 不设 textContentType**(不进自动填充);PAN 可用系统扫卡/自动填充(Apple 官方安全通道)。
 3. **零持久化**:明文卡、钱包 token、customerAccessSecret、checkoutClientSecret、paymentMethodId 一律不写
-   UserDefaults/文件/Keychain/剪贴板;只内存持有,终态即清。
+   UserDefaults/文件/Keychain/剪贴板;只内存持有;仅在支付成功、dismiss、session 过期时清除(失败/unknown 不清,以便宿主可见的重试,ruling R7)。
 4. **零日志泄漏**:敏感字段绝不进 print/os_log/埋点/崩溃上报;CheckoutError 只带 code/message/traceId。
 5. **TLS**:所有后端/PSP 请求强制 HTTPS;SSL pinning 后期可选。
 6. **防截屏**(后期可选):**仅银行卡信息输入页**(iOS secure 层技巧 / Android FLAG_SECURE),不做全页
    防截屏(体验权衡,PCI 不强制)。
-7. **凭证纪律**:customerAccessSecret 短 TTL(建议 5–10 分钟且不晚于 session)+ 内存 + 终态即撤。
+7. **凭证纪律**:customerAccessSecret 短 TTL(建议 5–10 分钟且不晚于 session)+ 内存 + 成功/dismiss/过期即撤(失败/unknown 不清)。
 
 > 以上为 Native **统一安全要求**(iOS/Android 一致),各平台以等价 API 实现。要求相同,实现按平台。
 
@@ -80,9 +84,21 @@
 | 明文 PAN/有效期/CVV | 卡输入控件 + CardEncryptor 加密前瞬时 | 加密后立即清零 | 边界内聚:仅 CardEncryptor |
 | 卡密文 cardEncryptedData | 提交请求体 | 单次 | HTTPS 直传,不落盘不记日志 |
 | 钱包 token | PassKit 回调 → 提交 | 单次 | 不解密、不留存、不回传宿主 |
-| customerAccessSecret | CredentialStore(内存) | 短 TTL,终态即清 | 绝不进 URL/持久化/日志/崩溃/公开返回 |
+| customerAccessSecret | CredentialStore(内存) | 短 TTL,成功/dismiss/过期即清 | 绝不进 URL/持久化/日志/崩溃/公开返回 |
 | checkoutClientSecret | CredentialStore(内存) | session 内 | 同上 |
 | paymentMethodId | 列卡 → 提交 | 交易级、临时 | 绑 session/customer/固定金额,非长期凭证 |
+
+### 4.1 Network and device information
+
+- The SDK now talks directly to the Sunbay checkout (HPP) origin for the selected environment over TLS
+  (ATS-compliant HTTPS; the SDK needs no ATS exception). No request or response body, URL identifier,
+  secret or ciphertext is logged.
+- The SDK sends an optional `userDeviceInfo` with submit: `deviceType`, `deviceModel`, `deviceOs`,
+  `deviceOsVersion`, `deviceResolution`, `screenWidth`, `screenHeight`, `colorDepth`, `timeZoneOffset`
+  and `language`. It contains no advertising identifier, no vendor identifier and no user-identifying data.
+- `PrivacyInfo.xcprivacy` ships in the SDK resources: no tracking, no tracking domains. The collected-data
+  declaration (payment info and device info sent to the backend) is OPEN and must be decided before an
+  App Store release; the manifest content is not final.
 
 ---
 
@@ -97,7 +113,7 @@
 
 | 凭证 | 性质 | 泄漏后最坏情况 |
 |---|---|---|
-| customerAccessSecret | 短 TTL、内存、终态即撤 | 有效期内可列/用该用户的卡 |
+| customerAccessSecret | 短 TTL、内存、成功/dismiss/过期即撤 | 有效期内可列/用该用户的卡 |
 | paymentMethodId | 交易级、临时,绑 session+customer+**固定金额/币种** | **只能完成这一笔已固定金额、固定归属的订单**,不能换金额/订单/用户 |
 
 残余风险从"拿到凭证=任意金额盗刷"收窄为"拿到凭证=本笔固定订单可能被代付/重放",再由幂等键 +
