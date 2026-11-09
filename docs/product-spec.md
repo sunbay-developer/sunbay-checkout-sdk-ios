@@ -293,20 +293,22 @@ Controller → PaymentService.loadSession(sessionId)
 Controller → 校验 session 有效/未过期;可用方式 = 授权 ∩ 设备能力
 UI → 渲染新卡表单(CardField:关纠错/关学习/CVV 不自动填充)
 User → 输入卡号/有效期/CVV [可勾选"保存此卡"]
-UI → Controller.confirmNewCard(cardInput, save?, consent?)
+UI → Controller.confirmNewCard(cardInput, save?)
 Controller → CardEncryptor.encrypt(card, rsaPublicKey)   # 明文仅此刻在内存
           → 立即清空表单与中间变量
 Controller → 生成 attemptId(幂等键),单活跃锁
-Controller → PaymentService.submit({ cardEncryptedData, sessionId, attemptId,
-                                     savePaymentMethod?, consent? })
+Controller → PaymentService.submit({ paymentMethod:"CARD", cardEncryptedData, sessionId,
+                                     attemptId, storeCard?, checkoutClientSecret? })
           ├─ 成功响应 → map 四态(按 action 分发,见 §4.5)
           └─ 网络失败/超时 → 不重发, getResult(sessionId) 对账
 Controller → 结果去重(sessionId+attemptId/txnId,终态只回调一次)
 PaymentSheet → return Outcome
 ```
 
-**存卡无独立接口**:仅作为新卡支付的布尔选项 `savePaymentMethod=true` + `consent{version,
-futureUsage:'ON_SESSION'}`,支付成功后由后端保存(Phase 1 无 SetupIntent 式独立绑卡)。
+**Saving a card has no separate endpoint**: it is only a boolean option on the new-card payment,
+`storeCard=true` (sent only when the session has `supportStoreCard`); the backend stores the card after a
+successful payment. There is no consent object on the wire. Whether the backend requires a consent record is an
+open item (see `docs/real-api-integration-checklist.md`).
 
 ### 3.2 Apple Pay(L1 页内 或 L3 独立按钮)
 
@@ -317,7 +319,8 @@ UI → 仅 available 时显示 Apple Pay 按钮
 User → 点击 → PassKit PKPaymentAuthorizationController(系统 sheet)
 系统 → 授权 → PKPayment.token(加密钱包 token)
 Controller → 生成 attemptId
-Controller → PaymentService.submit({ walletToken, sessionId, attemptId })  # 字段待后端确认
+Controller → PaymentService.submit({ paymentMethod:"APPLE_PAY", walletToken, sessionId, attemptId,
+                                     checkoutClientSecret? })
           └─ 失败/超时 → getResult 对账
 Controller → 四态去重 → Outcome
 ```
@@ -335,10 +338,11 @@ Controller → CofService.listPaymentMethods(customerAccessSecret)  # 直连 PSP
 UI → 渲染已绑卡列表(选卡后点 Pay 即付,无 CVC / 无 3DS)
 User → 选卡 → 点 Pay → Controller.confirmSavedCard(paymentMethodId)
 Controller → 生成 attemptId
-Controller → PaymentService.submit({ paymentMethodId, sessionId, attemptId })
+Controller → PaymentService.submit({ paymentMethod:"TOKEN", savedCardId, customerAccessSecret,
+                                     sessionId, attemptId, checkoutClientSecret? })
           ├─ 后端风控放行 → 四态
           └─ 后端风控要求 step-up → TxnStatus='R' → ActionHandler(首期无 step-up UI → pending)
-Controller → 终态 → 清 CredentialStore → Outcome
+Controller → 成功 → 清 CredentialStore → Outcome(失败/unknown 保留凭证以便重试)
 ```
 
 - 列卡返回的 `paymentMethodId` 在后端已凭 `customerAccessSecret` 绑定本 session + Customer,
@@ -386,20 +390,21 @@ idle → loadingSession → ready → authorizing → submitting → 终态
 
 | 事件 | 行为 |
 |---|---|
-| 进后台 | 停止 UI 轮询;不丢失 attemptId |
-| 回前台 | 若 submitting/pending → 先 getResult 对账再决定 UI |
+| 进后台 | The SDK does not poll; nothing to stop. The in-flight attempt keeps its attemptId |
+| 回前台 | If an attempt was in flight, the SDK makes at most one `getResult` query, then reports `unknown`; the host reconciles via `retrievePayment` / webhook |
 | App 被杀→重启 | UI 会话丢失;宿主用 retrievePayment(sessionId) 恢复。**不持久化任何敏感数据**;仅非敏感 sessionId 由宿主自存 |
-| 轮询 | 有上限 + 退避;达上限 → unknown |
+| Polling | None. The SDK never client-polls: a non-terminal result is `pending`; a lost response gets one query, then `unknown` |
 
-### 4.4 轮询默认参数(可配置,后端 ready 后微调)
+### 4.4 No client polling
 
-初始 1s → 退避至最大 5s;总上限 ~90s 或 N 次;达上限 → unknown(非失败);进后台暂停,回前台先对账。
+The SDK has no polling parameters. A non-terminal submit result maps to `pending`; after a lost response the SDK
+queries once, then reports `unknown` (never `failed`). The host reconciles via `retrievePayment` / webhook.
 
 ### 4.5 ActionHandler:`requiresAction`(R) 按类型分发
 
 | action.type | 行为 | 首版 |
 |---|---|---|
-| `redirect`(第三方 APM 跳转,如支付宝 web;**非 3DS 专属**,场景少) | 用系统 `ASWebAuthenticationSession`(带 returnUrl 回跳)打开支付页 → pending → 轮询/回跳确认终态 | **实现** |
+| `redirect`(第三方 APM 跳转,如支付宝 web;**非 3DS 专属**,场景少) | 用系统 `ASWebAuthenticationSession`(带 returnUrl 回跳)打开支付页 → pending → the host confirms the final state via `retrievePayment` / webhook (no SDK polling) | **实现** |
 | `qrCode` / `showContent` | failed(UNSUPPORTED_CAPABILITY),不静默 | 不实现 |
 | 未知类型 | failed(UNSUPPORTED_CAPABILITY) | — |
 

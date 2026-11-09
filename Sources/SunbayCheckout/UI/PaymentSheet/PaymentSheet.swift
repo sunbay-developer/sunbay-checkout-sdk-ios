@@ -413,7 +413,7 @@
         func execute(_ action: UserAction) async -> AttemptResult {
             switch action {
             case let .confirmNewCard(input, save):
-                // When checked to save, attach consent (§7.3; COF save requires consent).
+                // `save` maps to `storeCard` in the controller (only when the session supports storing cards).
                 return .outcome(await controller.confirmNewCard(input, save: save))
             case let .confirmSavedCard(paymentMethodId):
                 return .outcome(await controller.confirmSavedCard(paymentMethodId: paymentMethodId))

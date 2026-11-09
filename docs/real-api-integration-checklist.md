@@ -111,8 +111,7 @@ Verified live against dev:
       converts to minor units by currency fraction digits. `expiresAt` is `yyyy-MM-dd HH:mm:ss` in UTC.
 - [x] Create session with `sessionType: "sdk"` + `customerId` returns `checkoutClientSecret` (`ccs_`) and
       `customerAccessSecret` (`cas_`).
-- [x] A 5xx on submit is ambiguous (one result query, then `unknown`); a non-network business error on
-      submit is a definite failure.
+- [x] A 5xx on submit is ambiguous (one result query, then `unknown`).
 
 Open verification items:
 
@@ -121,7 +120,17 @@ Open verification items:
 - [ ] Whether submit needs `sessionType`.
 - [ ] Backend renames session `storeCard` to `supportStoreCard`. The response still carries legacy
       `storeCard`; the SDK reads only `supportStoreCard` (absent means `true`). Re-check after deployment.
-- [ ] Unknown currency code: fraction digits fall back to a default; confirm the backend's currency table.
+- [ ] Unknown or malformed currency codes are now rejected (`INVALID_RESPONSE`); confirm the backend's
+      currency table only issues codes Foundation knows.
+- [ ] Release gate: confirm with the backend that no submit business code means in-doubt (processing,
+      acquirer timeout, upstream unavailable); any such code must be mapped to ambiguous. Until confirmed,
+      the SDK treats a non-network business error on submit as a definite failure.
+- [ ] `getResult` after a lost submit may return a previous attempt's terminal state for the same session
+      (confirm with the backend).
+- [ ] Release gate: the `PrivacyInfo.xcprivacy` collected-data declaration (payment info, device info sent
+      to the backend) is OPEN and must be decided before an App Store release (ruling R8).
+- [ ] Product/legal must confirm whether the backend requires a consent record when `storeCard` is true
+      (the UI checkbox still reads as consent).
 - [ ] Real new-card payment end to end (needs `SUNBAY_TEST_CARD_*` env for the opt-in tests).
 - [ ] Apple Pay real-device verification (capability, wallet sheet, token accepted by the backend).
 - [x] Dev origin accepts SDK requests (observed 2026-11-09, no WAF block).
