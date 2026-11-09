@@ -216,7 +216,7 @@ enum ContractDecoding {
     /// - Parameter fallbackSessionId: Session id used when the wire omits `sessionId`.
     /// - Returns: The decoded result envelope.
     /// - Throws: Throws `DecodingError` when the JSON structure does not match or `txnStatus` is invalid.
-    static func decodeResult(from data: Data, fallbackSessionId: String = "") throws -> ResultEnvelope {
+    static func decodeResult(from data: Data, fallbackSessionId: String) throws -> ResultEnvelope {
         try JSONDecoder().decode(ResultWire.self, from: data).toEnvelope(fallbackSessionId: fallbackSessionId)
     }
 

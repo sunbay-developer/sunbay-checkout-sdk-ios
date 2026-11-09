@@ -223,7 +223,7 @@ final class ContractCodableTests: XCTestCase {
 
     func test_decodeResult_unknownTxnStatus_throws() {
         let json = #"{"txnStatus":"Z","sessionId":"sess_1"}"#
-        XCTAssertThrowsError(try ContractDecoding.decodeResult(from: Data(json.utf8)))
+        XCTAssertThrowsError(try ContractDecoding.decodeResult(from: Data(json.utf8), fallbackSessionId: "s1"))
     }
 
     func test_decodeResult_redirectWithoutOptionalFields_mapsRedirect() throws {
@@ -231,7 +231,7 @@ final class ContractCodableTests: XCTestCase {
             {"txnStatus":"R","sessionId":"sess_1",
              "action":{"type":"redirect","redirectUrl":"https://x.test/p"}}
             """
-        let envelope = try ContractDecoding.decodeResult(from: Data(json.utf8))
+        let envelope = try ContractDecoding.decodeResult(from: Data(json.utf8), fallbackSessionId: "s1")
         XCTAssertEqual(envelope.action, .redirect(url: URL(string: "https://x.test/p")!))
     }
 
@@ -250,7 +250,7 @@ final class ContractCodableTests: XCTestCase {
             }
             """
 
-        let envelope = try ContractDecoding.decodeResult(from: Data(json.utf8))
+        let envelope = try ContractDecoding.decodeResult(from: Data(json.utf8), fallbackSessionId: "s1")
 
         XCTAssertEqual(
             envelope.snapshot,
@@ -277,7 +277,7 @@ final class ContractCodableTests: XCTestCase {
             }
             """
 
-        let envelope = try ContractDecoding.decodeResult(from: Data(json.utf8))
+        let envelope = try ContractDecoding.decodeResult(from: Data(json.utf8), fallbackSessionId: "s1")
 
         XCTAssertEqual(envelope.snapshot.status, .requiresAction)
         XCTAssertEqual(envelope.action, .qrCode)
