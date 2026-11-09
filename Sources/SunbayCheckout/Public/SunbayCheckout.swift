@@ -51,8 +51,9 @@ public final class SunbayCheckout {
     /// Creates the entry point from a configuration; talks to the real Sunbay backend for the
     /// configured environment (the default).
     ///
-    /// Saved cards are not yet served by the real backend in this phase, so the saved-card list
-    /// degrades to none. To run mock payments, use `init(configuration:paymentService:cofService:)`.
+    /// Saved cards are listed through the real `card/list` endpoint when the session allows COF and
+    /// a customer access secret is held; any listing failure degrades to no saved cards.
+    /// To run mock payments, use `init(configuration:paymentService:cofService:)`.
     ///
     /// - Parameter configuration: Host configuration.
     public convenience init(configuration: CheckoutConfiguration) {
@@ -73,7 +74,7 @@ public final class SunbayCheckout {
                         client: client,
                         credentials: credentials,
                         deviceInfo: { DeviceInfoCollector.collect(screen: metrics.current) }),
-                    UnconfiguredCofService()
+                    HTTPCofService(client: client)
                 )
             },
             screenMetrics: metrics)
@@ -143,7 +144,8 @@ public final class SunbayCheckout {
             paymentService: paymentService,
             cofService: cofService,
             credentials: credentials,
-            actionHandler: actionHandler
+            actionHandler: actionHandler,
+            cardOnFile: configuration.cardOnFile
         )
     }
 
@@ -157,18 +159,21 @@ public final class SunbayCheckout {
     ///   - cofService: The saved-card capability.
     ///   - credentials: In-memory credential holder.
     ///   - actionHandler: `requiresAction` dispatcher.
+    ///   - cardOnFile: Host card-on-file options.
     /// - Returns: The assembled controller.
     func makeController(
         paymentService: any PaymentService,
         cofService: any CofService,
         credentials: CredentialStore,
-        actionHandler: any ActionHandling
+        actionHandler: any ActionHandling,
+        cardOnFile: CardOnFileOptions = CardOnFileOptions()
     ) -> CheckoutController {
         CheckoutController(
             paymentService: paymentService,
             cofService: cofService,
             credentials: credentials,
-            actionHandler: actionHandler
+            actionHandler: actionHandler,
+            cardOnFile: cardOnFile
         )
     }
 }

@@ -47,13 +47,15 @@ final class CheckoutControllerTests: XCTestCase {
         payment: MockPaymentService,
         cof: MockCofService = MockCofService(),
         credentials: CredentialStore = CredentialStore(),
-        actionHandler: StubActionHandler = StubActionHandler()
+        actionHandler: StubActionHandler = StubActionHandler(),
+        cardOnFile: CardOnFileOptions = CardOnFileOptions()
     ) -> CheckoutController {
         CheckoutController(
             paymentService: payment,
             cofService: cof,
             credentials: credentials,
-            actionHandler: actionHandler
+            actionHandler: actionHandler,
+            cardOnFile: cardOnFile
         )
     }
 
@@ -88,7 +90,7 @@ final class CheckoutControllerTests: XCTestCase {
         payment.stubSubmitDelay(.milliseconds(300)) // keep the first confirm in flight
 
         let controller = makeController(payment: payment)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
         async let first = controller.confirmSavedCard(paymentMethodId: "pm_1")
         // Give the first confirm a moment to go in flight (holding the active lock).
@@ -117,7 +119,7 @@ final class CheckoutControllerTests: XCTestCase {
         payment.stubSubmit([terminalSucceeded()])
 
         let controller = makeController(payment: payment)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
         _ = await controller.confirmSavedCard(paymentMethodId: "pm_1")
 
@@ -137,7 +139,7 @@ final class CheckoutControllerTests: XCTestCase {
         payment.stubGetResult([terminalSucceeded(txnId: "txn_query")])
 
         let controller = makeController(payment: payment)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
         let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
 
@@ -157,7 +159,7 @@ final class CheckoutControllerTests: XCTestCase {
         payment.stubGetResultError(URLError(.notConnectedToInternet))
 
         let controller = makeController(payment: payment)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
         let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
 
@@ -181,7 +183,7 @@ final class CheckoutControllerTests: XCTestCase {
         payment.stubSubmit([PaymentSnapshot(sessionId: "sess_1", status: .initial, txnId: "txn_p")])
 
         let controller = makeController(payment: payment)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
         let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
 
@@ -203,7 +205,7 @@ final class CheckoutControllerTests: XCTestCase {
         payment.stubSubmit([PaymentSnapshot(sessionId: "sess_1", status: .initial, txnId: "txn_p")])
 
         let controller = makeController(payment: payment)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
         let first = await controller.confirmSavedCard(paymentMethodId: "pm_1")
         guard case .pending = first else { return XCTFail("precondition: expected pending, got \(first)") }
@@ -228,7 +230,7 @@ final class CheckoutControllerTests: XCTestCase {
         payment.stubSubmit([terminalSucceeded()])
 
         let controller = makeController(payment: payment)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
         _ = await controller.confirmNewCard(newCardInput(), save: false)
 
@@ -259,7 +261,7 @@ final class CheckoutControllerTests: XCTestCase {
 
         payment.stubSubmit([terminalSucceeded()])
         controller = makeController(payment: payment)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
         _ = await controller.confirmWallet(token: Data("{}".utf8))
         XCTAssertEqual(payment.lastSubmitRequest?.sessionType, "sdk")
     }
@@ -272,7 +274,7 @@ final class CheckoutControllerTests: XCTestCase {
         payment.stubSubmit([terminalSucceeded()])
 
         let controller = makeController(payment: payment)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
         _ = await controller.confirmSavedCard(paymentMethodId: "pm_42")
 
@@ -291,7 +293,7 @@ final class CheckoutControllerTests: XCTestCase {
         payment.stubSession(makeSession(cofEnabled: false, rsaPublicKey: try makeRSAPublicKey()))
         payment.stubSubmit([terminalSucceeded()])
         let controller = makeController(payment: payment)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
         _ = await controller.confirmNewCard(newCardInput(), save: true)
 
@@ -303,7 +305,7 @@ final class CheckoutControllerTests: XCTestCase {
         payment.stubSession(makeSession(cofEnabled: true, rsaPublicKey: try makeRSAPublicKey()))
         payment.stubSubmit([terminalSucceeded()])
         let controller = makeController(payment: payment)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
         _ = await controller.confirmNewCard(newCardInput(), save: true)
 
@@ -315,7 +317,7 @@ final class CheckoutControllerTests: XCTestCase {
         payment.stubSession(makeSession(cofEnabled: true, rsaPublicKey: try makeRSAPublicKey()))
         payment.stubSubmit([terminalSucceeded()])
         let controller = makeController(payment: payment)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
         _ = await controller.confirmNewCard(newCardInput(), save: false)
 
@@ -345,7 +347,7 @@ final class CheckoutControllerTests: XCTestCase {
         payment.stubSubmitError(
             CheckoutError(code: "PAYMENT_METHOD_NOT_ALLOWED", message: "x", category: .payment, traceId: nil))
         let controller = makeController(payment: payment)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
         let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
 
@@ -361,7 +363,7 @@ final class CheckoutControllerTests: XCTestCase {
         payment.stubSubmitError(URLError(.timedOut))
         payment.stubGetResultError(URLError(.timedOut))
         let controller = makeController(payment: payment)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
         let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
 
@@ -402,7 +404,7 @@ final class CheckoutControllerTests: XCTestCase {
         payment.stubSubmit([terminalSucceeded()])
 
         let controller = makeController(payment: payment)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
         _ = await controller.confirmWallet(token: Data([0x01, 0x02]))
 
@@ -549,7 +551,7 @@ final class CheckoutControllerTests: XCTestCase {
         let controller = makeController(payment: payment)
 
         do {
-            _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+            _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
             XCTFail("an expired session should throw")
         } catch let error as CheckoutError {
             XCTAssertEqual(error.category, .validation)
@@ -566,7 +568,7 @@ final class CheckoutControllerTests: XCTestCase {
         let action = StubActionHandler(result: .pending)
 
         let controller = makeController(payment: payment, actionHandler: action)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
         let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
 
@@ -588,7 +590,7 @@ final class CheckoutControllerTests: XCTestCase {
         let action = StubActionHandler(result: .failed(failErr))
 
         let controller = makeController(payment: payment, actionHandler: action)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
         let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
 
@@ -608,7 +610,7 @@ final class CheckoutControllerTests: XCTestCase {
         payment.stubGetResult([terminalSucceeded(txnId: "txn_recovered")])
 
         let controller = makeController(payment: payment)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
         let snapshot = try await controller.retrievePayment(sessionId: "sess_1")
 
@@ -631,5 +633,116 @@ final class CheckoutControllerTests: XCTestCase {
 
         let held = await credentials.current()
         XCTAssertNil(held, "dismiss should clear credentials")
+    }
+
+    // MARK: - Effective COF decision
+
+    private struct CofRig {
+        let controller: CheckoutController
+        let payment: MockPaymentService
+        let cof: MockCofService
+    }
+
+    private func makeCofRig(
+        sessionCof: Bool,
+        options: CardOnFileOptions = CardOnFileOptions(),
+        secret: String? = "cas_1"
+    ) async throws -> CofRig {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession(cofEnabled: sessionCof, rsaPublicKey: try makeRSAPublicKey()))
+        payment.stubSubmit([terminalSucceeded()])
+        let cof = MockCofService()
+        let controller = makeController(payment: payment, cof: cof, cardOnFile: options)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: secret)
+        return CofRig(controller: controller, payment: payment, cof: cof)
+    }
+
+    func test_effectiveCof_sessionAndOptionsAndSecret_enabled() async throws {
+        let rig = try await makeCofRig(sessionCof: true)
+        let enabled = await rig.controller.isCardOnFileEnabled
+        XCTAssertTrue(enabled)
+        _ = await rig.controller.listSavedCards()
+        XCTAssertEqual(rig.cof.listCallCount, 1)
+    }
+
+    func test_effectiveCof_sessionDisabled_blocksListAndStoreCard() async throws {
+        let rig = try await makeCofRig(sessionCof: false)
+        let enabled = await rig.controller.isCardOnFileEnabled
+        XCTAssertFalse(enabled)
+        _ = await rig.controller.listSavedCards()
+        XCTAssertEqual(rig.cof.listCallCount, 0)
+        _ = await rig.controller.confirmNewCard(newCardInput(), save: true)
+        XCTAssertNil(rig.payment.lastSubmitRequest?.storeCard)
+    }
+
+    func test_effectiveCof_hostDisabled_blocksListAndStoreCard() async throws {
+        let rig = try await makeCofRig(sessionCof: true, options: CardOnFileOptions(isEnabled: false))
+        let enabled = await rig.controller.isCardOnFileEnabled
+        XCTAssertFalse(enabled)
+        _ = await rig.controller.listSavedCards()
+        XCTAssertEqual(rig.cof.listCallCount, 0)
+        _ = await rig.controller.confirmNewCard(newCardInput(), save: true)
+        XCTAssertNil(rig.payment.lastSubmitRequest?.storeCard)
+    }
+
+    func test_effectiveCof_noSecret_disabled() async throws {
+        let rig = try await makeCofRig(sessionCof: true, secret: nil)
+        let enabled = await rig.controller.isCardOnFileEnabled
+        XCTAssertFalse(enabled)
+        _ = await rig.controller.listSavedCards()
+        XCTAssertEqual(rig.cof.listCallCount, 0)
+        _ = await rig.controller.confirmNewCard(newCardInput(), save: true)
+        XCTAssertNil(rig.payment.lastSubmitRequest?.storeCard)
+    }
+
+    func test_confirmSavedCard_hostDisabled_failsWithoutSubmit() async throws {
+        let rig = try await makeCofRig(sessionCof: true, options: CardOnFileOptions(isEnabled: false))
+        let outcome = await rig.controller.confirmSavedCard(paymentMethodId: "card_1")
+        guard case let .failed(_, error) = outcome else { return XCTFail("expected failed, got \(outcome)") }
+        XCTAssertEqual(error.code, "CARD_ON_FILE_UNAVAILABLE")
+        XCTAssertEqual(error.category, .validation)
+        XCTAssertEqual(rig.payment.submitCallCount, 0)
+    }
+
+    func test_restart_failure_resetsEffectiveCof() async throws {
+        let rig = try await makeCofRig(sessionCof: true)
+        let first = await rig.controller.isCardOnFileEnabled
+        XCTAssertTrue(first)
+        rig.payment.stubLoadError(NSError(domain: "t", code: 1))
+        do {
+            _ = try await rig.controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+            XCTFail("expected start to throw")
+        } catch {}
+        let second = await rig.controller.isCardOnFileEnabled
+        XCTAssertFalse(second)
+    }
+
+    func test_effectiveCof_enabled_storeCardSentWhenSaveTrue() async throws {
+        let rig = try await makeCofRig(sessionCof: true)
+        _ = await rig.controller.confirmNewCard(newCardInput(), save: true)
+        XCTAssertEqual(rig.payment.lastSubmitRequest?.storeCard, true)
+    }
+
+    func test_saveByDefault_requiresEffectiveCof() async throws {
+        let on = try await makeCofRig(sessionCof: true, options: CardOnFileOptions(saveByDefault: true))
+        let onValue = await on.controller.cardOnFileSaveByDefault
+        XCTAssertTrue(onValue)
+        let off = try await makeCofRig(sessionCof: false, options: CardOnFileOptions(saveByDefault: true))
+        let offValue = await off.controller.cardOnFileSaveByDefault
+        XCTAssertFalse(offValue)
+    }
+
+    func test_effectiveCof_falseBeforeStartAndAfterDismiss() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession())
+        let controller = makeController(payment: payment)
+        let before = await controller.isCardOnFileEnabled
+        XCTAssertFalse(before)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+        let during = await controller.isCardOnFileEnabled
+        XCTAssertTrue(during)
+        await controller.dismiss()
+        let after = await controller.isCardOnFileEnabled
+        XCTAssertFalse(after)
     }
 }

@@ -75,13 +75,13 @@ final class HTTPPaymentService: PaymentService, PaymentActionProviding, @uncheck
             userDeviceInfo: deviceInfo())
         let wire: ContractDecoding.ResultWire = try await client.post(
             .submitPayment, body: body, timeout: 30)
-        return try accept(wire)
+        return try accept(wire, fallbackSessionId: req.sessionId)
     }
 
     func getResult(sessionId: String) async throws -> PaymentSnapshot {
         let wire: ContractDecoding.ResultWire = try await client.post(
             .paymentResult(sessionId: sessionId), body: EmptyBody())
-        return try accept(wire)
+        return try accept(wire, fallbackSessionId: sessionId)
     }
 
     // MARK: - PaymentActionProviding
@@ -94,10 +94,10 @@ final class HTTPPaymentService: PaymentService, PaymentActionProviding, @uncheck
 
     // MARK: - Helpers
 
-    private func accept(_ wire: ContractDecoding.ResultWire) throws -> PaymentSnapshot {
+    private func accept(_ wire: ContractDecoding.ResultWire, fallbackSessionId: String) throws -> PaymentSnapshot {
         let envelope: ResultEnvelope
         do {
-            envelope = try wire.toEnvelope()
+            envelope = try wire.toEnvelope(fallbackSessionId: fallbackSessionId)
         } catch {
             throw Self.invalidResponse()
         }

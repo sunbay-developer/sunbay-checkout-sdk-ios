@@ -17,6 +17,11 @@ final class SunbayEndpointsTests: XCTestCase {
         XCTAssertEqual(url.absoluteString, "https://checkout.sunbay-uat.us/api/checkout/web/payment/result/s1")
     }
 
+    func testCardListOnDev() {
+        let url = SunbayEndpoints.url(for: .cardList, environment: .dev)
+        XCTAssertEqual(url.absoluteString, "https://checkout.sunbay-dev.com/api/checkout/web/card/list")
+    }
+
     func testNonASCIIIdIsPercentEncodedAsPureASCII() {
         let url = SunbayEndpoints.url(for: .loadSession(id: "é中"), environment: .dev)
         XCTAssertTrue(url.absoluteString.allSatisfy { $0.isASCII })

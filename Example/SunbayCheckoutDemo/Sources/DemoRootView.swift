@@ -237,8 +237,10 @@ import SunbayCheckoutTestSupport
         private var cofSection: some View {
             Section {
                 Toggle("COF enabled (saved cards)", isOn: $settings.cofEnabled)
+                Toggle("Card on file enabled", isOn: $settings.cardOnFileEnabled)
+                Toggle("Pre-tick save card", isOn: $settings.preTickSaveCard)
             } footer: {
-                Text("When on and a customerAccessSecret is passed, the sheet lists the mock saved cards for one-tap pay.")
+                Text("Mock session COF and the host switch must both be on, and a customerAccessSecret passed, for the sheet to list saved cards. \"Pre-tick save card\" only sets the checkbox's initial state.")
             }
         }
 
@@ -344,7 +346,9 @@ import SunbayCheckoutTestSupport
                 environment: settings.environment.configurationValue,
                 applePayMerchantId: Self.merchantId,
                 appearance: makeAppearance(),
-                locale: settings.locale.bcp47
+                locale: settings.locale.bcp47,
+                cardOnFile: CardOnFileOptions(isEnabled: settings.cardOnFileEnabled,
+                                              saveByDefault: settings.preTickSaveCard)
             )
             if isRealMode {
                 // Real backend adapters (default services); no scripted doubles.

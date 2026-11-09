@@ -49,7 +49,7 @@ final class ServiceInjectionTests: XCTestCase {
             actionHandler: StubActionHandler()
         )
 
-        _ = try await controller.start(sessionId: "sess_inject", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_inject", customerAccessSecret: "cas_1")
         let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
 
         guard case .succeeded(let txnId) = outcome else {

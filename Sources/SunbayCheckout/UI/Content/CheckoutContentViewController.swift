@@ -101,8 +101,12 @@
         private var expressView: ExpressCheckoutView?
         private var newCardEntryRow: UIView?
 
-        /// The "Save this card" (COF consent) checkbox, shown only when COF is enabled on the session.
+        /// The "Save this card" (COF consent) checkbox, shown only when the effective COF decision is on.
         private var saveCardSwitch: CheckboxControl?
+        /// The effective card-on-file decision (session allows it, host option on, secret held).
+        private let cardOnFileEnabled: Bool
+        /// Initial state of the save-card checkbox; the user can still change it before paying.
+        private let saveCardByDefault: Bool
 
         private var billingAddressView: UIView?
         private var shippingAddressView: UIView?
@@ -166,6 +170,8 @@
         ///     PassKit authorization). nil keeps the row token-staging only (tests).
         ///   - walletMerchantId: The resolved Apple Pay merchant id; the row is hidden when a
         ///     `walletAuthorizer` is given but no merchant id is configured.
+        ///   - cardOnFileEnabled: The effective COF decision; shows the save-card row iff true.
+        ///   - saveCardByDefault: Whether the save-card checkbox starts ticked.
         ///   - cardBinService: BIN recognition (internal; the empty default keeps local prefix matching).
         ///   - cardRulesService: Remote rules refresh (internal; the empty default keeps the cached /
         ///     bundled rules).
@@ -181,9 +187,13 @@
             homeTitle: String? = nil,
             walletAuthorizer: (any WalletAuthorizing)? = nil,
             walletMerchantId: String? = nil,
+            cardOnFileEnabled: Bool = false,
+            saveCardByDefault: Bool = false,
             cardBinService: any CardBinService = EmptyCardBinService(),
             cardRulesService: any CardRulesService = EmptyCardRulesService()
         ) {
+            self.cardOnFileEnabled = cardOnFileEnabled
+            self.saveCardByDefault = saveCardByDefault
             self.cardBinService = cardBinService
             self.cardRulesService = cardRulesService
             self.walletAuthorizer = walletAuthorizer
@@ -267,6 +277,15 @@
 
         #if DEBUG
             // MARK: Layout readouts (internal, tests only)
+
+            /// Test readout: whether the save-card row exists on the new-card page.
+            var isSaveCardRowVisibleForTest: Bool { saveCardSwitch != nil }
+
+            /// Test readout: the save-card checkbox state (false when the row is absent).
+            var isSaveCardOnForTest: Bool { saveCardSwitch?.isOn ?? false }
+
+            /// Test seam: set the save-card checkbox as if the user toggled it.
+            func setSaveCardForTest(_ on: Bool) { saveCardSwitch?.isOn = on }
 
             /// Test readout: the fixed header container view.
             var headerContainerForTest: UIView { headerContainer }
@@ -814,7 +833,7 @@
             // A little more breathing room between the top divider and the first section title.
             newCardStack.setCustomSpacing(20, after: topDivider)
 
-            if session.cofEnabled {
+            if cardOnFileEnabled {
                 let saveRow = makeSaveCardRow()
                 newCardStack.addArrangedSubview(saveRow)
                 // Pull "Save this card" up close to the card form, and push the Address area below it
@@ -1058,6 +1077,7 @@
 
         private func makeSaveCardRow() -> UIView {
             let checkbox = CheckboxControl(appearance: appearance)
+            checkbox.isOn = saveCardByDefault
             saveCardSwitch = checkbox
 
             let label = UILabel()

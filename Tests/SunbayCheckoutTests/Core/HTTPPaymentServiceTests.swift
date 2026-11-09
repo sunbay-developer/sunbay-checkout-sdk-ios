@@ -172,6 +172,33 @@ final class HTTPPaymentServiceTests: XCTestCase {
         XCTAssertEqual(snapshot.status, .succeeded)
     }
 
+    func testSubmitWithoutWireSessionIdFallsBackToRequestSession() async throws {
+        stub([#"{"code":"0","msg":"ok","data":{"txnId":"t5","txnStatus":"S"}}"#])
+        let service = await makeService()
+        let snapshot = try await service.submit(SubmitRequest(
+            sessionId: "sess_req", paymentMethod: "CARD", attemptId: UUID(),
+            cardEncryptedData: "CIPHER", sessionType: "sdk"))
+        XCTAssertEqual(snapshot.status, .succeeded)
+        XCTAssertEqual(snapshot.sessionId, "sess_req")
+    }
+
+    func testGetResultWithoutWireSessionIdFallsBackToQueriedSession() async throws {
+        stub([#"{"code":"0","msg":"Success","data":{"txnId":"t9","txnStatus":"S","totalAmount":"1.13","currency":"USD","failureReason":"success"}}"#])
+        let service = await makeService()
+        let snapshot = try await service.getResult(sessionId: "s1")
+        XCTAssertEqual(snapshot.status, .succeeded)
+        XCTAssertEqual(snapshot.txnId, "t9")
+        XCTAssertEqual(snapshot.sessionId, "s1")
+    }
+
+    func testGetResultFailedWithoutWireSessionId() async throws {
+        stub([#"{"code":"0","msg":"Success","data":{"txnId":"t9","txnStatus":"F","totalAmount":"1.13","currency":"USD","failureReason":"No available channel"}}"#])
+        let service = await makeService()
+        let snapshot = try await service.getResult(sessionId: "s1")
+        XCTAssertEqual(snapshot.status, .failed)
+        XCTAssertEqual(snapshot.sessionId, "s1")
+    }
+
     func testUnknownTxnStatusIsNetworkInvalidResponse() async {
         stub([result("Z")])
         let service = await makeService()

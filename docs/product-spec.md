@@ -83,7 +83,25 @@ public struct CheckoutConfiguration {
     public let applePayMerchantId: String?
     public let appearance: Appearance?       // theme / colors / dark-light; CONSUMED by the UI layer
     public let locale: String?
+    /// Card-on-file options (saved cards + "save this card"). Defaults to `CardOnFileOptions()`.
+    public let cardOnFile: CardOnFileOptions
+
+    public init(environment: Environment = .production, applePayMerchantId: String? = nil,
+                appearance: Appearance? = nil, locale: String? = nil, paymentSheetTitle: String? = nil,
+                cardOnFile: CardOnFileOptions = CardOnFileOptions())
 }
+
+public struct CardOnFileOptions: Sendable, Equatable {
+    /// Host switch. Defaults to `true`. Can only turn COF off, never on (see the rule below).
+    public var isEnabled: Bool
+    /// Initial state of the "save card" checkbox. Defaults to `false`. The user's checkbox at submit
+    /// time, not this value, decides whether `storeCard: true` is sent.
+    public var saveByDefault: Bool
+
+    public init(isEnabled: Bool = true, saveByDefault: Bool = false)
+}
+
+// Note: saving a card currently also needs a billing address (`payerBillingInfo`, phase 3).
 
 public final class SunbayCheckout {
     /// Builds the default HTTP services for the configured environment (the real backend).
@@ -97,6 +115,12 @@ public final class SunbayCheckout {
 PaymentSheet(checkout:sessionId:customerAccessSecret:checkoutClientSecret:)
 ApplePayButton(checkout:sessionId:...checkoutClientSecret:)
 ```
+
+**Effective COF rule.** COF is active only when all three hold: the session allows it
+(`supportStoreCard`, absent means `true`), `configuration.cardOnFile.isEnabled` is `true`, and the host
+passed a non-nil `customerAccessSecret`. The host can never enable COF that the session disabled. When
+COF is not effective: no `card/list` request, no saved-card UI, no save checkbox, and `storeCard` is never
+sent.
 
 #### `Appearance`(Stripe 风格嵌套;UI 层已消费)
 
@@ -563,6 +587,7 @@ SubmitRequest(
 )
 ```
 
+- `storeCard: true` requires `payerBillingInfo` in the body; without it the backend rejects the submit with `C01`.
 - The body also carries an optional `userDeviceInfo` (see `security-and-pci.md` §4.1).
 - A 5xx or lost response is ambiguous: at most one result query, then `unknown`. A non-network business
   error is a definite failure. The SDK never blindly resubmits.
@@ -577,19 +602,32 @@ SubmitRequest(
 action goes to `ActionHandler` (§4.5), `R` with an unknown action or an undetermined result is
 pending/unknown, resolved by the host via `retrievePayment` / webhook.
 
-### 7.5 列卡(COF)
+### 7.5 List saved cards (COF)
 
-现有设计(web 尚为新增接口,路径占位):`GET .../customer/payment-methods`,
-`Authorization: Bearer <customerAccessSecret>`,`X-Checkout-Session: <sessionId>`。直连 PSP,商户后端
-不经手卡数据。返回:
+Verified live against dev (2026-11-09). `POST /api/checkout/web/card/list`, JSON body:
 
 ```jsonc
-[ { "id": "pm_123", "type": "card", "brand": "visa",
-    "last4": "4242", "expMonth": 12, "expYear": 2029, "allowRedisplay": true } ]
+{ "sessionId": "<sessionId>", "customerAccessSecret": "cas_..." }
 ```
 
-- `id`(= paymentMethodId)是**对外引用/临时 token,非真 token**,且已绑定本 session + Customer。
-- 作用域**从凭证推导**,不接受客户端 customerId 参数。未授权返回 **403**,不得用空列表掩盖。
+The standard envelope applies; on success `data` is:
+
+```jsonc
+{ "cards": [ { "savedCardId": "sc_...", "maskedCardNumber": "**** **** **** 4242",
+               "cardBrand": "visa", "expiryMonth": "12", "expiryYear": "29",
+               "cardholderName": "..." } ] }
+```
+
+Field mapping to `SavedCard`: `savedCardId` -> `id` (the value passed to `confirmSavedCard(paymentMethodId:)`),
+`cardBrand` -> `brand` (lower-case), last four digits of `maskedCardNumber` -> `last4`, `expiryMonth` ->
+`expMonth`, `expiryYear` (two digits expanded to four) -> `expYear`. `cardholderName` is not displayed.
+An item with an invalid required field is skipped. `data: {}` and `cards: []` both mean no saved cards.
+
+Errors (HTTP 200 with a business code): a wrong secret returns `S06` (Unauthorized); a missing secret
+returns `C16`. The scope is derived from the credentials; the client never sends a customer id.
+
+Listing never blocks payment: any failure (network, `S06`, decoding) degrades to "no saved cards" and is
+never surfaced as a payment error. The secret never appears in logs or errors.
 
 ### 7.6 COF 凭证与授权模型(完整内联)
 

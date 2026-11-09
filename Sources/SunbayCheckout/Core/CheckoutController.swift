@@ -37,6 +37,16 @@ enum CheckoutErrors {
         )
     }
 
+    /// Card-on-file is not effective (session / host option / credential), so saved-card payment is refused.
+    static func cardOnFileUnavailable() -> CheckoutError {
+        CheckoutError(
+            code: "CARD_ON_FILE_UNAVAILABLE",
+            message: "Saved-card payment is unavailable.",
+            category: .validation,
+            traceId: nil
+        )
+    }
+
     /// Network unavailable / submit or query failed.
     static func networkUnavailable() -> CheckoutError {
         CheckoutError(
@@ -100,6 +110,10 @@ actor CheckoutController {
     private let cofService: any CofService
     private let credentials: CredentialStore
     private let actionHandler: any ActionHandling
+    private let cardOnFile: CardOnFileOptions
+
+    /// Effective card-on-file decision, computed once at `start` and reset on `dismiss`.
+    private var cofEffective = false
 
     /// The currently loaded session; written after `start` succeeds.
     private var session: CheckoutSession?
@@ -117,17 +131,29 @@ actor CheckoutController {
     ///   - cofService: The saved-card listing capability.
     ///   - credentials: The in-memory credential holder (cleared on success / dismiss / expiry).
     ///   - actionHandler: The `requiresAction` dispatcher.
+    ///   - cardOnFile: Host card-on-file options (default: enabled, not saved by default).
     init(
         paymentService: any PaymentService,
         cofService: any CofService,
         credentials: CredentialStore,
-        actionHandler: any ActionHandling
+        actionHandler: any ActionHandling,
+        cardOnFile: CardOnFileOptions = CardOnFileOptions()
     ) {
         self.paymentService = paymentService
         self.cofService = cofService
         self.credentials = credentials
         self.actionHandler = actionHandler
+        self.cardOnFile = cardOnFile
     }
+
+    // MARK: - Effective card-on-file decision
+
+    /// Whether card-on-file is effective: the session allows it, the host option is on, and a
+    /// `customerAccessSecret` is held. Evaluated at `start`; `false` before `start` and after `dismiss()`.
+    var isCardOnFileEnabled: Bool { cofEffective }
+
+    /// Whether the save-card checkbox starts ticked (`false` unless COF is effective).
+    var cardOnFileSaveByDefault: Bool { cofEffective && cardOnFile.saveByDefault }
 
     // MARK: - Lifecycle
 
@@ -146,6 +172,9 @@ actor CheckoutController {
         customerAccessSecret: String?,
         checkoutClientSecret: String? = nil
     ) async throws -> CheckoutSession {
+        // Reset the previous decision first so a failed / expired re-start never keeps stale COF state.
+        session = nil
+        cofEffective = false
         if let secret = customerAccessSecret {
             await credentials.hold(customerAccessSecret: secret)
         }
@@ -163,6 +192,8 @@ actor CheckoutController {
         }
 
         session = loaded
+        let hasSecret = await credentials.current() != nil
+        cofEffective = loaded.cofEnabled && cardOnFile.isEnabled && hasSecret
         return loaded
     }
 
@@ -173,7 +204,7 @@ actor CheckoutController {
     ///
     /// - Returns: The list of saved cards, or empty when unavailable / on failure.
     func listSavedCards() async -> [SavedCard] {
-        guard let session, session.cofEnabled else {
+        guard let session, cofEffective else {
             return []
         }
         guard let secret = await credentials.current() else {
@@ -221,7 +252,7 @@ actor CheckoutController {
             paymentMethod: "CARD",
             attemptId: attemptId,
             cardEncryptedData: encrypted,
-            storeCard: (save && session.cofEnabled) ? true : nil,
+            storeCard: (save && cofEffective) ? true : nil,
             checkoutClientSecret: await credentials.currentCheckoutClientSecret(),
             sessionType: session.sessionType
         )
@@ -232,6 +263,9 @@ actor CheckoutController {
     func confirmSavedCard(paymentMethodId: String) async -> CheckoutOutcome {
         guard let session else {
             return .failed(txnId: nil, error: CheckoutErrors.sessionExpired())
+        }
+        guard cofEffective else {
+            return .failed(txnId: nil, error: CheckoutErrors.cardOnFileUnavailable())
         }
         guard beginAttempt() else {
             return .failed(txnId: nil, error: CheckoutErrors.alreadyPresenting())
@@ -284,6 +318,7 @@ actor CheckoutController {
     func dismiss() async {
         isConfirming = false
         session = nil
+        cofEffective = false
         await credentials.clear()
     }
 

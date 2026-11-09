@@ -56,6 +56,54 @@
             return (controller, payment, cof)
         }
 
+        // MARK: - Effective COF decision
+
+        private func runOnce(
+            options: CardOnFileOptions, secret: String?
+        ) async -> (MockCofService, PaymentSheet.CheckoutContext?) {
+            let sessionId = "sess_cof_decision"
+            let payment = MockPaymentService()
+            payment.stubSession(makeSession(id: sessionId, cofEnabled: true))
+            let cof = MockCofService()
+            cof.stubCards([SavedCard(id: "pm_1", brand: "visa", last4: "4242", expMonth: 12, expYear: 2030)])
+            let controller = CheckoutController(
+                paymentService: payment, cofService: cof, credentials: CredentialStore(),
+                actionHandler: StubActionHandler(result: .pending), cardOnFile: options)
+            let sheet = PaymentSheet(controller: controller, sessionId: sessionId, customerAccessSecret: secret)
+            let captured = ContextBox()
+            _ = await sheet.runAttempt { context in
+                captured.value = context
+                return .cancel
+            }
+            return (cof, captured.value)
+        }
+
+        private final class ContextBox: @unchecked Sendable {
+            var value: PaymentSheet.CheckoutContext?
+        }
+
+        func test_cardOnFileDisabled_listsNoCards_andContextReflectsIt() async {
+            let (cof, context) = await runOnce(options: CardOnFileOptions(isEnabled: false), secret: "secret_abc")
+            XCTAssertEqual(cof.listCallCount, 0)
+            XCTAssertEqual(context?.cardOnFileEnabled, false)
+            XCTAssertEqual(context?.savedCards.count, 0)
+        }
+
+        func test_defaultOptionsWithSecret_listsOnce_andContextCarriesDecision() async {
+            let (cof, context) = await runOnce(
+                options: CardOnFileOptions(saveByDefault: true), secret: "secret_abc")
+            XCTAssertEqual(cof.listCallCount, 1)
+            XCTAssertEqual(context?.cardOnFileEnabled, true)
+            XCTAssertEqual(context?.saveCardByDefault, true)
+            XCTAssertEqual(context?.savedCards.count, 1)
+        }
+
+        func test_noSecret_listsNothing_andCofIsOff() async {
+            let (cof, context) = await runOnce(options: CardOnFileOptions(), secret: nil)
+            XCTAssertEqual(cof.listCallCount, 0)
+            XCTAssertEqual(context?.cardOnFileEnabled, false)
+        }
+
         // MARK: - Retry loop
 
         /// A failed first confirm followed by a successful second confirm: two `runCheckout` attempts
