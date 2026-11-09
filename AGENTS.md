@@ -85,8 +85,10 @@ The tree also now includes:
   fixtures) shared by the e2e target and the Example app; depends on no internal types.
 - `Example/SunbayCheckoutDemo/` — a Tuist-generated Xcode app (`Project.swift` + `Sources/` checked in;
   the generated `*.xcodeproj`/`*.xcworkspace`/`Derived/` are git-ignored). This is the SDK-consuming
-  real-device/demo surface and the UI localization gate. `Example/ApplePayProbe/` remains the standalone
-  PassKit probe.
+  real-device/demo surface and the UI localization gate. It runs against the real backend only, in the
+  `.dev` environment. `Example/ApplePayProbe/` remains the standalone PassKit probe.
+- The merchant-style showcase app lives in the sibling `showcase-ios` repository (it creates real dev
+  sessions); it is no longer part of this repo.
 - `Tests/SunbayCheckoutE2ETests/` — a protocol-driven e2e target that runs on the host via `swift test`
   (no UIKit), alongside `Tests/SunbayCheckoutTests/`.
 
