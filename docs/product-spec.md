@@ -346,7 +346,7 @@ Controller → 终态 → 清 CredentialStore → Outcome
 - `paymentMethodId` 是**临时、交易级**引用(绑 session/customer/固定金额),非长期可复用扣款凭证。
 
 **三条路径共性**:单活跃会话、一次点击一个 attemptId、提交失败先查询不盲目重发、终态去重只回调一次、
-终态即清凭证。
+成功/dismiss/过期才清凭证(失败/unknown 保留,供宿主可见的重试,ruling R7)。
 
 ---
 
@@ -378,7 +378,7 @@ idle → loadingSession → ready → authorizing → submitting → 终态
 | 一次点击一个 attemptId | 同一次点击只生成一个幂等键;重复点击被单活跃锁挡 |
 | 提交失败先查询 | submit 失败/超时 → 绝不盲目重发 → getResult 对账 |
 | 结果去重 | 以 sessionId + attemptId/txnId 识别,终态只回调一次 |
-| 终态即清凭证 | 终态/UI 关闭/session 过期 → 清 CredentialStore |
+| 成功/关闭/过期清凭证 | 支付成功/UI 关闭/session 过期 → 清 CredentialStore;失败/unknown 保留以便重试 |
 
 载体:`actor CheckoutController`,Swift actor 天然串行化,无需手写锁。
 

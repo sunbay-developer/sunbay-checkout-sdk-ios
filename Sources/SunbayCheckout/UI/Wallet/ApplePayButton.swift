@@ -97,6 +97,7 @@
         #endif
 
         /// Client secret issued by the host backend with the session (optional); memory only, never logged.
+        /// Kept across failed / unknown attempts so a second tap still carries it; cleared on success / dismiss / expiry.
         private let checkoutClientSecret: String?
 
         // MARK: - Public initialization (assembles the real dependencies)

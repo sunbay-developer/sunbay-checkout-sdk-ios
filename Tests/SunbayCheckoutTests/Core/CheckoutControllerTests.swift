@@ -419,7 +419,7 @@ final class CheckoutControllerTests: XCTestCase {
         XCTAssertEqual(cof.listCallCount, 1)
     }
 
-    // MARK: - Terminal state clears credentials
+    // MARK: - Success clears credentials
 
     func test_terminalState_clearsCredentials() async throws {
         let payment = MockPaymentService()
@@ -437,7 +437,81 @@ final class CheckoutControllerTests: XCTestCase {
         _ = await controller.confirmSavedCard(paymentMethodId: "pm_1")
 
         let held = await credentials.current()
-        XCTAssertNil(held, "credentials should be cleared after a terminal state")
+        XCTAssertNil(held, "credentials should be cleared after success")
+    }
+
+    // MARK: - Secret lifetime (ruling R7)
+
+    func test_definiteFailure_keepsSecrets_secondWalletSubmitStillCarriesClientSecret() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession())
+        payment.stubSubmitError(
+            CheckoutError(code: "CARD_DECLINED", message: "x", category: .payment, traceId: nil))
+        let controller = makeController(payment: payment)
+        _ = try await controller.start(
+            sessionId: "sess_1", customerAccessSecret: "cas_1", checkoutClientSecret: "ccs_1")
+
+        let first = await controller.confirmWallet(token: Data([1]))
+        guard case .failed = first else { return XCTFail("expected failed, got \(first)") }
+        _ = await controller.confirmWallet(token: Data([2]))
+
+        let req = try XCTUnwrap(payment.lastSubmitRequest)
+        XCTAssertEqual(req.checkoutClientSecret, "ccs_1")
+    }
+
+    func test_unknown_keepsSecrets_secondWalletSubmitStillCarriesClientSecret() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession())
+        payment.stubSubmitError(URLError(.timedOut))
+        payment.stubGetResultError(URLError(.timedOut))
+        let controller = makeController(payment: payment)
+        _ = try await controller.start(
+            sessionId: "sess_1", customerAccessSecret: "cas_1", checkoutClientSecret: "ccs_1")
+
+        let first = await controller.confirmWallet(token: Data([1]))
+        guard case .unknown = first else { return XCTFail("expected unknown, got \(first)") }
+        _ = await controller.confirmWallet(token: Data([2]))
+
+        let req = try XCTUnwrap(payment.lastSubmitRequest)
+        XCTAssertEqual(req.checkoutClientSecret, "ccs_1")
+    }
+
+    func test_succeeded_emptiesStore() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession())
+        payment.stubSubmit([terminalSucceeded()])
+        let credentials = CredentialStore()
+        let controller = makeController(payment: payment, credentials: credentials)
+        _ = try await controller.start(
+            sessionId: "sess_1", customerAccessSecret: "cas_1", checkoutClientSecret: "ccs_1")
+
+        _ = await controller.confirmWallet(token: Data([1]))
+
+        let cas = await credentials.current()
+        let ccs = await credentials.currentCheckoutClientSecret()
+        XCTAssertNil(cas)
+        XCTAssertNil(ccs)
+    }
+
+    func test_dismiss_emptiesStore_afterFailure() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession())
+        payment.stubSubmitError(
+            CheckoutError(code: "CARD_DECLINED", message: "x", category: .payment, traceId: nil))
+        let credentials = CredentialStore()
+        let controller = makeController(payment: payment, credentials: credentials)
+        _ = try await controller.start(
+            sessionId: "sess_1", customerAccessSecret: "cas_1", checkoutClientSecret: "ccs_1")
+        _ = await controller.confirmWallet(token: Data([1]))
+        let keptCcs = await credentials.currentCheckoutClientSecret()
+        XCTAssertEqual(keptCcs, "ccs_1")
+
+        await controller.dismiss()
+
+        let cas = await credentials.current()
+        let ccs = await credentials.currentCheckoutClientSecret()
+        XCTAssertNil(cas)
+        XCTAssertNil(ccs)
     }
 
     // MARK: - start: an expired session should throw

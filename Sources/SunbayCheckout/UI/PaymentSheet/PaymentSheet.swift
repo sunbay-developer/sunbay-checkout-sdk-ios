@@ -42,8 +42,8 @@
     /// ## Security (§5)
     /// Card plaintext is only encrypted via `CardInput → CardEncryptor` (inside
     /// `CheckoutController.confirmNewCard`), and is never logged/persisted/returned;
-    /// `customerAccessSecret` is held in memory only (`CredentialStore`, cleared at the terminal
-    /// state), and does not enter `CheckoutOutcome`, logs, or any public return value.
+    /// `customerAccessSecret` is held in memory only (`CredentialStore`, cleared on success / dismiss /
+    /// session expiry, not on failure), and does not enter `CheckoutOutcome`, logs, or any public return value.
     ///
     /// iOS-only: the whole thing is `#if canImport(UIKit)`; it does not compile under the macOS host (Core stays independent of UIKit).
     public final class PaymentSheet {

@@ -3,7 +3,7 @@
 /// Security constraints (see `docs/security-and-pci.md` §3 item 3/7, §4):
 /// - **In-memory only**: a single optional `String` property; never written to UserDefaults / files / Keychain / clipboard.
 /// - **Zero log leakage**: never print / os_log / log analytics / crash-report any secret value.
-/// - **Cleared on terminal state**: `clear()` is called by the upper layer when a transaction reaches a terminal state or on dismiss; idempotent.
+/// - **Cleared on success / dismiss / expiry**: `clear()` is called by the controller on `.succeeded`, `dismiss()` and session expiry; NOT on `.failed` / `.unknown` / pending, so a host-visible retry still carries the secrets (ruling R7); idempotent.
 ///
 /// `actor` isolation guarantees mutual exclusion under concurrent access; internal and not exposed (non-`public`).
 actor CredentialStore {
