@@ -34,6 +34,9 @@ let project = Project(
                     "CFBundleDisplayName": "SBC Showcase",
                     "CFBundleDevelopmentRegion": "en",
                     "CFBundleLocalizations": ["en", "zh-Hans"],
+                    // Export compliance: declared as not using non-exempt encryption so TestFlight
+                    // builds skip the per-build questionnaire. Decision owned by the app owner.
+                    "ITSAppUsesNonExemptEncryption": false,
                     "ShowcaseMerchantId": .string(merchantId),
                     // Enables the SDK's on-device "Scan card" button (it auto-hides without this key).
                     "NSCameraUsageDescription": "Used to scan your card number on-device. Images are never stored or sent.",
