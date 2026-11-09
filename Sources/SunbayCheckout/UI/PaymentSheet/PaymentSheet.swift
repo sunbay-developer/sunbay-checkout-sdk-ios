@@ -370,7 +370,8 @@
             do {
                 session = try await controller.start(
                     sessionId: sessionId,
-                    customerAccessSecret: customerAccessSecret
+                    customerAccessSecret: customerAccessSecret,
+                    checkoutClientSecret: nil  // wired to the public parameter in a later task
                 )
             } catch let error as CheckoutError {
                 return .startFailed(.failed(txnId: nil, error: error))
@@ -398,8 +399,7 @@
             switch action {
             case let .confirmNewCard(input, save):
                 // When checked to save, attach consent (§7.3; COF save requires consent).
-                let consent = save ? Consent(version: "1.0") : nil
-                return .outcome(await controller.confirmNewCard(input, save: save, consent: consent))
+                return .outcome(await controller.confirmNewCard(input, save: save))
             case let .confirmSavedCard(paymentMethodId):
                 return .outcome(await controller.confirmSavedCard(paymentMethodId: paymentMethodId))
             case let .confirmWallet(token):

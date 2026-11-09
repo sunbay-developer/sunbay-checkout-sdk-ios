@@ -27,4 +27,17 @@ final class CredentialStoreTests: XCTestCase {
         let current = await store.current()
         XCTAssertNil(current)
     }
+
+    func test_clear_emptiesBothSecrets() async {
+        let store = CredentialStore()
+        await store.hold(customerAccessSecret: "cas")
+        await store.hold(checkoutClientSecret: "ccs")
+        let heldClient = await store.currentCheckoutClientSecret()
+        XCTAssertEqual(heldClient, "ccs")
+        await store.clear()
+        let a = await store.current()
+        let b = await store.currentCheckoutClientSecret()
+        XCTAssertNil(a)
+        XCTAssertNil(b)
+    }
 }

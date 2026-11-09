@@ -138,11 +138,19 @@ actor CheckoutController {
     /// - Parameters:
     ///   - sessionId: Session identifier.
     ///   - customerAccessSecret: COF credential (optional); held in memory only, cleared on terminal state / close.
+    ///   - checkoutClientSecret: Session client secret (optional); held in memory only, cleared with the other credential.
     /// - Returns: The loaded session.
     /// - Throws: Load failures propagate; if the session has expired, throws `CheckoutError` (`.validation`).
-    func start(sessionId: String, customerAccessSecret: String?) async throws -> CheckoutSession {
+    func start(
+        sessionId: String,
+        customerAccessSecret: String?,
+        checkoutClientSecret: String? = nil
+    ) async throws -> CheckoutSession {
         if let secret = customerAccessSecret {
             await credentials.hold(customerAccessSecret: secret)
+        }
+        if let clientSecret = checkoutClientSecret {
+            await credentials.hold(checkoutClientSecret: clientSecret)
         }
 
         let loaded = try await paymentService.loadSession(sessionId)
@@ -187,7 +195,7 @@ actor CheckoutController {
     /// New-card payment (optionally saving the card).
     ///
     /// Encrypts the card data locally (plaintext lives in memory only at this moment, released with the scope), and submits it as `cardEncryptedData`.
-    func confirmNewCard(_ input: CardInput, save: Bool, consent: Consent?) async -> CheckoutOutcome {
+    func confirmNewCard(_ input: CardInput, save: Bool) async -> CheckoutOutcome {
         guard let session else {
             return .failed(txnId: nil, error: CheckoutErrors.sessionExpired())
         }
@@ -215,13 +223,13 @@ actor CheckoutController {
             paymentMethod: "CARD",
             attemptId: attemptId,
             cardEncryptedData: encrypted,
-            savePaymentMethod: save ? true : nil,
-            consent: consent
+            storeCard: (save && session.cofEnabled) ? true : nil,
+            checkoutClientSecret: await credentials.currentCheckoutClientSecret()
         )
         return await submitAndResolve(request)
     }
 
-    /// COF saved-card quick payment (zero verification). Carries only `paymentMethodId`, no card data.
+    /// COF saved-card quick payment (zero verification). Carries the saved card id (`savedCardId`) and credentials, no card data.
     func confirmSavedCard(paymentMethodId: String) async -> CheckoutOutcome {
         guard let session else {
             return .failed(txnId: nil, error: CheckoutErrors.sessionExpired())
@@ -234,9 +242,11 @@ actor CheckoutController {
 
         let request = SubmitRequest(
             sessionId: session.id,
-            paymentMethod: "CARD",
+            paymentMethod: "TOKEN",
             attemptId: attemptId,
-            paymentMethodId: paymentMethodId
+            savedCardId: paymentMethodId,
+            customerAccessSecret: await credentials.current(),
+            checkoutClientSecret: await credentials.currentCheckoutClientSecret()
         )
         return await submitAndResolve(request)
     }
@@ -256,7 +266,8 @@ actor CheckoutController {
             sessionId: session.id,
             paymentMethod: "APPLE_PAY",
             attemptId: attemptId,
-            walletToken: token
+            walletToken: token,
+            checkoutClientSecret: await credentials.currentCheckoutClientSecret()
         )
         return await submitAndResolve(request)
     }
@@ -307,6 +318,10 @@ actor CheckoutController {
         let snapshot: PaymentSnapshot
         do {
             snapshot = try await paymentService.submit(request)
+        } catch let error as CheckoutError where error.category != .network {
+            // Definite server rejection: nothing was charged and the outcome is known; no result query.
+            await terminalCleanup()
+            return .failed(txnId: nil, error: error)
         } catch {
             // Query once on failure; never blindly resend the same attemptId.
             do {

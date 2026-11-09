@@ -229,12 +229,12 @@ final class CheckoutControllerTests: XCTestCase {
         let controller = makeController(payment: payment)
         _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
 
-        _ = await controller.confirmNewCard(newCardInput(), save: false, consent: nil)
+        _ = await controller.confirmNewCard(newCardInput(), save: false)
 
         let req = try XCTUnwrap(payment.lastSubmitRequest)
         XCTAssertNotNil(req.cardEncryptedData)
         XCTAssertFalse(req.cardEncryptedData?.isEmpty ?? true, "a new card should carry non-empty ciphertext")
-        XCTAssertNil(req.paymentMethodId, "a new card must not carry paymentMethodId")
+        XCTAssertNil(req.savedCardId, "a new card must not carry savedCardId")
         XCTAssertNil(req.walletToken)
     }
 
@@ -251,9 +251,107 @@ final class CheckoutControllerTests: XCTestCase {
         _ = await controller.confirmSavedCard(paymentMethodId: "pm_42")
 
         let req = try XCTUnwrap(payment.lastSubmitRequest)
-        XCTAssertEqual(req.paymentMethodId, "pm_42")
+        XCTAssertEqual(req.savedCardId, "pm_42")
+        XCTAssertEqual(req.paymentMethod, "TOKEN")
         XCTAssertNil(req.cardEncryptedData, "a saved card must not carry card ciphertext")
         XCTAssertNil(req.walletToken)
+    }
+
+
+    // MARK: - Real submit contract (Task 4)
+
+    func test_newCard_saveTrue_cofDisabled_storeCardNil() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession(cofEnabled: false, rsaPublicKey: try makeRSAPublicKey()))
+        payment.stubSubmit([terminalSucceeded()])
+        let controller = makeController(payment: payment)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+
+        _ = await controller.confirmNewCard(newCardInput(), save: true)
+
+        XCTAssertNil(payment.lastSubmitRequest?.storeCard)
+    }
+
+    func test_newCard_saveTrue_cofEnabled_storeCardTrue() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession(cofEnabled: true, rsaPublicKey: try makeRSAPublicKey()))
+        payment.stubSubmit([terminalSucceeded()])
+        let controller = makeController(payment: payment)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+
+        _ = await controller.confirmNewCard(newCardInput(), save: true)
+
+        XCTAssertEqual(payment.lastSubmitRequest?.storeCard, true)
+    }
+
+    func test_newCard_saveFalse_cofEnabled_storeCardNil() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession(cofEnabled: true, rsaPublicKey: try makeRSAPublicKey()))
+        payment.stubSubmit([terminalSucceeded()])
+        let controller = makeController(payment: payment)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+
+        _ = await controller.confirmNewCard(newCardInput(), save: false)
+
+        XCTAssertNil(payment.lastSubmitRequest?.storeCard)
+    }
+
+    func test_submit_carriesCheckoutClientSecret_andSavedCardCredentials() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession())
+        payment.stubSubmit([terminalSucceeded()])
+        let controller = makeController(payment: payment)
+        _ = try await controller.start(
+            sessionId: "sess_1", customerAccessSecret: "cas_1", checkoutClientSecret: "ccs_1")
+
+        _ = await controller.confirmSavedCard(paymentMethodId: "pm_7")
+
+        let req = try XCTUnwrap(payment.lastSubmitRequest)
+        XCTAssertEqual(req.checkoutClientSecret, "ccs_1")
+        XCTAssertEqual(req.paymentMethod, "TOKEN")
+        XCTAssertEqual(req.savedCardId, "pm_7")
+        XCTAssertEqual(req.customerAccessSecret, "cas_1")
+    }
+
+    func test_submit_thrownNonNetworkCheckoutError_failsWithoutResultQuery() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession())
+        payment.stubSubmitError(
+            CheckoutError(code: "PAYMENT_METHOD_NOT_ALLOWED", message: "x", category: .payment, traceId: nil))
+        let controller = makeController(payment: payment)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+
+        let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
+
+        guard case .failed(let txnId, let err) = outcome else { return XCTFail("expected failed, got \(outcome)") }
+        XCTAssertNil(txnId)
+        XCTAssertEqual(err.code, "PAYMENT_METHOD_NOT_ALLOWED")
+        XCTAssertEqual(payment.getResultCallCount, 0)
+    }
+
+    func test_submit_thrownURLError_queriesOnceThenUnknown() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession())
+        payment.stubSubmitError(URLError(.timedOut))
+        payment.stubGetResultError(URLError(.timedOut))
+        let controller = makeController(payment: payment)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+
+        let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
+
+        guard case .unknown = outcome else { return XCTFail("expected unknown, got \(outcome)") }
+        XCTAssertEqual(payment.getResultCallCount, 1)
+    }
+
+    func test_submitRequest_debugDescription_hidesSecrets() {
+        let req = SubmitRequest(
+            sessionId: "sess_1", paymentMethod: "CARD", attemptId: UUID(),
+            cardEncryptedData: "CIPHER", walletToken: Data([1, 2]), savedCardId: "pm_1",
+            customerAccessSecret: "cas_x", checkoutClientSecret: "ccs_x")
+        let text = String(reflecting: req)
+        for secret in ["CIPHER", "ccs_x", "cas_x"] {
+            XCTAssertFalse(text.contains(secret), "debug description leaked \(secret)")
+        }
     }
 
     // MARK: - Wallet: carry only walletToken
@@ -272,7 +370,7 @@ final class CheckoutControllerTests: XCTestCase {
         XCTAssertEqual(req.walletToken, Data([0x01, 0x02]))
         XCTAssertEqual(req.paymentMethod, "APPLE_PAY")
         XCTAssertNil(req.cardEncryptedData)
-        XCTAssertNil(req.paymentMethodId)
+        XCTAssertNil(req.savedCardId)
     }
 
     // MARK: - COF disabled: saved-card list is empty and CofService is not called

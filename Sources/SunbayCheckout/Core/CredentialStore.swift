@@ -10,7 +10,20 @@ actor CredentialStore {
     /// The currently held secret; `nil` means not held or already cleared. In-memory only.
     private var secret: String?
 
+    /// The held checkout client secret; in-memory only.
+    private var clientSecret: String?
+
     init() {}
+
+    /// Holds the checkout client secret (overwriting any existing value).
+    func hold(checkoutClientSecret: String) {
+        clientSecret = checkoutClientSecret
+    }
+
+    /// Reads the held checkout client secret, or `nil`.
+    func currentCheckoutClientSecret() -> String? {
+        clientSecret
+    }
 
     /// Holds a secret (overwriting any existing value).
     /// - Parameter customerAccessSecret: A short-TTL credential value; held in memory only, never persisted or logged.
@@ -24,8 +37,9 @@ actor CredentialStore {
         secret
     }
 
-    /// Clears the currently held secret. Idempotent: calling it again when already empty is safe and has no side effects.
+    /// Clears both held secrets. Idempotent: calling it again when already empty is safe and has no side effects.
     func clear() {
         secret = nil
+        clientSecret = nil
     }
 }
