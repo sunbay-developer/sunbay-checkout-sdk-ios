@@ -37,6 +37,16 @@ enum CheckoutErrors {
         )
     }
 
+    /// Card-on-file is not effective (session / host option / credential), so saved-card payment is refused.
+    static func cardOnFileUnavailable() -> CheckoutError {
+        CheckoutError(
+            code: "CARD_ON_FILE_UNAVAILABLE",
+            message: "Saved-card payment is unavailable.",
+            category: .validation,
+            traceId: nil
+        )
+    }
+
     /// Network unavailable / submit or query failed.
     static func networkUnavailable() -> CheckoutError {
         CheckoutError(
@@ -162,6 +172,9 @@ actor CheckoutController {
         customerAccessSecret: String?,
         checkoutClientSecret: String? = nil
     ) async throws -> CheckoutSession {
+        // Reset the previous decision first so a failed / expired re-start never keeps stale COF state.
+        session = nil
+        cofEffective = false
         if let secret = customerAccessSecret {
             await credentials.hold(customerAccessSecret: secret)
         }
@@ -250,6 +263,9 @@ actor CheckoutController {
     func confirmSavedCard(paymentMethodId: String) async -> CheckoutOutcome {
         guard let session else {
             return .failed(txnId: nil, error: CheckoutErrors.sessionExpired())
+        }
+        guard cofEffective else {
+            return .failed(txnId: nil, error: CheckoutErrors.cardOnFileUnavailable())
         }
         guard beginAttempt() else {
             return .failed(txnId: nil, error: CheckoutErrors.alreadyPresenting())
