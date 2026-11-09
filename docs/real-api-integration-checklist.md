@@ -80,9 +80,9 @@ State today (what was built ahead of the API):
 - [ ] `docs/security-and-pci.md`: add the BIN lookup (first 6–9 digits leave the device over TLS to
       the HPP server, never logged or persisted) and the public, non-sensitive rules cache in the OS
       cache directory.
-- [ ] The repo has no `PrivacyInfo.xcprivacy`. App Store rules for SDKs require one; when the SDK
-      starts making this network call, check what the manifest must declare and tell integrators
-      whether their privacy labels are affected.
+- [ ] `PrivacyInfo.xcprivacy` now ships (no tracking, no collected data types). When the BIN call is
+      added, re-check what the manifest must declare and tell integrators whether their privacy
+      labels are affected.
 - [ ] Confirm the HPP endpoints are covered by the host app's ATS (HTTPS only) — no exceptions.
 
 ### 1.6 Cleanup once the rules are live
@@ -98,9 +98,37 @@ State today (what was built ahead of the API):
 - [ ] Keep Android and HPP on the same document and the same test vectors; a behavior change starts
       with the contract, then all three implementations.
 
-## 2. Other items built ahead of their API
+## 2. Payment and saved-card services
 
+Phase 1 (core payment path) is implemented: `SunbayAPIClient`, `HTTPPaymentService` (load, submit,
+result), `SunbayCheckout(configuration:)` defaulting to the real backend, `checkoutClientSecret`
+plumbing, device info, dev server (`Example/DevServer`) and the opt-in `SunbayCheckoutRealAPITests`
+(`scripts/run-dev-e2e.sh`). Contract: `docs/product-spec.md` §7.
+
+Verified live against dev:
+
+- [x] Load session: `totalAmount` and other amount fields are decimal STRINGS in MAJOR units; the SDK
+      converts to minor units by currency fraction digits. `expiresAt` is `yyyy-MM-dd HH:mm:ss` in UTC.
+- [x] Create session with `sessionType: "sdk"` + `customerId` returns `checkoutClientSecret` (`ccs_`) and
+      `customerAccessSecret` (`cas_`).
+- [x] A 5xx on submit is ambiguous (one result query, then `unknown`); a non-network business error on
+      submit is a definite failure.
+
+Open verification items:
+
+- [ ] Apple Pay token wire format in `cardEncryptedData` (today: UTF-8 of the token JSON via `WalletTokenEncoder`).
+- [ ] `paymentMethod` value for new cards: `CARD` vs the brand (for example `VISA`).
+- [ ] Whether submit needs `sessionType`.
+- [ ] Backend renames session `storeCard` to `supportStoreCard`. The response still carries legacy
+      `storeCard`; the SDK reads only `supportStoreCard` (absent means `true`). Re-check after deployment.
+- [ ] Unknown currency code: fraction digits fall back to a default; confirm the backend's currency table.
+- [ ] Real new-card payment end to end (needs `SUNBAY_TEST_CARD_*` env for the opt-in tests).
+- [ ] Apple Pay real-device verification (capability, wallet sheet, token accepted by the backend).
+- [ ] WAF behavior for native clients (headers, rate limits).
+
+Still built ahead of their API (phase 2+):
+
+- Saved-card list (`CofService`): mock baseline; `HTTPCofService` is phase 2 (`POST card/list`).
 - Address metadata (`AddressMetadataService`): full-mode address is protocol, UI and cache only;
   `HTTPAddressMetadataService` exists but is not wired to real data. See the UI redesign spec.
-- Payment and saved-card services (`PaymentService`, `CofService`): mock baseline per
-  `docs/product-spec.md` §7.
+- Card rules and BIN: section 1.

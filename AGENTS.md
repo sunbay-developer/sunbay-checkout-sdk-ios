@@ -52,11 +52,13 @@ Full design: `docs/product-spec.md`. Security/PCI: `docs/security-and-pci.md`.
    `docs/superpowers/specs/2026-11-06-submit-lock-and-no-poll-realignment-design.md`.
 6. **Core is UI-agnostic.** `CheckoutController` and the Core layer import no UIKit/PassKit UI types;
    they depend on protocols only. This is what makes L2 a zero-rework addition later.
-7. **Backend contract is not final.** The contract in `docs/product-spec.md` §7 is derived from
-   existing web behavior and is a **mock baseline**. Build `PaymentService`/`CofService` behind
-   protocols so the mock can be swapped for the real adapter without touching Core/UI. Features
-   built ahead of their API are tracked in `docs/real-api-integration-checklist.md`; read it before
-   wiring any real endpoint and update it when you build something against a mock.
+7. **Backend contract is not final.** The SDK now ships real adapters (`SunbayAPIClient`,
+   `HTTPPaymentService`; `SunbayCheckout(configuration:)` talks to the real backend), but they sit
+   behind the `PaymentService`/`CofService` protocols so adapters can be swapped without touching
+   Core/UI. The contract in `docs/product-spec.md` §7 is what was verified live against dev; the
+   saved-card list and anything not yet verified remain a mock baseline. Features built ahead of their
+   API, and open verification items, are tracked in `docs/real-api-integration-checklist.md`; read it
+   before wiring any real endpoint and update it when you build something against a mock.
 
 ## 3. Code organization
 

@@ -1,5 +1,9 @@
 # Sunbay Checkout iOS SDK — Security & PCI (self-contained)
 
+> **DEV ONLY: `Example/DevServer`.** This server holds merchant API credentials. In production, create the
+> session in YOUR backend; never put the API key in an app. Credentials live in a git-ignored
+> `.env.local` and must never reach an app or this repository.
+
 > Status: discussion draft (feeds a dedicated security review meeting)
 > Date: 2026-10-26
 > Scope: Native SDK security & PCI compliance — **unified, platform-agnostic**. iOS and Android
@@ -83,6 +87,17 @@
 | customerAccessSecret | CredentialStore(内存) | 短 TTL,终态即清 | 绝不进 URL/持久化/日志/崩溃/公开返回 |
 | checkoutClientSecret | CredentialStore(内存) | session 内 | 同上 |
 | paymentMethodId | 列卡 → 提交 | 交易级、临时 | 绑 session/customer/固定金额,非长期凭证 |
+
+### 4.1 Network and device information
+
+- The SDK now talks directly to the Sunbay checkout (HPP) origin for the selected environment over TLS
+  (ATS-compliant HTTPS; the SDK needs no ATS exception). No request or response body, URL identifier,
+  secret or ciphertext is logged.
+- The SDK sends an optional `userDeviceInfo` with submit: `deviceType`, `deviceModel`, `deviceOs`,
+  `deviceOsVersion`, `deviceResolution`, `screenWidth`, `screenHeight`, `colorDepth`, `timeZoneOffset`
+  and `language`. It contains no advertising identifier, no vendor identifier and no user-identifying data.
+- `PrivacyInfo.xcprivacy` ships in the SDK resources: no tracking, no tracking domains, no collected data
+  types declared.
 
 ---
 
