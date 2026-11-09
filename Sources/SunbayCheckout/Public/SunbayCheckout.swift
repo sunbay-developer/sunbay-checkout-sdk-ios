@@ -11,7 +11,7 @@ import Foundation
 ///
 /// ## Backends
 /// `init(configuration:)` talks to the real Sunbay backend for the configured environment
-/// (saved cards degrade to none in this phase). A host or the example app may instead inject its
+/// (saved cards degrade to none in this phase; address metadata loads from the same host). A host or the example app may instead inject its
 /// own `PaymentService` / `CofService` (mock or custom adapters) via
 /// `init(configuration:paymentService:cofService:)`.
 ///
@@ -77,6 +77,7 @@ public final class SunbayCheckout {
                     HTTPCofService(client: client)
                 )
             },
+            addressMetadataService: HTTPAddressMetadataService(client: client),
             screenMetrics: metrics)
     }
 
