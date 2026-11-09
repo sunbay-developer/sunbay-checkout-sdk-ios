@@ -34,9 +34,12 @@ enum SunbayEndpoints {
     }
 
     /// Percent-encodes an identifier so it stays a single path component.
-    private static func encode(_ value: String) -> String {
-        var allowed = CharacterSet.alphanumerics
-        allowed.insert(charactersIn: "-._~")
-        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
+    /// Only ASCII unreserved characters (RFC 3986) are left as-is; everything else is escaped,
+    /// so the result is always ASCII-safe and `URL(string:)` cannot fail on it.
+    static func encode(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? ""
     }
+
+    private static let unreserved = CharacterSet(
+        charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
 }
