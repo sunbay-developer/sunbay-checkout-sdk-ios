@@ -203,7 +203,7 @@ import SunbayCheckoutTestSupport
         private var amountSection: some View {
             Section("Amount") {
                 if isRealMode {
-                    Text("Real mode: the dev server creates the session and uses its own currency (default USD) and amount; these knobs apply to Mock mode only.")
+                    Text("Real mode: the dev server creates the session in its own currency (default USD) with a fixed amount of 1.05; these knobs apply to Mock mode only.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } else {
@@ -266,7 +266,7 @@ import SunbayCheckoutTestSupport
                     customerAccessSecret: settings.cofEnabled ? customerAccessSecret : nil,
                     isRealMode: isRealMode,
                     realServerURL: URL(string: settings.devServerURL),
-                    realAmountMajorUnits: Double(settings.amountMinorUnits) / 100,
+                    realAmountMajorUnits: 1.05,
                     onOutcome: { lastOutcome = describe($0) },
                     onState: { lastState = describeState($0) }
                 )

@@ -56,6 +56,7 @@ final class RealAPIPaymentTests: XCTestCase {
             XCTFail("Expected loadSession to throw for an unknown session.")
         } catch let error as CheckoutError {
             XCTAssertNotEqual(error.category, .network, "Unexpected network-category error: \(error.code)")
+            XCTAssertNotEqual(error.code, "INVALID_RESPONSE", "The backend response was not understood by the SDK.")
         }
     }
 

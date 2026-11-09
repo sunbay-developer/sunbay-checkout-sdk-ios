@@ -7,7 +7,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
-LOG="$(mktemp -t sunbay-devserver)"
+LOG="$(mktemp "${TMPDIR:-/tmp}/sunbay-devserver.XXXXXX")"
 
 PORT="$PORT" node Example/DevServer/server.mjs >"$LOG" 2>&1 &
 SERVER_PID=$!
@@ -17,6 +17,7 @@ cleanup() {
     rm -f "$LOG"
 }
 trap cleanup EXIT
+trap 'exit 130' INT TERM
 
 HEALTH=""
 for _ in $(seq 1 50); do
