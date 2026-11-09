@@ -116,15 +116,19 @@ Verified live against dev:
 Open verification items:
 
 - [ ] Apple Pay token wire format in `cardEncryptedData` (today: UTF-8 of the token JSON via `WalletTokenEncoder`).
-- [ ] `paymentMethod` value for new cards: `CARD` vs the brand (for example `VISA`).
-- [ ] Whether submit needs `sessionType`.
+- [x] `paymentMethod` value for new cards is `CARD` (same as the web SDK submit controller).
+- [x] Submit requires `sessionType`: without it the backend returns `C16` "Parameter cannot be
+      empty:sessionType" (observed 2026-11-09). The SDK echoes the `sessionType` from the load-session
+      response on every submit path.
 - [ ] Backend renames session `storeCard` to `supportStoreCard`. The response still carries legacy
       `storeCard`; the SDK reads only `supportStoreCard` (absent means `true`). Re-check after deployment.
 - [ ] Unknown or malformed currency codes are now rejected (`INVALID_RESPONSE`); confirm the backend's
       currency table only issues codes Foundation knows.
 - [ ] Release gate: confirm with the backend that no submit business code means in-doubt (processing,
       acquirer timeout, upstream unavailable); any such code must be mapped to ambiguous. Until confirmed,
-      the SDK treats a non-network business error on submit as a definite failure.
+      the SDK treats a non-network business error on submit as a definite failure. Concrete candidate:
+      `E03` "System busy, please try again later" on HTTP 200 (observed 2026-11-09 on a submit with an
+      invalid ciphertext); ask whether `E03` can be returned after the payment was processed.
 - [ ] `getResult` after a lost submit may return a previous attempt's terminal state for the same session
       (confirm with the backend).
 - [ ] Release gate: the `PrivacyInfo.xcprivacy` collected-data declaration (payment info, device info sent
