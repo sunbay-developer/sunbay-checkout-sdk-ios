@@ -26,6 +26,14 @@ country lists, field layouts and subdivisions from the HPP address endpoints.
   postalCode, firstName, lastName, phone, email`; `district` is not part of the backend `AddressInfo` and is
   not sent. Empty strings are omitted; an address with no non-empty field is omitted entirely.
 
+## Name fields per address kind (user, 2026-11-09)
+
+As in HPP (`AddressForm` `collectName`: billing `false`, shipping `true`), the shipping form collects first and
+last name and the billing form does not. The form component takes an internal options value
+(`AddressFormOptions(collectName:)`, defaults `.billing` / `.shipping`) so billing can collect names later, and
+further per-form switches (for example phone, which HPP also supports) are additive. Not public yet (my call);
+it can be exposed through `Appearance` if merchants need it.
+
 ## Linkage scope
 
 This phase: country selection reloads the field layout, subdivisions dropdown and validation pattern from
