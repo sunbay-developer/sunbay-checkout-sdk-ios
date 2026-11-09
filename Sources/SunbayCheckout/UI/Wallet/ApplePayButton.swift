@@ -125,6 +125,8 @@
             checkoutClientSecret: String? = nil
         ) {
             let webAuthOpener = WebAuthOpener()
+            // UIView inits run on the main actor: snapshot the screen here so the (off-main) submit path can read it.
+            checkout.screenMetrics.recordMainScreen()
             let controller = checkout.makeController(
                 credentials: CredentialStore(),
                 actionHandler: ActionHandler(webAuthOpener: webAuthOpener)

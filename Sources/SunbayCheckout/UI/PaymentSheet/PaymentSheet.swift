@@ -118,6 +118,8 @@
         private let walletAuthorizer: any WalletAuthorizing
         /// The resolved Apple Pay merchant id (host configuration first); nil hides the Apple Pay row.
         private let walletMerchantId: String?
+        /// Screen metrics snapshot shared with the checkout's default payment service; recorded in `present`.
+        private let screenMetrics: ScreenMetricsStore?
         // MARK: - Public observation
 
         /// Observes the coarse-grained in-sheet presentation state (spec §3.4).
@@ -138,7 +140,7 @@
         /// Assembles a real `CheckoutController` through the `SunbayCheckout.makeController` seam
         /// (injecting a real `ActionHandler` + `WebAuthOpener` and an in-memory
         /// `CredentialStore`); the controller uses the backend services held by the `checkout`
-        /// instance (the host-injected ones or the fail-closed defaults).
+        /// instance (the host-injected ones or the default real-backend services).
         ///
         /// - Parameters:
         ///   - checkout: The SDK public entry point (holding the host configuration and injected backend services).
@@ -169,7 +171,8 @@
                 walletMerchantId: resolveMerchantId(
                     configured: checkout.configuration.applePayMerchantId,
                     sessionProvided: nil
-                )
+                ),
+                screenMetrics: checkout.screenMetrics
             )
         }
 
@@ -205,8 +208,10 @@
             paymentSheetTitle: String? = nil,
             addressMetadataService: any AddressMetadataService = EmptyAddressMetadataService(),
             walletAuthorizer: any WalletAuthorizing = WalletAuthorizer(),
-            walletMerchantId: String? = nil
+            walletMerchantId: String? = nil,
+            screenMetrics: ScreenMetricsStore? = nil
         ) {
+            self.screenMetrics = screenMetrics
             self.walletAuthorizer = walletAuthorizer
             self.walletMerchantId = walletMerchantId
             self.controller = controller
@@ -253,6 +258,8 @@
         ///   attempt → `.canceled`; close after `.pending` / `.unknown` → that outcome).
         @MainActor
         public func present(from presenter: UIViewController) async -> CheckoutOutcome {
+            // Snapshot the screen on the main actor; the submit path reads it off the main thread.
+            screenMetrics?.recordMainScreen(presenter.view.window?.screen ?? UIScreen.main)
             let coordinator = PresentationCoordinator(
                 presenter: presenter,
                 appearance: appearance,
@@ -347,7 +354,7 @@
         /// The testable core logic that drives one checkout (touches no real UIKit presentation).
         ///
         /// Flow:
-        /// 1. `controller.start(sessionId:customerAccessSecret:)` loads and validates the session;
+        /// 1. `controller.start(sessionId:customerAccessSecret:checkoutClientSecret:)` loads and validates the session;
         ///    on a load failure → failures other than `.canceled` are thrown by start, and here
         ///    they are mapped as a fallback to `.unknown`/`.failed` (see below).
         /// 2. **Automatic COF inclusion**: when `customerAccessSecret != nil && session.cofEnabled`,

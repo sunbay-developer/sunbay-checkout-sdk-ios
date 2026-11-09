@@ -44,6 +44,10 @@ public final class SunbayCheckout {
     /// exposed externally. UI-agnostic (Core type; never imports UIKit).
     let addressMetadataService: any AddressMetadataService
 
+    /// Screen metrics snapshot for `userDeviceInfo`; recorded on the main actor when the UI shell
+    /// presents (`PaymentSheet.present`) and read from the submit path (which runs off the main thread).
+    let screenMetrics: ScreenMetricsStore
+
     /// Creates the entry point from a configuration; talks to the real Sunbay backend for the
     /// configured environment (the default).
     ///
@@ -60,6 +64,7 @@ public final class SunbayCheckout {
         let client = urlSession.map {
             SunbayAPIClient(environment: configuration.environment, locale: configuration.locale, session: $0)
         } ?? SunbayAPIClient(environment: configuration.environment, locale: configuration.locale)
+        let metrics = ScreenMetricsStore()
         self.init(
             configuration: configuration,
             serviceFactory: { credentials in
@@ -67,39 +72,25 @@ public final class SunbayCheckout {
                     HTTPPaymentService(
                         client: client,
                         credentials: credentials,
-                        deviceInfo: { SunbayCheckout.collectDeviceInfo() }),
+                        deviceInfo: { DeviceInfoCollector.collect(screen: metrics.current) }),
                     UnconfiguredCofService()
                 )
-            })
+            },
+            screenMetrics: metrics)
     }
 
     /// Internal designated seam: any per-controller service factory.
     init(
         configuration: CheckoutConfiguration,
         serviceFactory: @escaping (CredentialStore) -> (any PaymentService, any CofService),
-        addressMetadataService: (any AddressMetadataService)? = nil
+        addressMetadataService: (any AddressMetadataService)? = nil,
+        screenMetrics: ScreenMetricsStore = ScreenMetricsStore()
     ) {
         self.configuration = configuration
         self.serviceFactory = serviceFactory
+        self.screenMetrics = screenMetrics
         self.addressMetadataService = AddressMetadataCache(
             wrapping: addressMetadataService ?? EmptyAddressMetadataService())
-    }
-
-    /// Collects device info for the submit body; screen metrics come from UIKit when available.
-    private static func collectDeviceInfo() -> UserDeviceInfoWire {
-        #if canImport(UIKit)
-            // Screen metrics are read on the main thread only; fall back to none elsewhere.
-            let screen: (width: Int, height: Int, scale: Double)? =
-                Thread.isMainThread
-                ? MainActor.assumeIsolated {
-                    let bounds = UIScreen.main.bounds
-                    return (Int(bounds.width), Int(bounds.height), Double(UIScreen.main.scale))
-                }
-                : nil
-            return DeviceInfoCollector.collect(screen: screen)
-        #else
-            return DeviceInfoCollector.collect(screen: nil)
-        #endif
     }
 
     /// Creates the entry point from a configuration and host-provided backend services (service injection seam, Task 11.5).
@@ -119,19 +110,16 @@ public final class SunbayCheckout {
     ///   - paymentService: The payment backend capability provided by the host.
     ///   - cofService: The saved-card capability provided by the host.
     ///   - addressMetadataService: The address-metadata capability (full-mode address form); `nil` (the default) uses a fail-soft empty service.
-    public init(
+    public convenience init(
         configuration: CheckoutConfiguration,
         paymentService: any PaymentService,
         cofService: any CofService,
         addressMetadataService: (any AddressMetadataService)? = nil
     ) {
-        self.configuration = configuration
-        self.serviceFactory = { _ in (paymentService, cofService) }
-        // Always cache-wrap the service (caching + in-flight dedup, §7.3); the fail-soft empty
-        // default and a real adapter are indistinguishable to the UI. The default stays internal by
-        // being constructed here rather than referenced from a public default-argument value.
-        self.addressMetadataService = AddressMetadataCache(
-            wrapping: addressMetadataService ?? EmptyAddressMetadataService())
+        self.init(
+            configuration: configuration,
+            serviceFactory: { _ in (paymentService, cofService) },
+            addressMetadataService: addressMetadataService)
     }
 
     // MARK: - Internal factory seam (used by PaymentSheet / ApplePayButton)
@@ -139,8 +127,8 @@ public final class SunbayCheckout {
     /// Assembles a `CheckoutController` using the (injected or default) services held by this instance (internal DI seam).
     ///
     /// This is the preferred entry point for the UI shell: the service origin is transparent
-    /// to the shell — if the host injected services, those are used; otherwise the
-    /// fail-closed defaults are used. This method touches no UIKit/PassKit.
+    /// to the shell — if the host injected services, those are used; otherwise the default
+    /// real-backend services (built around the given `credentials`) are used. This method touches no UIKit/PassKit.
     ///
     /// - Parameters:
     ///   - credentials: In-memory credential holder.
