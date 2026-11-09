@@ -9,7 +9,7 @@ final class ContractCodableTests: XCTestCase {
               "sessionId": "sess_abc123",
               "sessionType": "EMBED",
               "currency": "USD",
-              "totalAmount": 1299,
+              "totalAmount": "12.99",
               "description": "Order #42",
               "expiresAt": "2026-10-26T12:30:00Z",
               "paymentMethods": [
@@ -42,7 +42,8 @@ final class ContractCodableTests: XCTestCase {
 
     private func sessionJSON(
         expiresAt: String = "2026-11-09T10:00:00+08:00",
-        totalAmount: String = "1050",
+        totalAmount: String = #""10.50""#,
+        currency: String = "USD",
         extra: String = "",
         methods: String = #"[{"method":"VISA","type":"CARD"}]"#,
         rsa: String = #""rsaPublicKey": "key","#
@@ -51,7 +52,7 @@ final class ContractCodableTests: XCTestCase {
             """
             {
               "sessionId": "sess_1",
-              "currency": "USD",
+              "currency": "\(currency)",
               "totalAmount": \(totalAmount),
               "expiresAt": "\(expiresAt)",
               "merchantName": "Acme",
@@ -81,7 +82,8 @@ final class ContractCodableTests: XCTestCase {
         let fractional = try ContractDecoding.decodeSession(
             from: sessionJSON(expiresAt: "2026-11-09T10:00:00.123+08:00")).expiresAt
         XCTAssertEqual(colon.timeIntervalSince1970, noColon.timeIntervalSince1970, accuracy: 0.001)
-        XCTAssertEqual(colon.timeIntervalSince1970, fractional.timeIntervalSince1970, accuracy: 0.123 + 0.001)
+        XCTAssertEqual(
+            fractional.timeIntervalSince1970 - colon.timeIntervalSince1970, 0.123, accuracy: 0.001)
     }
 
     func test_decodeSession_fractionalNoColonOffset_parses() throws {
@@ -89,20 +91,67 @@ final class ContractCodableTests: XCTestCase {
             from: sessionJSON(expiresAt: "2026-11-09T10:00:00+0800")).expiresAt
         let frac = try ContractDecoding.decodeSession(
             from: sessionJSON(expiresAt: "2026-11-09T10:00:00.123+0800")).expiresAt
-        XCTAssertEqual(base.timeIntervalSince1970, frac.timeIntervalSince1970, accuracy: 0.124)
+        XCTAssertEqual(
+            frac.timeIntervalSince1970 - base.timeIntervalSince1970, 0.123, accuracy: 0.001)
     }
 
-    func test_decodeSession_integralTotalAmount_mapsMinorUnits() throws {
-        let session = try ContractDecoding.decodeSession(from: sessionJSON(totalAmount: "1050"))
-        XCTAssertEqual(session.amount, Amount(minorUnits: 1050, currencyCode: "USD"))
+    private func minorUnits(_ total: String, _ currency: String) throws -> Int64 {
+        try ContractDecoding.decodeSession(
+            from: sessionJSON(totalAmount: total, currency: currency)).amount.minorUnits
     }
 
-    func test_decodeSession_fractionalTotalAmount_throwsDecodingError() {
+    private func assertTotalAmountRejected(
+        _ total: String, _ currency: String, file: StaticString = #filePath, line: UInt = #line
+    ) {
         XCTAssertThrowsError(
-            try ContractDecoding.decodeSession(from: sessionJSON(totalAmount: "10.5"))
+            try ContractDecoding.decodeSession(from: sessionJSON(totalAmount: total, currency: currency)),
+            "\(total) \(currency)", file: file, line: line
         ) { error in
-            XCTAssertTrue(error is DecodingError)
+            guard case DecodingError.dataCorrupted(let ctx) = error else {
+                return XCTFail("Expected dataCorrupted, got \(error)", file: file, line: line)
+            }
+            XCTAssertEqual(ctx.codingPath.last?.stringValue, "totalAmount", file: file, line: line)
         }
+    }
+
+    func test_decodeSession_majorUnitString_usd() throws {
+        XCTAssertEqual(try minorUnits(#""1.13""#, "USD"), 113)
+        XCTAssertEqual(try minorUnits(#""0.07""#, "USD"), 7)
+        XCTAssertEqual(try minorUnits(#""19.99""#, "USD"), 1999)
+        XCTAssertEqual(try minorUnits(#""10.5""#, "USD"), 1050)
+        XCTAssertEqual(try minorUnits(#""0""#, "USD"), 0)
+    }
+
+    func test_decodeSession_majorUnitNumber_usd() throws {
+        XCTAssertEqual(try minorUnits("1.13", "USD"), 113)
+        XCTAssertEqual(try minorUnits("19.99", "USD"), 1999)
+    }
+
+    func test_decodeSession_zeroAndThreeDigitCurrencies() throws {
+        XCTAssertEqual(try minorUnits(#""100""#, "JPY"), 100)
+        XCTAssertEqual(try minorUnits(#""1.500""#, "KWD"), 1500)
+    }
+
+    func test_decodeSession_totalAmountCurrencyIsPreserved() throws {
+        let session = try ContractDecoding.decodeSession(
+            from: sessionJSON(totalAmount: #""1.13""#))
+        XCTAssertEqual(session.amount, Amount(minorUnits: 113, currencyCode: "USD"))
+    }
+
+    func test_decodeSession_invalidTotalAmount_throwsDataCorrupted() {
+        assertTotalAmountRejected(#""1.135""#, "USD")
+        assertTotalAmountRejected(#""1.5""#, "JPY")
+        assertTotalAmountRejected(#""-1.00""#, "USD")
+        assertTotalAmountRejected(#""abc""#, "USD")
+        assertTotalAmountRejected(#""""#, "USD")
+        assertTotalAmountRejected("-1.00", "USD")
+        assertTotalAmountRejected(#""99999999999999999999""#, "USD")
+    }
+
+    func test_decodeSession_legacyStoreCardKey_isIgnored() throws {
+        let session = try ContractDecoding.decodeSession(
+            from: sessionJSON(extra: #""storeCard": false,"#))
+        XCTAssertTrue(session.cofEnabled)
     }
 
     func test_decodeSession_onlyUnknownMethods_yieldsEmptySet() throws {

@@ -24,7 +24,7 @@ enum ContractDecoding {
     struct SessionWire: Decodable {
         let sessionId: String
         let currency: String
-        /// Total amount in integer minor currency units.
+        /// Total amount converted from the wire major-unit value to integer minor currency units.
         let totalAmount: Int64
         let expiresAt: String
         let merchantName: String
@@ -42,16 +42,8 @@ enum ContractDecoding {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             sessionId = try c.decode(String.self, forKey: .sessionId)
             currency = try c.decode(String.self, forKey: .currency)
-            // Decode as Decimal and require an integral value so 10.5 is rejected instead of truncated.
-            let amount = try c.decode(Decimal.self, forKey: .totalAmount)
-            guard let minor = ContractDecoding.integralInt64(amount) else {
-                throw DecodingError.dataCorruptedError(
-                    forKey: .totalAmount,
-                    in: c,
-                    debugDescription: "totalAmount must be an integral number of minor units"
-                )
-            }
-            totalAmount = minor
+            totalAmount = try ContractDecoding.decodeMinorUnits(
+                from: c, forKey: .totalAmount, currencyCode: currency)
             expiresAt = try c.decode(String.self, forKey: .expiresAt)
             merchantName = try c.decode(String.self, forKey: .merchantName)
             rsaPublicKey = try c.decodeIfPresent(String.self, forKey: .rsaPublicKey)
@@ -106,17 +98,61 @@ enum ContractDecoding {
         try JSONDecoder().decode(SessionWire.self, from: data).toSession()
     }
 
-    /// Converts a `Decimal` to `Int64` when it is integral and in range; otherwise nil.
-    fileprivate static func integralInt64(_ value: Decimal) -> Int64? {
-        var source = value
+    /// Reads a major-unit amount (JSON string or number) and converts it to minor units.
+    ///
+    /// The number of fraction digits comes from Foundation's ISO 4217 data via `NumberFormatter`.
+    /// Parsing uses `Decimal` only, so there is no binary rounding.
+    fileprivate static func decodeMinorUnits<K: CodingKey>(
+        from container: KeyedDecodingContainer<K>, forKey key: K, currencyCode: String
+    ) throws -> Int64 {
+        func corrupted(_ reason: String) -> DecodingError {
+            DecodingError.dataCorruptedError(forKey: key, in: container, debugDescription: reason)
+        }
+        let major: Decimal
+        if let text = try? container.decode(String.self, forKey: key) {
+            guard isPlainDecimal(text), let parsed = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX"))
+            else { throw corrupted("totalAmount is not a numeric major-unit amount") }
+            major = parsed
+        } else if let number = try? container.decode(Decimal.self, forKey: key) {
+            major = number
+        } else {
+            throw corrupted("totalAmount must be a string or number in major units")
+        }
+        guard major >= 0 else { throw corrupted("totalAmount must not be negative") }
+
+        let digits = fractionDigits(currencyCode: currencyCode)
+        var scaled = major
+        var base = Decimal(1)
+        for _ in 0..<digits { base *= 10 }
+        scaled *= base
         var rounded = Decimal()
-        NSDecimalRound(&rounded, &source, 0, .plain)
-        guard rounded == value else { return nil }
+        NSDecimalRound(&rounded, &scaled, 0, .plain)
+        guard rounded == scaled else {
+            throw corrupted("totalAmount has more fraction digits than \(currencyCode) allows (\(digits))")
+        }
         let number = NSDecimalNumber(decimal: rounded)
-        guard number.compare(NSDecimalNumber(value: Int64.max)) != .orderedDescending,
-            number.compare(NSDecimalNumber(value: Int64.min)) != .orderedAscending
-        else { return nil }
+        guard number.compare(NSDecimalNumber(value: Int64.max)) != .orderedDescending else {
+            throw corrupted("totalAmount overflows")
+        }
         return number.int64Value
+    }
+
+    /// True for `digits[.digits]` with an optional leading `-` (no spaces, exponent, or separators).
+    private static func isPlainDecimal(_ text: String) -> Bool {
+        let body = text.hasPrefix("-") ? String(text.dropFirst()) : text
+        let parts = body.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+        guard !parts.isEmpty, parts.count <= 2 else { return false }
+        let isDigits = { (p: Substring) in !p.isEmpty && p.allSatisfy { $0 >= "0" && $0 <= "9" } }
+        return parts.allSatisfy(isDigits)
+    }
+
+    /// ISO 4217 minor-unit digits for a currency, from Foundation (`NumberFormatter`).
+    private static func fractionDigits(currencyCode: String) -> Int {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.currencyCode = currencyCode.uppercased()
+        return formatter.maximumFractionDigits
     }
 
     /// Maps the backend `method`/`type` to a `PaymentMethodKind`.
