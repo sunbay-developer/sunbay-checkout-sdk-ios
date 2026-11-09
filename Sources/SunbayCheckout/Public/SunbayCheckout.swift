@@ -143,7 +143,8 @@ public final class SunbayCheckout {
             paymentService: paymentService,
             cofService: cofService,
             credentials: credentials,
-            actionHandler: actionHandler
+            actionHandler: actionHandler,
+            cardOnFile: configuration.cardOnFile
         )
     }
 
@@ -157,18 +158,21 @@ public final class SunbayCheckout {
     ///   - cofService: The saved-card capability.
     ///   - credentials: In-memory credential holder.
     ///   - actionHandler: `requiresAction` dispatcher.
+    ///   - cardOnFile: Host card-on-file options.
     /// - Returns: The assembled controller.
     func makeController(
         paymentService: any PaymentService,
         cofService: any CofService,
         credentials: CredentialStore,
-        actionHandler: any ActionHandling
+        actionHandler: any ActionHandling,
+        cardOnFile: CardOnFileOptions = CardOnFileOptions()
     ) -> CheckoutController {
         CheckoutController(
             paymentService: paymentService,
             cofService: cofService,
             credentials: credentials,
-            actionHandler: actionHandler
+            actionHandler: actionHandler,
+            cardOnFile: cardOnFile
         )
     }
 }

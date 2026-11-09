@@ -47,13 +47,15 @@ final class CheckoutControllerTests: XCTestCase {
         payment: MockPaymentService,
         cof: MockCofService = MockCofService(),
         credentials: CredentialStore = CredentialStore(),
-        actionHandler: StubActionHandler = StubActionHandler()
+        actionHandler: StubActionHandler = StubActionHandler(),
+        cardOnFile: CardOnFileOptions = CardOnFileOptions()
     ) -> CheckoutController {
         CheckoutController(
             paymentService: payment,
             cofService: cof,
             credentials: credentials,
-            actionHandler: actionHandler
+            actionHandler: actionHandler,
+            cardOnFile: cardOnFile
         )
     }
 
@@ -303,7 +305,7 @@ final class CheckoutControllerTests: XCTestCase {
         payment.stubSession(makeSession(cofEnabled: true, rsaPublicKey: try makeRSAPublicKey()))
         payment.stubSubmit([terminalSucceeded()])
         let controller = makeController(payment: payment)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
         _ = await controller.confirmNewCard(newCardInput(), save: true)
 
@@ -631,5 +633,92 @@ final class CheckoutControllerTests: XCTestCase {
 
         let held = await credentials.current()
         XCTAssertNil(held, "dismiss should clear credentials")
+    }
+
+    // MARK: - Effective COF decision
+
+    private struct CofRig {
+        let controller: CheckoutController
+        let payment: MockPaymentService
+        let cof: MockCofService
+    }
+
+    private func makeCofRig(
+        sessionCof: Bool,
+        options: CardOnFileOptions = CardOnFileOptions(),
+        secret: String? = "cas_1"
+    ) async throws -> CofRig {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession(cofEnabled: sessionCof, rsaPublicKey: try makeRSAPublicKey()))
+        payment.stubSubmit([terminalSucceeded()])
+        let cof = MockCofService()
+        let controller = makeController(payment: payment, cof: cof, cardOnFile: options)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: secret)
+        return CofRig(controller: controller, payment: payment, cof: cof)
+    }
+
+    func test_effectiveCof_sessionAndOptionsAndSecret_enabled() async throws {
+        let rig = try await makeCofRig(sessionCof: true)
+        let enabled = await rig.controller.isCardOnFileEnabled
+        XCTAssertTrue(enabled)
+        _ = await rig.controller.listSavedCards()
+        XCTAssertEqual(rig.cof.listCallCount, 1)
+    }
+
+    func test_effectiveCof_sessionDisabled_blocksListAndStoreCard() async throws {
+        let rig = try await makeCofRig(sessionCof: false)
+        let enabled = await rig.controller.isCardOnFileEnabled
+        XCTAssertFalse(enabled)
+        _ = await rig.controller.listSavedCards()
+        XCTAssertEqual(rig.cof.listCallCount, 0)
+        _ = await rig.controller.confirmNewCard(newCardInput(), save: true)
+        XCTAssertNil(rig.payment.lastSubmitRequest?.storeCard)
+    }
+
+    func test_effectiveCof_hostDisabled_blocksListAndStoreCard() async throws {
+        let rig = try await makeCofRig(sessionCof: true, options: CardOnFileOptions(isEnabled: false))
+        let enabled = await rig.controller.isCardOnFileEnabled
+        XCTAssertFalse(enabled)
+        _ = await rig.controller.listSavedCards()
+        XCTAssertEqual(rig.cof.listCallCount, 0)
+        _ = await rig.controller.confirmNewCard(newCardInput(), save: true)
+        XCTAssertNil(rig.payment.lastSubmitRequest?.storeCard)
+    }
+
+    func test_effectiveCof_noSecret_disabled() async throws {
+        let rig = try await makeCofRig(sessionCof: true, secret: nil)
+        let enabled = await rig.controller.isCardOnFileEnabled
+        XCTAssertFalse(enabled)
+        _ = await rig.controller.listSavedCards()
+        XCTAssertEqual(rig.cof.listCallCount, 0)
+    }
+
+    func test_effectiveCof_enabled_storeCardSentWhenSaveTrue() async throws {
+        let rig = try await makeCofRig(sessionCof: true)
+        _ = await rig.controller.confirmNewCard(newCardInput(), save: true)
+        XCTAssertEqual(rig.payment.lastSubmitRequest?.storeCard, true)
+    }
+
+    func test_saveByDefault_requiresEffectiveCof() async throws {
+        let on = try await makeCofRig(sessionCof: true, options: CardOnFileOptions(saveByDefault: true))
+        let onValue = await on.controller.cardOnFileSaveByDefault
+        XCTAssertTrue(onValue)
+        let off = try await makeCofRig(sessionCof: false, options: CardOnFileOptions(saveByDefault: true))
+        let offValue = await off.controller.cardOnFileSaveByDefault
+        XCTAssertFalse(offValue)
+    }
+
+    func test_effectiveCof_falseBeforeStartAndAfterDismiss() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession())
+        let controller = makeController(payment: payment)
+        let before = await controller.isCardOnFileEnabled
+        XCTAssertFalse(before)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+        let during = await controller.isCardOnFileEnabled
+        XCTAssertTrue(during)
+        await controller.dismiss()
+        let after = await controller.isCardOnFileEnabled
+        XCTAssertFalse(after)
     }
 }
