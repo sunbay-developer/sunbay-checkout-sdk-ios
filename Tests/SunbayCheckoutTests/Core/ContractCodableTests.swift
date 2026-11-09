@@ -166,6 +166,29 @@ final class ContractCodableTests: XCTestCase {
         assertTotalAmountRejected(#""99999999999999999999""#, "USD")
     }
 
+    func test_decodeSession_invalidCurrency_throwsDataCorrupted() {
+        for currency in ["", "US", "XYZ", "US1", "USDX", "\u{FF35}SD"] {
+            assertTotalAmountRejected(#""1.13""#, currency)
+        }
+    }
+
+    func test_decodeSession_lowercaseKnownCurrency_isAccepted() throws {
+        XCTAssertEqual(try minorUnits(#""1.13""#, "usd"), 113)
+    }
+
+    func test_decodeSession_jsonNumberTotal_decodesExactlyOrIsRejected_neverWrong() {
+        let cases: [(String, Int64)] = [
+            ("0.07", 7), ("1.13", 113), ("19.99", 1999), ("10.1", 1010), ("0.29", 29), ("4.35", 435),
+            ("1234567.89", 123_456_789),
+        ]
+        for (literal, expected) in cases {
+            if let value = try? minorUnits(literal, "USD") {
+                XCTAssertEqual(value, expected, "\(literal) decoded to a wrong amount")
+            }
+            // A rejection is acceptable; a wrong amount is not.
+        }
+    }
+
     func test_decodeSession_legacyStoreCardKey_isIgnored() throws {
         let session = try ContractDecoding.decodeSession(
             from: sessionJSON(extra: #""storeCard": false,"#))

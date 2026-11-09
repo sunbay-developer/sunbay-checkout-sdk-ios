@@ -53,13 +53,13 @@ enum ContractDecoding {
 
         /// Converts the wire object into a `CheckoutSession`.
         ///
-        /// - Throws: `DecodingError` when `expiresAt` is not a valid ISO-8601 date.
+        /// - Throws: `DecodingError` when `expiresAt` is not in a supported timestamp format (see `parseISO8601`).
         func toSession() throws -> CheckoutSession {
             guard let expiresAt = ContractDecoding.parseISO8601(expiresAt) else {
                 throw DecodingError.dataCorrupted(
                     DecodingError.Context(
                         codingPath: [],
-                        debugDescription: "expiresAt is not a valid ISO-8601: \(expiresAt)"
+                        debugDescription: "expiresAt is not in a supported timestamp format: \(expiresAt)"
                     )
                 )
             }
@@ -93,13 +93,14 @@ enum ContractDecoding {
     ///
     /// - Parameter data: The session JSON data.
     /// - Returns: The decoded session model.
-    /// - Throws: Throws `DecodingError` when the JSON structure does not match or `expiresAt` is not valid ISO-8601.
+    /// - Throws: Throws `DecodingError` when the JSON structure does not match `expiresAt` is not a supported timestamp format, or the currency is unknown/malformed.
     static func decodeSession(from data: Data) throws -> CheckoutSession {
         try JSONDecoder().decode(SessionWire.self, from: data).toSession()
     }
 
     /// Reads a major-unit amount (JSON string or number) and converts it to minor units.
     ///
+    /// The currency must be 3 ASCII letters known to Foundation, otherwise the session is rejected (no silent 2-digit fallback).
     /// The number of fraction digits comes from Foundation's ISO 4217 data via `NumberFormatter`.
     /// Parsing uses `Decimal` only, so there is no binary rounding.
     fileprivate static func decodeMinorUnits<K: CodingKey>(
@@ -120,6 +121,9 @@ enum ContractDecoding {
         }
         guard major >= 0 else { throw corrupted("totalAmount must not be negative") }
 
+        guard isKnownCurrency(currencyCode) else {
+            throw corrupted("currency must be a known ISO 4217 code of 3 ASCII letters")
+        }
         let digits = fractionDigits(currencyCode: currencyCode)
         var scaled = major
         var base = Decimal(1)
@@ -144,6 +148,18 @@ enum ContractDecoding {
         guard !parts.isEmpty, parts.count <= 2 else { return false }
         let isDigits = { (p: Substring) in !p.isEmpty && p.allSatisfy { $0 >= "0" && $0 <= "9" } }
         return parts.allSatisfy(isDigits)
+    }
+
+    /// True when the code is exactly 3 ASCII letters and known to Foundation (case-insensitive).
+    private static func isKnownCurrency(_ code: String) -> Bool {
+        guard code.utf8.count == 3, code.utf8.allSatisfy({ ($0 >= 65 && $0 <= 90) || ($0 >= 97 && $0 <= 122) })
+        else { return false }
+        let upper = code.uppercased()
+        // `Locale.isoCurrencyCodes` is deprecated on newer OSes but available on the SDK's minimum target.
+        if #available(macOS 13, iOS 16, *) {
+            return Locale.commonISOCurrencyCodes.contains(upper)
+        }
+        return Locale.isoCurrencyCodes.contains(upper)
     }
 
     /// ISO 4217 minor-unit digits for a currency, from Foundation (`NumberFormatter`).
