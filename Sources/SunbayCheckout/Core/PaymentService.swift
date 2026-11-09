@@ -8,7 +8,7 @@ import Foundation
 /// - Note: Sensitive fields (`cardEncryptedData` / `walletToken` / `customerAccessSecret` / `checkoutClientSecret`)
 ///   never enter logs or public callbacks; `debugDescription` redacts them.
 ///   **Public**: the host's `PaymentService.submit` receives this type and forwards it to the backend adapter.
-public struct SubmitRequest: Sendable, CustomDebugStringConvertible {
+public struct SubmitRequest: Sendable, CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
     /// Session identifier.
     public let sessionId: String
     /// Payment method identifier (such as `"CARD"` / `"APPLE_PAY"` / `"TOKEN"`).
@@ -52,7 +52,15 @@ public struct SubmitRequest: Sendable, CustomDebugStringConvertible {
     }
 
     /// Redacted description: never prints secrets, tokens or ciphertext.
-    public var debugDescription: String {
+    public var debugDescription: String { redactedDescription }
+
+    /// Redacted description used by `"\(request)"`, `print`, and `String(describing:)`.
+    public var description: String { redactedDescription }
+
+    /// Empty mirror so `dump(_:)` and reflection-based loggers cannot enumerate secret fields.
+    public var customMirror: Mirror { Mirror(self, children: [:]) }
+
+    private var redactedDescription: String {
         "SubmitRequest(sessionId: \(sessionId), paymentMethod: \(paymentMethod), attemptId: \(attemptId))"
     }
 }

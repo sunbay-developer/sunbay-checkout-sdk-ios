@@ -240,7 +240,7 @@ final class CheckoutControllerTests: XCTestCase {
 
     // MARK: - Saved card: carry only paymentMethodId, no card data
 
-    func test_savedCard_submitsPaymentMethodId_noCardData() async throws {
+    func test_savedCard_submitsSavedCardId_noCardData() async throws {
         let payment = MockPaymentService()
         payment.stubSession(makeSession())
         payment.stubSubmit([terminalSucceeded()])
@@ -343,14 +343,28 @@ final class CheckoutControllerTests: XCTestCase {
         XCTAssertEqual(payment.getResultCallCount, 1)
     }
 
-    func test_submitRequest_debugDescription_hidesSecrets() {
+    func test_submitRequest_allStringForms_hideSecrets() {
+        let token = Data("WALLETTOKEN".utf8)
         let req = SubmitRequest(
             sessionId: "sess_1", paymentMethod: "CARD", attemptId: UUID(),
-            cardEncryptedData: "CIPHER", walletToken: Data([1, 2]), savedCardId: "pm_1",
+            cardEncryptedData: "CIPHER", walletToken: token, savedCardId: "pm_1",
             customerAccessSecret: "cas_x", checkoutClientSecret: "ccs_x")
-        let text = String(reflecting: req)
-        for secret in ["CIPHER", "ccs_x", "cas_x"] {
-            XCTAssertFalse(text.contains(secret), "debug description leaked \(secret)")
+        var dumped = ""
+        dump(req, to: &dumped)
+        let forms = [
+            "reflecting": String(reflecting: req),
+            "interpolation": "\(req)",
+            "describing": String(describing: req),
+            "dump": dumped,
+        ]
+        let secrets = [
+            "CIPHER", "ccs_x", "cas_x", "WALLETTOKEN",
+            token.base64EncodedString(), String(describing: token),
+        ]
+        for (name, text) in forms {
+            for secret in secrets {
+                XCTAssertFalse(text.contains(secret), "\(name) leaked \(secret)")
+            }
         }
     }
 
