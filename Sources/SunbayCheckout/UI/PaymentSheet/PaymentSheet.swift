@@ -88,6 +88,8 @@
         private let sessionId: String
         /// COF credential (optional); held in memory only and passed to `CheckoutController.start`, never logged/returned (§5).
         private let customerAccessSecret: String?
+        /// Client secret issued by the host backend with the session (optional); memory only, never logged/returned.
+        private let checkoutClientSecret: String?
         /// Localized-string provider handed to the content VC so its copy renders in the configured
         /// locale. Built from a `LocalizationResolver`; maps a `sunbay.*` key to its localized
         /// string. Core stays UI-agnostic — the resolver lives in Core, the closure is consumed only
@@ -142,10 +144,12 @@
         ///   - checkout: The SDK public entry point (holding the host configuration and injected backend services).
         ///   - sessionId: The session identifier to check out.
         ///   - customerAccessSecret: COF credential (optional); delivered by the host backend over HTTPS, held in memory only, never logged.
+        ///   - checkoutClientSecret: Client secret issued by the host backend together with the session (optional); kept in memory only, never logged.
         public convenience init(
             checkout: SunbayCheckout,
             sessionId: String,
-            customerAccessSecret: String? = nil
+            customerAccessSecret: String? = nil,
+            checkoutClientSecret: String? = nil
         ) {
             let controller = checkout.makeController(
                 credentials: CredentialStore(),
@@ -155,6 +159,7 @@
                 controller: controller,
                 sessionId: sessionId,
                 customerAccessSecret: customerAccessSecret,
+                checkoutClientSecret: checkoutClientSecret,
                 localize: LocalizationResolver(explicitLocale: checkout.configuration.locale).localizedNoComment,
                 localeCode: checkout.configuration.locale,
                 appearance: checkout.configuration.appearance ?? .default,
@@ -176,6 +181,7 @@
         ///   - controller: The payment orchestrator.
         ///   - sessionId: The session identifier.
         ///   - customerAccessSecret: COF credential (optional).
+        ///   - checkoutClientSecret: Client secret issued by the host backend with the session (optional).
         ///   - localize: Localized-string provider for the content copy; defaults to a nil-locale
         ///     resolver (system-preferred languages, then the `en` development localization), so
         ///     existing internal-init call sites compile unchanged.
@@ -192,6 +198,7 @@
             controller: CheckoutController,
             sessionId: String,
             customerAccessSecret: String? = nil,
+            checkoutClientSecret: String? = nil,
             localize: @escaping (String) -> String = LocalizationResolver(explicitLocale: nil).localizedNoComment,
             localeCode: String? = nil,
             appearance: Appearance = .default,
@@ -205,6 +212,7 @@
             self.controller = controller
             self.sessionId = sessionId
             self.customerAccessSecret = customerAccessSecret
+            self.checkoutClientSecret = checkoutClientSecret
             self.localize = localize
             self.localeCode = localeCode
             self.appearance = appearance
@@ -371,7 +379,7 @@
                 session = try await controller.start(
                     sessionId: sessionId,
                     customerAccessSecret: customerAccessSecret,
-                    checkoutClientSecret: nil  // wired to the public parameter in a later task
+                    checkoutClientSecret: checkoutClientSecret
                 )
             } catch let error as CheckoutError {
                 return .startFailed(.failed(txnId: nil, error: error))

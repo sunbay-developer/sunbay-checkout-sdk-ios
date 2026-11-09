@@ -96,6 +96,9 @@
             private var paymentButton: PKPaymentButton?
         #endif
 
+        /// Client secret issued by the host backend with the session (optional); memory only, never logged.
+        private let checkoutClientSecret: String?
+
         // MARK: - Public initialization (assembles the real dependencies)
 
         /// Constructs the button from a `SunbayCheckout` entry point and a session identifier (the public entry point used by the host).
@@ -109,16 +112,17 @@
         ///   - checkout: The SDK public entry point (holding the host configuration).
         ///   - sessionId: The session identifier to check out.
         ///   - style: Button color style; defaults to `.automatic`.
+        ///   - checkoutClientSecret: Client secret issued by the host backend together with the session (optional); kept in memory only, never logged.
         ///
         /// - Note: The controller uses the backend services held by the `checkout` instance: if
         ///   the host injected real/mock services via
         ///   `SunbayCheckout(configuration:paymentService:cofService:)`, the button uses them;
-        ///   otherwise it falls back to the shared fail-closed `Unconfigured*` defaults (until
-        ///   the §7/§8 contract is defined).
+        ///   otherwise it talks to the real Sunbay backend for the configured environment.
         public convenience init(
             checkout: SunbayCheckout,
             sessionId: String,
-            style: ApplePayButtonStyle = .automatic
+            style: ApplePayButtonStyle = .automatic,
+            checkoutClientSecret: String? = nil
         ) {
             let webAuthOpener = WebAuthOpener()
             let controller = checkout.makeController(
@@ -131,7 +135,8 @@
                 sessionId: sessionId,
                 configuredMerchantId: checkout.configuration.applePayMerchantId,
                 amount: nil,
-                style: style
+                style: style,
+                checkoutClientSecret: checkoutClientSecret
             )
         }
 
@@ -152,9 +157,11 @@
             sessionId: String,
             configuredMerchantId: String?,
             amount: Amount? = nil,
-            style: ApplePayButtonStyle = .automatic
+            style: ApplePayButtonStyle = .automatic,
+            checkoutClientSecret: String? = nil
         ) {
             self.controller = controller
+            self.checkoutClientSecret = checkoutClientSecret
             self.walletAuthorizer = walletAuthorizer
             self.sessionId = sessionId
             self.amount = amount
@@ -196,7 +203,8 @@
             do {
                 let session = try await controller.start(
                     sessionId: sessionId,
-                    customerAccessSecret: nil
+                    customerAccessSecret: nil,
+                    checkoutClientSecret: checkoutClientSecret
                 )
                 backendAllowed = session.methods.contains(.applePay)
                 amount = session.amount

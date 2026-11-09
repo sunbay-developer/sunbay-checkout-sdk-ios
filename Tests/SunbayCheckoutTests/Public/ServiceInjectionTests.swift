@@ -5,11 +5,10 @@ import XCTest
 
 /// Tests for the public service injection seam (Task 11.5) (pure logic, runs directly on the macOS host, no UIKit dependency).
 ///
-/// Covers two paths:
+/// Covers:
 /// 1. The host services injected via `SunbayCheckout(configuration:paymentService:cofService:)` are
 ///    actually assembled into `CheckoutController` by `makeController` and drive to a known result.
-/// 2. The plain `SunbayCheckout(configuration:)` can still be constructed, and its controller fails closed:
-///    confirm fails with error code `NETWORK_UNAVAILABLE` (the Unconfigured default services).
+/// (The plain-init real-backend default is covered by `SunbayCheckoutDefaultWiringTests`.)
 final class ServiceInjectionTests: XCTestCase {
     private func makeConfig() -> CheckoutConfiguration {
         CheckoutConfiguration(environment: .test)
@@ -59,24 +58,5 @@ final class ServiceInjectionTests: XCTestCase {
         XCTAssertEqual(txnId, "txn_ok")
         XCTAssertEqual(payment.submitCallCount, 1, "should submit once via the injected payment service")
         XCTAssertEqual(payment.loadSessionCallCount, 1, "should load the session once via the injected payment service")
-    }
-
-    // MARK: - 2. The plain init still constructs, and its controller fails closed (NETWORK_UNAVAILABLE)
-
-    func test_plainInit_controllerFailsClosed_withNetworkUnavailable() async throws {
-        let checkout = SunbayCheckout(configuration: makeConfig())
-
-        let controller = checkout.makeController(
-            credentials: CredentialStore(),
-            actionHandler: StubActionHandler()
-        )
-
-        // Under the plain init, loadSession throws NETWORK_UNAVAILABLE directly (the Unconfigured default).
-        do {
-            _ = try await controller.start(sessionId: "sess_x", customerAccessSecret: nil)
-            XCTFail("unconfigured default services should fail closed when loading the session")
-        } catch let error as CheckoutError {
-            XCTAssertEqual(error.code, "NETWORK_UNAVAILABLE")
-        }
     }
 }
