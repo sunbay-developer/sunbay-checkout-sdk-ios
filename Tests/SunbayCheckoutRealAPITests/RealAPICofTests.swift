@@ -20,8 +20,6 @@ final class RealAPICofTests: XCTestCase {
     private func devServerURL() throws -> URL {
         let raw = ProcessInfo.processInfo.environment["SUNBAY_DEV_SERVER_URL"]
         try XCTSkipIf(raw == nil || raw?.isEmpty == true, "SUNBAY_DEV_SERVER_URL is not set.")
-        try XCTSkipIf(environment != .dev && environment != .test,
-                      "Real-API tests run only against dev or test.")
         guard let raw, let url = URL(string: raw) else {
             throw XCTSkip("SUNBAY_DEV_SERVER_URL is not a valid URL.")
         }
@@ -96,6 +94,17 @@ final class RealAPICofTests: XCTestCase {
         let card = try testCard()
         let last4 = String(card.number.filter(\.isNumber).suffix(4))
 
+        // Step 0: list the saved cards on a fresh session before paying.
+        let (baseline, baselineSecret) = try await newSession()
+        let idsBefore: Set<String>
+        do {
+            idsBefore = Set(try await HTTPCofService(client: makeClient())
+                .listPaymentMethods(customerAccessSecret: baselineSecret, sessionId: baseline.sessionId)
+                .map(\.id))
+        } catch let error as CheckoutError {
+            return XCTFail("Step 0 (list before paying) failed with code \(error.code).")
+        }
+
         // Step 1: pay a new card and ask the backend to store it.
         let (first, firstSecret) = try await newSession()
         let credentials = CredentialStore()
@@ -114,7 +123,7 @@ final class RealAPICofTests: XCTestCase {
             return XCTFail("Step 1 (pay new card with save) outcome: \(describe(storeOutcome)).")
         }
 
-        // Step 2: list on a fresh session for the same dev customer.
+        // Step 2: list on a fresh session for the same dev customer; require a NEW id with the same last4.
         let (second, secondSecret) = try await newSession()
         let saved: [SavedCard]
         do {
@@ -123,9 +132,9 @@ final class RealAPICofTests: XCTestCase {
         } catch let error as CheckoutError {
             return XCTFail("Step 2 (list on a new session) failed with code \(error.code).")
         }
-        guard let match = saved.first(where: { $0.last4 == last4 }) else {
-            return XCTFail("Step 2 (list on a new session): no saved card matches the test card last4; "
-                           + "\(saved.count) card(s) listed.")
+        guard let match = saved.first(where: { !idsBefore.contains($0.id) && $0.last4 == last4 }) else {
+            return XCTFail("Step 2 (list on a new session): no NEW saved card matches the test card last4; "
+                           + "\(idsBefore.count) before, \(saved.count) after.")
         }
 
         // Step 3: pay the saved card on that second session.
