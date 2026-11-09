@@ -11,14 +11,13 @@ import SunbayCheckoutTestSupport
     /// The demo configuration playground.
     ///
     /// A Stripe-style config screen: a `Form` exposing every `DemoSettings` knob, a "Pay (sheet)"
-    /// action that maps the settings into a `CheckoutConfiguration` + scripted `SunbayCheckoutTestSupport`
-    /// services and presents the SDK `PaymentSheet`, a standalone `ApplePayButton` section, and a
-    /// last-outcome display.
+    /// action that creates a real dev order through the local `Example/DevServer` and presents the SDK
+    /// `PaymentSheet` against the Dev backend, a standalone `ApplePayButton` section, and a
+    /// last-outcome display. The environment is fixed to `.dev`; there is no mock mode.
     ///
     /// Consumes only the SDK public API (`SunbayCheckout`, `CheckoutConfiguration`, `PaymentSheet`,
-    /// `ApplePayButton`, `CheckoutOutcome`, `CheckoutError`) plus the public `SunbayCheckoutTestSupport`
-    /// doubles (`ScriptablePaymentService`, `ScriptableCofService`, `DemoSessionFactory`,
-    /// `DemoRSAKey`). No internal types, no `@testable`.
+    /// `ApplePayButton`, `CheckoutOutcome`, `CheckoutError`) plus `DevSessionClient` from
+    /// `SunbayCheckoutTestSupport`. No internal types, no `@testable`.
     ///
     /// Localization gate: the `Locale` picker writes into `CheckoutConfiguration.locale`, which the
     /// SDK uses to localize the PaymentSheet UI at runtime. Switching to `zh-CN` and presenting the
@@ -30,11 +29,6 @@ import SunbayCheckoutTestSupport
         @State private var lastOutcome: String = "-"
         /// The most recent presentation state observed via `PaymentSheet.onStateChange`.
         @State private var lastState: String = "-"
-        /// Availability of the standalone ApplePayButton (onAvailabilityChange drives the hint copy).
-        @State private var applePayAvailable = false
-
-        // Fixed demo session identifier and COF credential (mock, not confidential).
-        private let sessionId = "demo_session_001"
 
         /// The Apple Pay merchant id baked into Info.plist (`SunbayDemoMerchantId`) by the Tuist
         /// manifest, so it always matches the entitlement. Falls back to the committed placeholder.
@@ -42,44 +36,29 @@ import SunbayCheckoutTestSupport
             let value = Bundle.main.object(forInfoDictionaryKey: "SunbayDemoMerchantId") as? String
             return (value?.isEmpty == false ? value : nil) ?? "merchant.com.example.yourapp"
         }()
-        private let customerAccessSecret = "demo_secret"
 
         var body: some View {
             NavigationView {
                 Form {
-                    modeSection
-                    environmentSection
+                    devServerSection
                     localeSection
                     appearanceSection
                     addressSection
                     amountSection
-                    methodsSection
                     cofSection
-                    scenarioSection
                     paymentSheetSection
                     applePaySection
                     outcomeSection
                 }
                 .navigationTitle("Sunbay Checkout Demo")
-                .safeAreaInset(edge: .top, spacing: 0) {
-                    if isRealMode { devOnlyBanner }
-                }
+                .safeAreaInset(edge: .top, spacing: 0) { devOnlyBanner }
             }
             .navigationViewStyle(.stack)
         }
 
-        // MARK: - Real (dev server) mode
+        // MARK: - Dev server
 
-        /// True only in DEBUG builds with the real dev-server mode selected.
-        private var isRealMode: Bool {
-            #if DEBUG
-                return settings.mode == .realDevServer
-            #else
-                return false
-            #endif
-        }
-
-        /// Persistent warning shown on screen while the real dev-server mode is active.
+        /// Persistent warning shown on screen: sessions come from a dev server that holds the API key.
         private var devOnlyBanner: some View {
             Text("DEV ONLY: sessions are created by a local dev server that holds your API key. In production, create the session in your own backend.")
                 .font(.footnote.bold())
@@ -90,58 +69,26 @@ import SunbayCheckoutTestSupport
                 .background(Color.red)
         }
 
-        /// Mode picker and dev server URL. Compiled out of release builds.
-        @ViewBuilder
-        private var modeSection: some View {
-            #if DEBUG
-                Section {
-                    Picker("Mode", selection: $settings.mode) {
-                        ForEach(DemoSettings.DemoMode.allCases) { mode in
-                            Text(mode.label).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    if settings.mode == .realDevServer {
-                        HStack {
-                            Text("Server URL")
-                            Spacer()
-                            TextField("http://127.0.0.1:8095", text: $settings.devServerURL)
-                                .multilineTextAlignment(.trailing)
-                                .keyboardType(.URL)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled(true)
-                        }
-                    }
-                } header: {
-                    Text("Backend")
-                } footer: {
-                    Text("Mock (default) uses scripted results. Real (dev server) pays against the Dev/Test backend through the local Example/DevServer.")
+        /// Dev server URL. The environment is fixed to Dev.
+        private var devServerSection: some View {
+            Section {
+                HStack {
+                    Text("Server URL")
+                    Spacer()
+                    TextField("http://127.0.0.1:8095", text: $settings.devServerURL)
+                        .multilineTextAlignment(.trailing)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled(true)
                 }
-                .onChange(of: settings.mode) { mode in
-                    if mode == .realDevServer, settings.environment == .production {
-                        settings.environment = .dev
-                    }
-                }
-            #endif
-        }
-
-        /// Environments offered by the picker: Dev/Test only in real mode.
-        private var availableEnvironments: [DemoSettings.DemoEnvironment] {
-            isRealMode ? [.dev, .test] : DemoSettings.DemoEnvironment.allCases
+            } header: {
+                Text("Backend (Dev)")
+            } footer: {
+                Text("Pays against the Dev backend (environment is fixed). Start Example/DevServer first; it creates the order session.")
+            }
         }
 
         // MARK: - Config sections
-
-        private var environmentSection: some View {
-            Section("Environment") {
-                Picker("Environment", selection: $settings.environment) {
-                    ForEach(availableEnvironments) { env in
-                        Text(env.label).tag(env)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
-        }
 
         private var localeSection: some View {
             Section {
@@ -196,62 +143,37 @@ import SunbayCheckoutTestSupport
             } header: {
                 Text("Address collection")
             } footer: {
-                Text("Full mode renders the backend-layout address form from the injected ScriptableAddressMetadataService (US + CA fixtures).")
+                Text("Off does not ask the dev server to collect the address; Simple and Full do. Full mode has no country data until the backend address integration (phase 3).")
             }
         }
 
         private var amountSection: some View {
-            Section("Amount") {
-                if isRealMode {
-                    Text("Real mode: the dev server creates the session in its own currency (default USD) with a fixed amount of 1.05; these knobs apply to Mock mode only.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } else {
-                    HStack {
-                        Text("Currency")
-                        Spacer()
-                        TextField("USD", text: $settings.currencyCode)
-                            .multilineTextAlignment(.trailing)
-                            .textInputAutocapitalization(.characters)
-                            .autocorrectionDisabled(true)
-                    }
-                    HStack {
-                        Text("Minor units")
-                        Spacer()
-                        TextField("4299", text: amountText)
-                            .multilineTextAlignment(.trailing)
-                            .keyboardType(.numberPad)
-                    }
+            Section {
+                HStack {
+                    Text("Currency")
+                    Spacer()
+                    Text("USD").foregroundStyle(.secondary)
                 }
-            }
-        }
-
-        private var methodsSection: some View {
-            Section("Payment methods") {
-                ForEach(DemoSettings.DemoMethod.allCases) { method in
-                    Toggle(method.label, isOn: methodBinding(method))
+                HStack {
+                    Text("Minor units")
+                    Spacer()
+                    TextField("105", text: amountText)
+                        .multilineTextAlignment(.trailing)
+                        .keyboardType(.numberPad)
                 }
+            } header: {
+                Text("Amount")
+            } footer: {
+                Text("The currency is fixed to USD. The dev server receives the amount in major units (minor units / 100).")
             }
         }
 
         private var cofSection: some View {
             Section {
-                Toggle("COF enabled (saved cards)", isOn: $settings.cofEnabled)
                 Toggle("Card on file enabled", isOn: $settings.cardOnFileEnabled)
                 Toggle("Pre-tick save card", isOn: $settings.preTickSaveCard)
             } footer: {
-                Text("Mock session COF and the host switch must both be on, and a customerAccessSecret passed, for the sheet to list saved cards. \"Pre-tick save card\" only sets the checkbox's initial state.")
-            }
-        }
-
-        private var scenarioSection: some View {
-            Section("Scenario (mock submit result)") {
-                Picker("Scenario", selection: $settings.scenario) {
-                    ForEach(DemoSettings.DemoScenario.allCases) { scenario in
-                        Text(scenario.label).tag(scenario)
-                    }
-                }
-                .pickerStyle(.menu)
+                Text("The host switch can only disable saved cards; the session must also allow them. \"Pre-tick save card\" only sets the checkbox's initial state.")
             }
         }
 
@@ -259,16 +181,12 @@ import SunbayCheckoutTestSupport
 
         private var paymentSheetSection: some View {
             Section("PaymentSheet (L1 black-box)") {
-                Text("Presents the SDK sheet: new-card form, 'Save this card', the mock saved cards (COF one-tap), and an Apple Pay entry row.")
+                Text("Creates a Dev order session, then presents the SDK sheet: new-card form, 'Save this card', saved cards (COF one-tap), and an Apple Pay entry row.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 PaySheetButton(
                     checkout: makeCheckout(),
-                    sessionId: sessionId,
-                    customerAccessSecret: settings.cofEnabled ? customerAccessSecret : nil,
-                    isRealMode: isRealMode,
-                    realServerURL: URL(string: settings.devServerURL),
-                    realAmountMajorUnits: 1.05,
+                    request: sessionRequest,
                     onOutcome: { lastOutcome = describe($0) },
                     onState: { lastState = describeState($0) }
                 )
@@ -277,24 +195,11 @@ import SunbayCheckoutTestSupport
 
         private var applePaySection: some View {
             Section("Standalone ApplePayButton (L3)") {
-                if isRealMode {
-                    Text("Not available in Real (dev server) mode: the standalone button needs a session up front. Use the Apple Pay entry in the sheet on a real device.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text(applePayAvailable
-                        ? "Available - tap to drive the wallet authorization end-to-end (confirmWallet)."
-                        : "Hidden/unavailable (device cannot make payments, merchant-id not configured, or Apple Pay method off).")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    ApplePayButtonView(
-                        checkout: makeCheckout(),
-                        sessionId: sessionId,
-                        onResult: { lastOutcome = describe($0) },
-                        onAvailabilityChange: { applePayAvailable = $0 }
-                    )
-                    .frame(height: 48)
-                }
+                StandaloneApplePaySection(
+                    checkout: makeCheckout(),
+                    request: sessionRequest,
+                    onResult: { lastOutcome = describe($0) }
+                )
             }
         }
 
@@ -319,47 +224,29 @@ import SunbayCheckoutTestSupport
             )
         }
 
-        /// Binds one payment-method toggle into the `methods` set.
-        private func methodBinding(_ method: DemoSettings.DemoMethod) -> Binding<Bool> {
-            Binding(
-                get: { settings.methods.contains(method) },
-                set: { isOn in
-                    if isOn {
-                        settings.methods.insert(method)
-                    } else {
-                        settings.methods.remove(method)
-                    }
-                }
+        // MARK: - Settings -> SDK wiring
+
+        /// The dev-server session request derived from the current settings.
+        private var sessionRequest: DevSessionRequest {
+            DevSessionRequest(
+                serverURL: URL(string: settings.devServerURL),
+                amountMajorUnits: Double(settings.amountMinorUnits) / 100,
+                collectBillingAddress: settings.billingAddressMode != .off,
+                collectShippingAddress: settings.shippingAddressMode != .off
             )
         }
 
-        // MARK: - Settings -> SDK wiring
-
-        /// Assembles a public SDK entry point from the current settings and the scripted mock services.
-        ///
-        /// Maps `DemoSettings` into a `CheckoutConfiguration` (environment + locale + placeholder
-        /// merchant id) and injects `ScriptablePaymentService` / `ScriptableCofService` from
-        /// `SunbayCheckoutTestSupport` via the public `SunbayCheckout(configuration:paymentService:cofService:)`
-        /// seam. The scripted session and submit snapshots reflect the amount/methods/COF/scenario knobs.
+        /// Assembles the public SDK entry point against the Dev environment (real backend adapters).
         private func makeCheckout() -> SunbayCheckout {
             let config = CheckoutConfiguration(
-                environment: settings.environment.configurationValue,
+                environment: .dev,
                 applePayMerchantId: Self.merchantId,
                 appearance: makeAppearance(),
                 locale: settings.locale.bcp47,
                 cardOnFile: CardOnFileOptions(isEnabled: settings.cardOnFileEnabled,
                                               saveByDefault: settings.preTickSaveCard)
             )
-            if isRealMode {
-                // Real backend adapters (default services); no scripted doubles.
-                return SunbayCheckout(configuration: config)
-            }
-            return SunbayCheckout(
-                configuration: config,
-                paymentService: makePaymentService(),
-                cofService: makeCofService(),
-                addressMetadataService: ScriptableAddressMetadataService.demoDefault()
-            )
+            return SunbayCheckout(configuration: config)
         }
 
         /// Builds an `Appearance` from the preset + scheme + address-mode knobs.
@@ -410,51 +297,6 @@ import SunbayCheckoutTestSupport
             }
         }
 
-        /// Builds a scripted `PaymentService` reflecting the amount/methods/COF/scenario knobs.
-        private func makePaymentService() -> ScriptablePaymentService {
-            let service = ScriptablePaymentService()
-            let methodKinds = Set(settings.methods.map(\.kind))
-            service.stubSession(
-                DemoSessionFactory.make(
-                    id: sessionId,
-                    amount: Amount(
-                        minorUnits: settings.amountMinorUnits,
-                        currencyCode: settings.currencyCode
-                    ),
-                    methods: methodKinds,
-                    cofEnabled: settings.cofEnabled
-                )
-            )
-
-            let txnId = "demo_txn_001"
-            switch settings.scenario {
-            case .succeeded:
-                service.stubSubmit([PaymentSnapshot(sessionId: sessionId, status: .succeeded, txnId: txnId)])
-            case .failed:
-                service.stubSubmit([PaymentSnapshot(sessionId: sessionId, status: .failed, txnId: txnId)])
-            case .pending:
-                service.stubSubmit([PaymentSnapshot(sessionId: sessionId, status: .initial, txnId: txnId)])
-            case .requiresAction:
-                service.stubSubmit([PaymentSnapshot(sessionId: sessionId, status: .requiresAction, txnId: txnId)])
-            case .networkTimeout:
-                // Submit throws -> Core enters unknown (no blind retry). getResult recovers to succeeded.
-                service.stubSubmitError(DemoNetworkUnavailable())
-            }
-            // Recovery query for the unknown branch always resolves to a confirmed terminal success.
-            service.stubGetResult([PaymentSnapshot(sessionId: sessionId, status: .succeeded, txnId: "demo_txn_recovered")])
-            return service
-        }
-
-        /// Builds a scripted `CofService` with two mock saved cards.
-        private func makeCofService() -> ScriptableCofService {
-            let service = ScriptableCofService()
-            service.stubCards([
-                SavedCard(id: "pm_demo_visa", brand: "visa", last4: "4242", expMonth: 12, expYear: 2029),
-                SavedCard(id: "pm_demo_mc", brand: "mastercard", last4: "4444", expMonth: 8, expYear: 2028),
-            ])
-            return service
-        }
-
         /// Maps a `CheckoutOutcome` to readable copy (contains no sensitive data).
         private func describe(_ outcome: CheckoutOutcome) -> String {
             switch outcome {
@@ -482,25 +324,36 @@ import SunbayCheckoutTestSupport
         }
     }
 
-    /// The "network unavailable" error used by the `networkTimeout` scenario.
-    ///
-    /// A minimal `Error` simulating a submit timeout, letting `CheckoutController` take the unknown
-    /// branch (query getResult first instead of blindly resubmitting).
-    private struct DemoNetworkUnavailable: Error {}
+    // MARK: - Dev session request
+
+    /// The server URL text is not a valid URL.
+    struct InvalidServerURL: Error {}
+
+    /// What the dev server needs to create an order session. `serverURL` is nil for a malformed URL.
+    struct DevSessionRequest {
+        let serverURL: URL?
+        let amountMajorUnits: Double
+        let collectBillingAddress: Bool
+        let collectShippingAddress: Bool
+
+        /// Creates the session through the dev server. Throws `DevSessionError` with a readable message.
+        func create() async throws -> DevSession {
+            guard let serverURL else { throw InvalidServerURL() }
+            return try await DevSessionClient(serverURL: serverURL).createSession(
+                amountMajorUnits: amountMajorUnits,
+                collectBillingAddress: collectBillingAddress,
+                collectShippingAddress: collectShippingAddress
+            )
+        }
+    }
 
     // MARK: - PaymentSheet wrapper (SwiftUI button -> presents the UIKit payment page)
 
-    /// A SwiftUI button that presents the public `PaymentSheet` on the frontmost view controller and
-    /// passes back the returned `CheckoutOutcome`. Uses SDK public API only, no internal types.
+    /// A SwiftUI button that creates a dev session, presents the public `PaymentSheet` on the
+    /// frontmost view controller and passes back the returned `CheckoutOutcome`.
     struct PaySheetButton: View {
         let checkout: SunbayCheckout
-        let sessionId: String
-        let customerAccessSecret: String?
-        /// True in Real (dev server) mode; `realServerURL` is then required to be a valid URL.
-        let isRealMode: Bool
-        /// Parsed dev-server URL (nil when the text is malformed).
-        let realServerURL: URL?
-        let realAmountMajorUnits: Double
+        let request: DevSessionRequest
         let onOutcome: (CheckoutOutcome) -> Void
         let onState: (CheckoutPresentationState) -> Void
         @State private var errorMessage: String?
@@ -511,40 +364,19 @@ import SunbayCheckoutTestSupport
                     guard let presenter = topViewController() else { return }
                     errorMessage = nil
                     Task { @MainActor in
-                        let sheet: PaymentSheet
-                        #if DEBUG
-                            if isRealMode {
-                                guard let serverURL = realServerURL else {
-                                    errorMessage = "Invalid server URL"
-                                    return
-                                }
-                                do {
-                                    let session = try await DevSessionClient(serverURL: serverURL)
-                                        .createSession(amountMajorUnits: realAmountMajorUnits)
-                                    sheet = PaymentSheet(
-                                        checkout: checkout,
-                                        sessionId: session.sessionId,
-                                        customerAccessSecret: session.customerAccessSecret,
-                                        checkoutClientSecret: session.checkoutClientSecret
-                                    )
-                                } catch {
-                                    errorMessage = "Dev server session failed: \(error)"
-                                    return
-                                }
-                            } else {
-                                sheet = PaymentSheet(
-                                    checkout: checkout,
-                                    sessionId: sessionId,
-                                    customerAccessSecret: customerAccessSecret
-                                )
-                            }
-                        #else
-                            sheet = PaymentSheet(
-                                checkout: checkout,
-                                sessionId: sessionId,
-                                customerAccessSecret: customerAccessSecret
-                            )
-                        #endif
+                        let session: DevSession
+                        do {
+                            session = try await request.create()
+                        } catch {
+                            errorMessage = describeSessionError(error)
+                            return
+                        }
+                        let sheet = PaymentSheet(
+                            checkout: checkout,
+                            sessionId: session.sessionId,
+                            customerAccessSecret: session.customerAccessSecret,
+                            checkoutClientSecret: session.checkoutClientSecret
+                        )
                         sheet.onStateChange = onState
                         let outcome = await sheet.present(from: presenter)
                         onOutcome(outcome)
@@ -558,17 +390,85 @@ import SunbayCheckoutTestSupport
         }
     }
 
+    // MARK: - Standalone ApplePayButton section
+
+    /// "Create session" then show the standalone `ApplePayButton` bound to that session.
+    struct StandaloneApplePaySection: View {
+        let checkout: SunbayCheckout
+        let request: DevSessionRequest
+        let onResult: (CheckoutOutcome) -> Void
+        @State private var session: DevSession?
+        @State private var errorMessage: String?
+        @State private var available = false
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 8) {
+                Button("Create session") {
+                    errorMessage = nil
+                    session = nil
+                    Task { @MainActor in
+                        do {
+                            session = try await request.create()
+                        } catch {
+                            errorMessage = describeSessionError(error)
+                        }
+                    }
+                }
+                .buttonStyle(.bordered)
+                if let session {
+                    Text(available
+                        ? "Available - tap to drive the wallet authorization end-to-end (confirmWallet)."
+                        : "Hidden/unavailable (device cannot make payments or merchant-id not configured).")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    ApplePayButtonView(
+                        checkout: checkout,
+                        sessionId: session.sessionId,
+                        checkoutClientSecret: session.checkoutClientSecret,
+                        onResult: onResult,
+                        onAvailabilityChange: { available = $0 }
+                    )
+                    .id(session.sessionId)
+                    .frame(height: 48)
+                } else if let errorMessage {
+                    Text(errorMessage).font(.footnote).foregroundColor(.red)
+                } else {
+                    Text("Creates a Dev order session first; the button is then bound to it. Apple Pay needs a real device.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    /// Readable session-creation failure copy (never includes secrets or response bodies).
+    private func describeSessionError(_ error: Error) -> String {
+        if error is InvalidServerURL {
+            return "Invalid server URL"
+        }
+        if let error = error as? DevSessionError {
+            return error.description
+        }
+        return "Dev server session failed: \(error.localizedDescription)"
+    }
+
     // MARK: - ApplePayButton wrapper (UIKit control -> SwiftUI)
 
     /// Bridges the public `ApplePayButton` (UIControl) into SwiftUI, wiring `onResult` and `onAvailabilityChange`.
     struct ApplePayButtonView: UIViewRepresentable {
         let checkout: SunbayCheckout
         let sessionId: String
+        let checkoutClientSecret: String
         let onResult: (CheckoutOutcome) -> Void
         let onAvailabilityChange: (Bool) -> Void
 
         func makeUIView(context: Context) -> ApplePayButton {
-            let button = ApplePayButton(checkout: checkout, sessionId: sessionId, style: .automatic)
+            let button = ApplePayButton(
+                checkout: checkout,
+                sessionId: sessionId,
+                style: .automatic,
+                checkoutClientSecret: checkoutClientSecret
+            )
             button.onResult = onResult
             button.onAvailabilityChange = onAvailabilityChange
             button.setContentHuggingPriority(.defaultLow, for: .horizontal)

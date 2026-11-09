@@ -1,7 +1,7 @@
 // SunbayCheckoutTestSupport: TEST/EXAMPLE SCAFFOLDING ONLY.
 //
-// This module provides scriptable service doubles and demo fixtures shared by the test targets
-// and the Example app. It is NOT a stable public API and MUST NOT be used in production
+// This module provides scriptable service doubles and demo fixtures used by the test targets
+// (the Example app uses only DevSessionClient). It is NOT a stable public API and MUST NOT be used in production
 // integrations. Its surface may change without a semantic-version guarantee.
 
 import Foundation
@@ -10,7 +10,7 @@ import SunbayCheckout
 
 /// Scriptable, public-API-only double for `CofService`.
 ///
-/// Shared by the e2e test target and the Example app. Mirrors the scripting semantics of the
+/// Used by the test targets. Mirrors the scripting semantics of the
 /// test-internal `MockCofService`: supports scripting the returned saved-card list or a thrown error,
 /// and records the call count of `listPaymentMethods` plus the most recent arguments, used to assert
 /// invariants such as "never list cards when COF is disabled". Mutable state is guarded with `NSLock`

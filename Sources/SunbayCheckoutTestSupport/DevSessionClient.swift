@@ -30,12 +30,23 @@ public struct DevSessionError: Error, Sendable, CustomStringConvertible {
 /// This test-support target is not for production use.
 public struct DevSessionClient: Sendable {
     private let serverURL: URL
+    private let session: URLSession
 
-    /// Creates a client.
+    /// Creates a client that uses `URLSession.shared`.
     ///
     /// - Parameter serverURL: Base URL of the dev session server (for example `http://127.0.0.1:8095`).
     public init(serverURL: URL) {
+        self.init(serverURL: serverURL, session: .shared)
+    }
+
+    /// Creates a client with an explicit URL session (tests inject a stubbed one).
+    ///
+    /// - Parameters:
+    ///   - serverURL: Base URL of the dev session server.
+    ///   - session: The URL session used for the request.
+    public init(serverURL: URL, session: URLSession) {
         self.serverURL = serverURL
+        self.session = session
     }
 
     /// Creates a session through the dev server.
@@ -43,9 +54,11 @@ public struct DevSessionClient: Sendable {
     /// - Parameters:
     ///   - amountMajorUnits: Order amount in major units (for example dollars); the server converts to minor units.
     ///   - collectBillingAddress: Whether the session should collect a billing address.
+    ///   - collectShippingAddress: Whether the session should collect a shipping address.
     /// - Returns: The created session.
     public func createSession(amountMajorUnits: Double = 0.01,
-                              collectBillingAddress: Bool = false) async throws -> DevSession {
+                              collectBillingAddress: Bool = false,
+                              collectShippingAddress: Bool = false) async throws -> DevSession {
         var request = URLRequest(url: serverURL.appendingPathComponent("api/create-session"))
         request.httpMethod = "POST"
         request.timeoutInterval = 30
@@ -53,10 +66,11 @@ public struct DevSessionClient: Sendable {
         let body: [String: Any] = [
             "amount": amountMajorUnits,
             "collectBillingAddress": collectBillingAddress,
+            "collectShippingAddress": collectShippingAddress,
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200 else {
             throw DevSessionError(description: "Dev session server returned HTTP \(status).")
