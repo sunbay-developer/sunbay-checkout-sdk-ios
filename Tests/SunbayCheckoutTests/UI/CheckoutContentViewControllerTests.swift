@@ -85,6 +85,7 @@
         private func makeVC(
             savedCards: [SavedCard], methods: Set<PaymentMethodKind> = [.card],
             appearance: Appearance = .default, cofEnabled: Bool = false,
+            cardOnFileEnabled: Bool = false, saveCardByDefault: Bool = false,
             localeCode: String? = nil,
             localize: @escaping (String) -> String = { $0 }
         ) -> CheckoutContentViewController {
@@ -96,11 +97,50 @@
                 localeCode: localeCode,
                 billingMode: .simple,
                 shippingMode: .simple,
-                addressService: MockAddressService()
+                addressService: MockAddressService(),
+                cardOnFileEnabled: cardOnFileEnabled,
+                saveCardByDefault: saveCardByDefault
             )
         }
 
         // MARK: - Tests
+
+        // MARK: - Save-card row (effective COF decision)
+
+        func test_saveRowHidden_whenCardOnFileDisabled_evenIfSessionAllowsCof() {
+            let vc = makeVC(savedCards: [], cofEnabled: true, cardOnFileEnabled: false, saveCardByDefault: true)
+            vc.loadViewIfNeeded()
+            vc.openNewCardForTest()
+            XCTAssertFalse(vc.isSaveCardRowVisibleForTest)
+            XCTAssertFalse(vc.isSaveCardOnForTest)
+        }
+
+        func test_saveRowVisibleAndOn_whenSaveByDefault_andUserCanOptOut() {
+            let vc = makeVC(savedCards: [], cofEnabled: true, cardOnFileEnabled: true, saveCardByDefault: true)
+            vc.loadViewIfNeeded()
+            vc.openNewCardForTest()
+            XCTAssertTrue(vc.isSaveCardRowVisibleForTest)
+            XCTAssertTrue(vc.isSaveCardOnForTest)
+
+            vc.setSaveCardForTest(false)
+            vc.fillCardForTest()
+            let delegate = MockContentDelegate()
+            vc.delegate = delegate
+            vc.simulateTapPay()
+
+            guard case let .confirmNewCard(_, save)? = delegate.lastRequestedAction else {
+                return XCTFail("Expected .confirmNewCard, got \(String(describing: delegate.lastRequestedAction))")
+            }
+            XCTAssertFalse(save)
+        }
+
+        func test_saveRowVisibleAndOff_whenNotSaveByDefault() {
+            let vc = makeVC(savedCards: [], cofEnabled: true, cardOnFileEnabled: true, saveCardByDefault: false)
+            vc.loadViewIfNeeded()
+            vc.openNewCardForTest()
+            XCTAssertTrue(vc.isSaveCardRowVisibleForTest)
+            XCTAssertFalse(vc.isSaveCardOnForTest)
+        }
 
         func test_tapPayWithCompleteCardRequestsConfirmNewCard() {
             let vc = makeVC(savedCards: [])
@@ -506,7 +546,7 @@
         private func assertSheetLayout(
             savedCards: [SavedCard], size: CGSize, file: StaticString = #filePath, line: UInt = #line
         ) {
-            let vc = makeVC(savedCards: savedCards, methods: [.card, .applePay], cofEnabled: true)
+            let vc = makeVC(savedCards: savedCards, methods: [.card, .applePay], cofEnabled: true, cardOnFileEnabled: true)
             let window = UIWindow(frame: CGRect(origin: .zero, size: size))
             window.rootViewController = vc
             window.makeKeyAndVisible()

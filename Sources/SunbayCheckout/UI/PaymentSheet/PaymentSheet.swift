@@ -77,6 +77,10 @@
             let session: CheckoutSession
             /// The listed saved cards; empty when COF is unavailable (no secret / off).
             let savedCards: [SavedCard]
+            /// The effective card-on-file decision (session && host option && secret).
+            let cardOnFileEnabled: Bool
+            /// Whether the save-card checkbox starts ticked.
+            let saveCardByDefault: Bool
         }
 
         // MARK: - Dependencies
@@ -278,7 +282,7 @@
             var lastOutcome: CheckoutOutcome = .canceled
             loop: while true {
                 var attempt = await runAttempt { context in
-                    await coordinator.awaitNextAction(session: context.session, savedCards: context.savedCards)
+                    await coordinator.awaitNextAction(context: context)
                 }
 
                 // A session (re)load failure is NOT a payment outcome (F2). While an earlier attempt is
@@ -357,7 +361,7 @@
         /// 1. `controller.start(sessionId:customerAccessSecret:checkoutClientSecret:)` loads and validates the session;
         ///    on a load failure → failures other than `.canceled` are thrown by start, and here
         ///    they are mapped as a fallback to `.unknown`/`.failed` (see below).
-        /// 2. **Automatic COF inclusion**: when `customerAccessSecret != nil && session.cofEnabled`,
+        /// 2. **Automatic COF inclusion**: when the effective COF decision (`controller.isCardOnFileEnabled`) is on,
         ///    call `controller.listSavedCards()` (degrades internally, never throws); otherwise do
         ///    not drive card listing and savedCards is empty.
         /// 3. Call `seam` with a `CheckoutContext` to get the user `UserAction`.
@@ -395,15 +399,19 @@
             }
 
             // 2. Automatic COF inclusion decision (§2.2): has secret and the backend has COF on → list cards; otherwise do not.
+            let cardOnFileEnabled = await controller.isCardOnFileEnabled
+            let saveCardByDefault = await controller.cardOnFileSaveByDefault
             let savedCards: [SavedCard]
-            if customerAccessSecret != nil && session.cofEnabled {
+            if cardOnFileEnabled {
                 savedCards = await controller.listSavedCards()
             } else {
                 savedCards = []
             }
 
             // 3. Wait for the user action.
-            let action = await seam(CheckoutContext(session: session, savedCards: savedCards))
+            let action = await seam(CheckoutContext(
+                    session: session, savedCards: savedCards,
+                    cardOnFileEnabled: cardOnFileEnabled, saveCardByDefault: saveCardByDefault))
 
             // 4. Drive the confirmation path.
             return await execute(action)
@@ -506,11 +514,11 @@
         ///
         /// - Parameters:
         ///   - session: The loaded session (used to build the content VC on first call).
-        ///   - savedCards: The listed saved cards (COF).
+        ///   - context: The loaded session, listed saved cards (COF) and the COF decision.
         /// - Returns: The next user action (or `.cancel` on cancel / pull-down / no presenter).
-        func awaitNextAction(session: CheckoutSession, savedCards: [SavedCard]) async -> PaymentSheet.UserAction {
+        func awaitNextAction(context: PaymentSheet.CheckoutContext) async -> PaymentSheet.UserAction {
             if !isPresented {
-                presentSheet(session: session, savedCards: savedCards)
+                presentSheet(context: context)
             }
             return await awaitEvent()
         }
@@ -534,11 +542,11 @@
         }
 
         /// Builds the content VC + container and presents it modally.
-        private func presentSheet(session: CheckoutSession, savedCards: [SavedCard]) {
+        private func presentSheet(context: PaymentSheet.CheckoutContext) {
             let resolved = ResolvedAppearance.resolve(appearance)
             let contentVC = CheckoutContentViewController(
-                session: session,
-                savedCards: savedCards,
+                session: context.session,
+                savedCards: context.savedCards,
                 appearance: resolved,
                 localize: localize,
                 localeCode: localeCode,
@@ -547,7 +555,9 @@
                 addressService: addressService,
                 homeTitle: paymentSheetTitle,
                 walletAuthorizer: walletAuthorizer,
-                walletMerchantId: walletMerchantId
+                walletMerchantId: walletMerchantId,
+                cardOnFileEnabled: context.cardOnFileEnabled,
+                saveCardByDefault: context.saveCardByDefault
             )
             let containerVC = PaymentSheetContainerViewController(
                 content: contentVC,

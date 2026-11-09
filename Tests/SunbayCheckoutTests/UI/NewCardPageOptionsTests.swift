@@ -29,7 +29,7 @@
             let vc = CheckoutContentViewController(
                 session: session, savedCards: [], appearance: .resolve(.default), localize: localize,
                 localeCode: nil, billingMode: billing, shippingMode: shipping,
-                addressService: StubAddressService())
+                addressService: StubAddressService(), cardOnFileEnabled: cofEnabled)
             vc.loadViewIfNeeded()
             vc.openNewCardForTest()
             return vc
