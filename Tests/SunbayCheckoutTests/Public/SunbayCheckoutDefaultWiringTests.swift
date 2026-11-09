@@ -150,6 +150,33 @@ final class SunbayCheckoutDefaultWiringTests: XCTestCase {
         XCTAssertNil(info?["deviceResolution"])
     }
 
+    func test_defaultInit_listsSavedCardsThroughCardListEndpoint() async {
+        StubURLProtocol.handler = { request in
+            self.paths.append(request.url?.path ?? "")
+            let body: String
+            if request.url?.path.hasSuffix("/card/list") == true {
+                body = #"{"code":"0","msg":"ok","data":{"cards":[{"savedCardId":"sc_1","maskedCardNumber":"**** **** **** 4242","cardBrand":"VISA","expiryMonth":"07","expiryYear":"29"}]}}"#
+            } else {
+                body = #"{"code":"0","msg":"ok","data":{"sessionId":"s1","sessionType":"sdk","currency":"USD","totalAmount":1000,"expiresAt":"2030-01-01T00:00:00Z","merchantName":"M","paymentMethods":[{"method":"VISA","type":"CARD"}]}}"#
+            }
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(body.utf8))
+        }
+        let checkout = SunbayCheckout(
+            configuration: CheckoutConfiguration(environment: .dev),
+            urlSession: StubURLProtocol.session())
+        let controller = checkout.makeController(
+            credentials: CredentialStore(), actionHandler: StubActionHandler())
+
+        _ = try? await controller.start(
+            sessionId: "s1", customerAccessSecret: "cas_x", checkoutClientSecret: "ccs_x")
+
+        let cards = await controller.listSavedCards()
+
+        XCTAssertTrue(paths.contains { $0.hasSuffix("/card/list") }, "paths: \(paths)")
+        XCTAssertEqual(cards.map(\.id), ["sc_1"])
+    }
+
     func test_injectingInit_stillUsesTheInjectedMock() async throws {
         let payment = MockPaymentService()
         payment.stubSession(

@@ -10,6 +10,8 @@ enum SunbayEndpoints {
         case submitPayment
         /// Queries the payment result of a session.
         case paymentResult(sessionId: String)
+        /// Lists the customer's saved cards.
+        case cardList
     }
 
     /// Returns the backend origin for the given environment.
@@ -29,6 +31,7 @@ enum SunbayEndpoints {
         case .loadSession(let id): path = "/session/" + encode(id)
         case .submitPayment: path = "/payment/submit"
         case .paymentResult(let sessionId): path = "/payment/result/" + encode(sessionId)
+        case .cardList: path = "/card/list"
         }
         return URL(string: base + path)!
     }
