@@ -85,15 +85,17 @@ The tree also now includes:
   fixtures) shared by the e2e target and the Example app; depends on no internal types.
 - `Example/SunbayCheckoutDemo/` — a Tuist-generated Xcode app (`Project.swift` + `Sources/` checked in;
   the generated `*.xcodeproj`/`*.xcworkspace`/`Derived/` are git-ignored). This is the SDK-consuming
-  real-device/demo surface and the UI localization gate. `Example/ApplePayProbe/` remains the standalone
-  PassKit probe.
+  real-device/demo surface and the UI localization gate. It runs against the real backend only, in the
+  `.dev` environment. `Example/ApplePayProbe/` remains the standalone PassKit probe.
+- The merchant-style showcase app lives in the sibling `showcase-ios` repository (it creates real dev
+  sessions); it is no longer part of this repo.
 - `Tests/SunbayCheckoutE2ETests/` — a protocol-driven e2e target that runs on the host via `swift test`
   (no UIKit), alongside `Tests/SunbayCheckoutTests/`.
 
 ## 4. Testing & verification
 
 - XCTest covering state machine, RSA encryption, idempotency/dedup, recovery. `swift test` must pass.
-- First release verification: mock example app (full UI/state flow incl. COF) + Apple Pay
+- First release verification: real dev-backend example app (orders created through the local dev server; full UI/state flow incl. COF) + Apple Pay
   **real-device probe** (capability → wallet sheet → token, no real backend). Real/sandbox
   end-to-end is a release gate after the backend is ready.
 - Do not add tests beyond what is asked; when changing tested logic, update its tests.

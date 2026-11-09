@@ -93,8 +93,8 @@ State today (what was built ahead of the API):
       rules are ever empty, but they must not disagree with the rules document.
 - [ ] Scanning deliberately still requires Luhn for every brand (including UnionPay) as the guard against
       misreads; non-Luhn UnionPay cards must be typed by hand. Revisit only if that proves to be a real problem.
-- [ ] Replace the demo/showcase mock BIN and rules services with the real adapters (Example and
-      Showcase), and keep a scriptable test double in `SunbayCheckoutTestSupport`.
+- [ ] Replace the demo mock BIN and rules services with the real adapters (Example; Showcase moved to
+      `showcase-ios` and creates real dev sessions), and keep a scriptable test double in `SunbayCheckoutTestSupport`.
 - [ ] Keep Android and HPP on the same document and the same test vectors; a behavior change starts
       with the contract, then all three implementations.
 

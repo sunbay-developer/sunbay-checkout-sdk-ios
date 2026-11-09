@@ -1,14 +1,14 @@
 // SunbayCheckoutTestSupport: TEST/EXAMPLE SCAFFOLDING ONLY.
 //
-// This module provides scriptable service doubles and demo fixtures shared by the test targets
-// and the Example app. It is NOT a stable public API and MUST NOT be used in production
+// This module provides scriptable service doubles and demo fixtures used by the test targets
+// (the Example app uses only DevSessionClient). It is NOT a stable public API and MUST NOT be used in production
 // integrations. Its surface may change without a semantic-version guarantee.
 
 import Foundation
 
 import SunbayCheckout
 
-/// Builds a demo `CheckoutSession` shared by the e2e test target and the Example app.
+/// Builds a demo `CheckoutSession` used by the test targets.
 ///
 /// The defaults mirror the current demo backend (`MockDemoBackend.swift`): a 42.99 USD amount,
 /// the "Sunbay Demo Store" merchant, the `[.card, .applePay, .savedCard]` methods, a 15-minute
@@ -46,8 +46,7 @@ public enum DemoSessionFactory {
     }
 }
 
-/// The demo RSA public key (PKCS#1 `RSAPublicKey` DER, base64), shared by the e2e test target and
-/// the Example app.
+/// The demo RSA public key (PKCS#1 `RSAPublicKey` DER, base64), used by the test targets only.
 ///
 /// - This is a **public key** (not a private key), generated once specifically for this demo and
 ///   committable with the source (see AGENTS.md section 5: a public key is not confidential). The
