@@ -124,7 +124,8 @@ Open verification items:
 - [ ] Unknown currency code: fraction digits fall back to a default; confirm the backend's currency table.
 - [ ] Real new-card payment end to end (needs `SUNBAY_TEST_CARD_*` env for the opt-in tests).
 - [ ] Apple Pay real-device verification (capability, wallet sheet, token accepted by the backend).
-- [ ] WAF behavior for native clients (headers, rate limits).
+- [x] Dev origin accepts SDK requests (observed 2026-11-09, no WAF block).
+- [ ] WAF behavior for native clients on test and production (headers, rate limits).
 
 Still built ahead of their API (phase 2+):
 

@@ -202,20 +202,26 @@ import SunbayCheckoutTestSupport
 
         private var amountSection: some View {
             Section("Amount") {
-                HStack {
-                    Text("Currency")
-                    Spacer()
-                    TextField("USD", text: $settings.currencyCode)
-                        .multilineTextAlignment(.trailing)
-                        .textInputAutocapitalization(.characters)
-                        .autocorrectionDisabled(true)
-                }
-                HStack {
-                    Text("Minor units")
-                    Spacer()
-                    TextField("4299", text: amountText)
-                        .multilineTextAlignment(.trailing)
-                        .keyboardType(.numberPad)
+                if isRealMode {
+                    Text("Real mode: the dev server creates the session and uses its own currency (default USD) and amount; these knobs apply to Mock mode only.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    HStack {
+                        Text("Currency")
+                        Spacer()
+                        TextField("USD", text: $settings.currencyCode)
+                            .multilineTextAlignment(.trailing)
+                            .textInputAutocapitalization(.characters)
+                            .autocorrectionDisabled(true)
+                    }
+                    HStack {
+                        Text("Minor units")
+                        Spacer()
+                        TextField("4299", text: amountText)
+                            .multilineTextAlignment(.trailing)
+                            .keyboardType(.numberPad)
+                    }
                 }
             }
         }
@@ -258,7 +264,8 @@ import SunbayCheckoutTestSupport
                     checkout: makeCheckout(),
                     sessionId: sessionId,
                     customerAccessSecret: settings.cofEnabled ? customerAccessSecret : nil,
-                    realServerURL: isRealMode ? URL(string: settings.devServerURL) : nil,
+                    isRealMode: isRealMode,
+                    realServerURL: URL(string: settings.devServerURL),
                     realAmountMajorUnits: Double(settings.amountMinorUnits) / 100,
                     onOutcome: { lastOutcome = describe($0) },
                     onState: { lastState = describeState($0) }
@@ -273,18 +280,18 @@ import SunbayCheckoutTestSupport
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } else {
-                Text(applePayAvailable
-                    ? "Available - tap to drive the wallet authorization end-to-end (confirmWallet)."
-                    : "Hidden/unavailable (device cannot make payments, merchant-id not configured, or Apple Pay method off).")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                ApplePayButtonView(
-                    checkout: makeCheckout(),
-                    sessionId: sessionId,
-                    onResult: { lastOutcome = describe($0) },
-                    onAvailabilityChange: { applePayAvailable = $0 }
-                )
-                .frame(height: 48)
+                    Text(applePayAvailable
+                        ? "Available - tap to drive the wallet authorization end-to-end (confirmWallet)."
+                        : "Hidden/unavailable (device cannot make payments, merchant-id not configured, or Apple Pay method off).")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    ApplePayButtonView(
+                        checkout: makeCheckout(),
+                        sessionId: sessionId,
+                        onResult: { lastOutcome = describe($0) },
+                        onAvailabilityChange: { applePayAvailable = $0 }
+                    )
+                    .frame(height: 48)
                 }
             }
         }
@@ -485,7 +492,9 @@ import SunbayCheckoutTestSupport
         let checkout: SunbayCheckout
         let sessionId: String
         let customerAccessSecret: String?
-        /// Non-nil only in Real (dev server) mode: the dev server that creates the session.
+        /// True in Real (dev server) mode; `realServerURL` is then required to be a valid URL.
+        let isRealMode: Bool
+        /// Parsed dev-server URL (nil when the text is malformed).
         let realServerURL: URL?
         let realAmountMajorUnits: Double
         let onOutcome: (CheckoutOutcome) -> Void
@@ -494,49 +503,53 @@ import SunbayCheckoutTestSupport
 
         var body: some View {
             VStack(alignment: .leading) {
-            Button("Pay (sheet)") {
-                guard let presenter = topViewController() else { return }
-                errorMessage = nil
-                Task { @MainActor in
-                    let sheet: PaymentSheet
-                    #if DEBUG
-                        if let serverURL = realServerURL {
-                            do {
-                                let session = try await DevSessionClient(serverURL: serverURL)
-                                    .createSession(amountMajorUnits: realAmountMajorUnits)
+                Button("Pay (sheet)") {
+                    guard let presenter = topViewController() else { return }
+                    errorMessage = nil
+                    Task { @MainActor in
+                        let sheet: PaymentSheet
+                        #if DEBUG
+                            if isRealMode {
+                                guard let serverURL = realServerURL else {
+                                    errorMessage = "Invalid server URL"
+                                    return
+                                }
+                                do {
+                                    let session = try await DevSessionClient(serverURL: serverURL)
+                                        .createSession(amountMajorUnits: realAmountMajorUnits)
+                                    sheet = PaymentSheet(
+                                        checkout: checkout,
+                                        sessionId: session.sessionId,
+                                        customerAccessSecret: session.customerAccessSecret,
+                                        checkoutClientSecret: session.checkoutClientSecret
+                                    )
+                                } catch {
+                                    errorMessage = "Dev server session failed: \(error)"
+                                    return
+                                }
+                            } else {
                                 sheet = PaymentSheet(
                                     checkout: checkout,
-                                    sessionId: session.sessionId,
-                                    customerAccessSecret: session.customerAccessSecret,
-                                    checkoutClientSecret: session.checkoutClientSecret
+                                    sessionId: sessionId,
+                                    customerAccessSecret: customerAccessSecret
                                 )
-                            } catch {
-                                errorMessage = "Dev server session failed: \(error)"
-                                return
                             }
-                        } else {
+                        #else
                             sheet = PaymentSheet(
                                 checkout: checkout,
                                 sessionId: sessionId,
                                 customerAccessSecret: customerAccessSecret
                             )
-                        }
-                    #else
-                        sheet = PaymentSheet(
-                            checkout: checkout,
-                            sessionId: sessionId,
-                            customerAccessSecret: customerAccessSecret
-                        )
-                    #endif
-                    sheet.onStateChange = onState
-                    let outcome = await sheet.present(from: presenter)
-                    onOutcome(outcome)
+                        #endif
+                        sheet.onStateChange = onState
+                        let outcome = await sheet.present(from: presenter)
+                        onOutcome(outcome)
+                    }
                 }
-            }
-            .buttonStyle(.borderedProminent)
-            if let errorMessage {
-                Text(errorMessage).font(.footnote).foregroundColor(.red)
-            }
+                .buttonStyle(.borderedProminent)
+                if let errorMessage {
+                    Text(errorMessage).font(.footnote).foregroundColor(.red)
+                }
             }
         }
     }

@@ -503,7 +503,8 @@ checkout-sdk-native/ios/
 ```
 Session {
   sessionId, currency,
-  totalAmount,      // decimal STRING in MAJOR units; so are the other amount fields
+  totalAmount,      // decimal STRING in MAJOR units; so are the other amount fields,
+                    // including productList[].amount and productList[].num (also strings)
   expiresAt,        // "yyyy-MM-dd HH:mm:ss" in UTC
   collectBillingAddress, collectShippingAddress,
   paymentMethods: [{ method, type, name, logoUrl }],
