@@ -124,12 +124,10 @@ Open verification items:
       `storeCard`; the SDK reads only `supportStoreCard` (absent means `true`). Re-check after deployment.
 - [ ] Unknown or malformed currency codes are now rejected (`INVALID_RESPONSE`); confirm the backend's
       currency table only issues codes Foundation knows.
-- [x] Release gate: confirm with the backend that no submit business code means in-doubt (processing,
-      acquirer timeout, upstream unavailable); any such code must be mapped to ambiguous. Until confirmed,
-      the SDK treats a non-network business error on submit as a definite failure. Concrete candidate:
-      `E03` "System busy, please try again later" on HTTP 200 (observed 2026-11-09 on a submit with an
-      invalid ciphertext). Resolved: the user confirmed on 2026-11-09 that `E03` is returned only for failed
-      payments (see the `E03` item below), so it is a definite failure.
+- [x] In-doubt submit business codes: the SDK treats a non-network business error on submit as a
+      definite failure. The only candidate seen so far, `E03` "System busy, please try again later" on
+      HTTP 200 (observed 2026-11-09), is returned only for failed payments (user confirmation, 2026-11-09).
+      Re-check if the backend introduces a "processing" business code.
 - [ ] `getResult` after a lost submit may return a previous attempt's terminal state for the same session
       (confirm with the backend).
 - [ ] Release gate: the `PrivacyInfo.xcprivacy` collected-data declaration (payment info, device info sent
@@ -153,6 +151,10 @@ Open verification items:
       channel" (a `tokenId` is returned but the card does not appear in `card/list`). Unblocking needs
       (a) the SDK to send `payerBillingInfo` (phase 3) and (b) the backend/merchant store-card channel
       configured. `RealAPICofTests.testStoreThenPayWithSavedCard` is expected to fail at step 1 until then.
+      Decision (user, 2026-11-09): the SDK capability stays as is (the "save this card" checkbox stays
+      visible under the effective COF rule; no SDK-side hiding or workaround). The billing-address
+      requirement and the store-card channel are fixed in coordination with the backend; re-run
+      `testStoreThenPayWithSavedCard` with the sandbox test card once the backend change lands.
 - [ ] Apple Pay real-device verification (capability, wallet sheet, token accepted by the backend).
 - [x] Dev origin accepts SDK requests (observed 2026-11-09, no WAF block).
 - [ ] WAF behavior for native clients on test and production (headers, rate limits).
