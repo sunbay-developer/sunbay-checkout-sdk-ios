@@ -52,7 +52,7 @@
         /// internal: used only to pass user intent between the shell and the testable logic/tests, not exposed externally.
         enum UserAction: Sendable {
             /// Confirm a new card (optionally checked to save + consent).
-            case confirmNewCard(CardInput, save: Bool)
+            case confirmNewCard(CardInput, save: Bool, billing: AddressInput? = nil, shipping: AddressInput? = nil)
             /// Pay with a selected saved card (COF; the user selects a card then taps Pay).
             case confirmSavedCard(paymentMethodId: String)
             /// The Apple Pay wallet token has been obtained; confirm the wallet payment.
@@ -94,6 +94,10 @@
         private let customerAccessSecret: String?
         /// Client secret issued by the host backend with the session (optional); memory only, never logged/returned.
         private let checkoutClientSecret: String?
+        /// Host-provided addresses (PII; memory only, never logged). They take precedence over the SDK
+        /// forms: the controller merges `host ?? form` per kind at submit time.
+        private let billingAddress: AddressInput?
+        private let shippingAddress: AddressInput?
         /// Localized-string provider handed to the content VC so its copy renders in the configured
         /// locale. Built from a `LocalizationResolver`; maps a `sunbay.*` key to its localized
         /// string. Core stays UI-agnostic — the resolver lives in Core, the closure is consumed only
@@ -151,11 +155,15 @@
         ///   - sessionId: The session identifier to check out.
         ///   - customerAccessSecret: COF credential (optional); delivered by the host backend over HTTPS, held in memory only, never logged.
         ///   - checkoutClientSecret: Client secret issued by the host backend together with the session (optional); kept in memory only, never logged.
+        ///   - billingAddress: A billing address the host already knows (optional). It is sent as is and wins over what the user enters in the SDK form; the SDK never blocks a payment because an address is missing.
+        ///   - shippingAddress: A shipping address the host already knows (optional); same rules as `billingAddress`.
         public convenience init(
             checkout: SunbayCheckout,
             sessionId: String,
             customerAccessSecret: String? = nil,
-            checkoutClientSecret: String? = nil
+            checkoutClientSecret: String? = nil,
+            billingAddress: AddressInput? = nil,
+            shippingAddress: AddressInput? = nil
         ) {
             let controller = checkout.makeController(
                 credentials: CredentialStore(),
@@ -166,6 +174,8 @@
                 sessionId: sessionId,
                 customerAccessSecret: customerAccessSecret,
                 checkoutClientSecret: checkoutClientSecret,
+                billingAddress: billingAddress,
+                shippingAddress: shippingAddress,
                 localize: LocalizationResolver(explicitLocale: checkout.configuration.locale).localizedNoComment,
                 localeCode: checkout.configuration.locale,
                 appearance: checkout.configuration.appearance ?? .default,
@@ -189,6 +199,8 @@
         ///   - sessionId: The session identifier.
         ///   - customerAccessSecret: COF credential (optional).
         ///   - checkoutClientSecret: Client secret issued by the host backend with the session (optional).
+        ///   - billingAddress: Host-provided billing address (optional; wins over the form).
+        ///   - shippingAddress: Host-provided shipping address (optional; wins over the form).
         ///   - localize: Localized-string provider for the content copy; defaults to a nil-locale
         ///     resolver (system-preferred languages, then the `en` development localization), so
         ///     existing internal-init call sites compile unchanged.
@@ -206,6 +218,8 @@
             sessionId: String,
             customerAccessSecret: String? = nil,
             checkoutClientSecret: String? = nil,
+            billingAddress: AddressInput? = nil,
+            shippingAddress: AddressInput? = nil,
             localize: @escaping (String) -> String = LocalizationResolver(explicitLocale: nil).localizedNoComment,
             localeCode: String? = nil,
             appearance: Appearance = .default,
@@ -222,6 +236,8 @@
             self.sessionId = sessionId
             self.customerAccessSecret = customerAccessSecret
             self.checkoutClientSecret = checkoutClientSecret
+            self.billingAddress = billingAddress
+            self.shippingAddress = shippingAddress
             self.localize = localize
             self.localeCode = localeCode
             self.appearance = appearance
@@ -390,7 +406,9 @@
                 session = try await controller.start(
                     sessionId: sessionId,
                     customerAccessSecret: customerAccessSecret,
-                    checkoutClientSecret: checkoutClientSecret
+                    checkoutClientSecret: checkoutClientSecret,
+                    billingAddress: billingAddress,
+                    shippingAddress: shippingAddress
                 )
             } catch let error as CheckoutError {
                 return .startFailed(.failed(txnId: nil, error: error))
@@ -420,9 +438,10 @@
         /// Drives the `controller.confirm*` call (or cancel) for a user action.
         func execute(_ action: UserAction) async -> AttemptResult {
             switch action {
-            case let .confirmNewCard(input, save):
+            case let .confirmNewCard(input, save, billing, shipping):
                 // `save` maps to `storeCard` in the controller (sent only when the checkbox is on and COF is effective: session `supportStoreCard`, host `cardOnFile.isEnabled`, and a `customerAccessSecret`).
-                return .outcome(await controller.confirmNewCard(input, save: save))
+                return .outcome(await controller.confirmNewCard(
+                    input, save: save, billingAddress: billing, shippingAddress: shipping))
             case let .confirmSavedCard(paymentMethodId):
                 return .outcome(await controller.confirmSavedCard(paymentMethodId: paymentMethodId))
             case let .confirmWallet(token):

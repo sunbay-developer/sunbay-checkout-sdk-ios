@@ -484,6 +484,33 @@
             XCTAssertEqual(p.payment.submitCallCount, 1, "the buffered tap must not submit after a close")
         }
 
+        // MARK: - Host-provided addresses
+
+        /// A host `billingAddress` / `shippingAddress` reaches the submit request even though the SDK
+        /// forms are off and the action carries no form values.
+        @MainActor
+        func test_hostAddresses_reachSubmit_withoutFormValues() async throws {
+            let sessionId = "sess_host_addr"
+            let key = try PaymentSheetTests.makeRSAPublicKeyBase64(bits: 2048)
+            let session = CheckoutSession(
+                id: sessionId, amount: Amount(minorUnits: 999, currencyCode: "USD"), merchantName: "Acme",
+                methods: [.card], expiresAt: Date().addingTimeInterval(600), rsaPublicKey: key, cofEnabled: false)
+            let (controller, payment, _) = makeController(
+                session: session, cards: [],
+                submit: [PaymentSnapshot(sessionId: sessionId, status: .succeeded, txnId: "txn_ok")])
+            let host = AddressInput(country: "US", line1: "1 Main", postalCode: "94103")
+            let ship = AddressInput(country: "CA", line1: "2 Side", postalCode: "M5V")
+            let sheet = PaymentSheet(
+                controller: controller, sessionId: sessionId, billingAddress: host, shippingAddress: ship)
+            let card = CardInput(cardNumber: "4242424242424242", expiryMonth: "12", expiryYear: "2030", cvv: "123")
+
+            let outcome = await sheet.runCheckout { _ in .confirmNewCard(card, save: false) }
+
+            guard case .succeeded = outcome else { return XCTFail("expected .succeeded, got \(outcome)") }
+            XCTAssertEqual(payment.lastSubmitRequest?.billingAddress, host)
+            XCTAssertEqual(payment.lastSubmitRequest?.shippingAddress, ship)
+        }
+
         // MARK: - F2: start failure inside the retry loop
 
         /// A session RE-load failing while an earlier attempt is unresolved (the sheet is locked) must not

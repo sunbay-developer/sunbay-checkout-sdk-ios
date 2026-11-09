@@ -162,8 +162,10 @@
         ///   - localeCode: The host-configured locale (BCP-47), or nil to follow the system. Drives the
         ///     Pay-button amount formatting and error-message localization so they honor the configured
         ///     locale (defaults to nil = system, keeping existing call sites unchanged).
-        ///   - billingMode: The billing-address collection mode.
-        ///   - shippingMode: The shipping-address collection mode.
+        ///   - billingMode: The configured billing-address collection mode; `.automatic` follows the
+        ///     session's `collectBillingAddress` flag (resolved here).
+        ///   - shippingMode: The configured shipping-address collection mode; `.automatic` follows the
+        ///     session's `collectShippingAddress` flag (resolved here).
         ///   - addressService: The address-metadata service (for the full address form).
         ///   - homeTitle: Optional custom home-page title (nil → the localized default pay title).
         ///   - walletAuthorizer: The wallet capability used for the Apple Pay row (device gating +
@@ -203,8 +205,8 @@
             self.appearance = appearance
             self.localize = localize
             self.localeCode = localeCode
-            self.billingMode = billingMode
-            self.shippingMode = shippingMode
+            self.billingMode = .resolveAddressMode(billingMode, collect: session.collectBillingAddress)
+            self.shippingMode = .resolveAddressMode(shippingMode, collect: session.collectShippingAddress)
             self.addressService = addressService
             self.homeTitle = homeTitle
             super.init(nibName: nil, bundle: nil)
@@ -280,6 +282,22 @@
 
             /// Test readout: whether the save-card row exists on the new-card page.
             var isSaveCardRowVisibleForTest: Bool { saveCardSwitch != nil }
+
+            /// Test readout: the billing address form is part of the new-card page.
+            var isBillingFormVisibleForTest: Bool { billingAddressView.map { !$0.isHidden } ?? false }
+
+            /// Test readout: the shipping form is shown (section present and "same as billing" off).
+            var isShippingFormVisibleForTest: Bool { shippingAddressView.map { !$0.isHidden } ?? false }
+
+            /// The billing / shipping address form views (nil when the section is off).
+            var billingAddressViewForTest: UIView? { billingAddressView }
+            var shippingAddressViewForTest: UIView? { shippingAddressView }
+
+            /// Sets the "same as billing" checkbox and applies its effect.
+            func setSameAsBillingForTest(_ on: Bool) {
+                shippingSameAsBillingSwitch?.isOn = on
+                handleSameAsBillingChanged()
+            }
 
             /// Test readout: the save-card checkbox state (false when the row is absent).
             var isSaveCardOnForTest: Bool { saveCardSwitch?.isOn ?? false }
@@ -544,8 +562,29 @@
                 return
             }
             let save = saveCardSwitch?.isOn ?? false
+            let billing = formAddress(from: billingAddressView)
+            // "Same as billing" (or no shipping form) reuses the billing form values; otherwise the
+            // shipping form's own values. With no shipping section at all the form shipping is nil.
+            let shipping: AddressInput?
+            if shippingAddressView == nil {
+                shipping = nil
+            } else if shippingSameAsBillingSwitch?.isOn ?? true {
+                shipping = billing
+            } else {
+                shipping = formAddress(from: shippingAddressView)
+            }
             guard beginProcessing() else { return }
-            delegate?.content(self, didRequest: .confirmNewCard(input, save: save))
+            delegate?.content(
+                self, didRequest: .confirmNewCard(input, save: save, billing: billing, shipping: shipping))
+        }
+
+        /// The values currently entered in an address form (nil when the form is absent). PII: never logged.
+        private func formAddress(from view: UIView?) -> AddressInput? {
+            switch view {
+            case let simple as SimpleAddressFormView: return simple.addressInput
+            case let dynamic as DynamicAddressFormView: return dynamic.addressInput
+            default: return nil
+            }
         }
 
         /// Pay with a selected saved card (COF; the user selected the card, then tapped Pay).
@@ -842,7 +881,7 @@
                 newCardStack.setCustomSpacing(28, after: saveRow)
             }
 
-            if let billing = makeAddressView(mode: billingMode) {
+            if let billing = makeAddressView(mode: billingMode, options: .billing) {
                 billingAddressView = billing
                 newCardStack.addArrangedSubview(makeSectionTitle("sunbay.address.billingTitle"))
                 newCardStack.addArrangedSubview(billing)
@@ -1192,14 +1231,16 @@
         }
 
         /// Builds a billing/shipping address view for a collection mode, or nil if there is none.
-        private func makeAddressView(mode: Appearance.AddressCollectionMode) -> UIView? {
+        private func makeAddressView(mode: Appearance.AddressCollectionMode, options: AddressFormOptions) -> UIView? {
             switch mode {
             case .simple:
-                return SimpleAddressFormView(appearance: appearance, localize: localize)
+                return SimpleAddressFormView(appearance: appearance, localize: localize, options: options)
             case .full:
                 return DynamicAddressFormView(
-                    appearance: appearance, localize: localize, service: addressService, locale: nil)
-            case .off:
+                    appearance: appearance, localize: localize, service: addressService,
+                    locale: localeCode, options: options)
+            case .off, .automatic:
+                // `.automatic` is resolved in `init`; it never reaches here.
                 return nil
             }
         }
@@ -1208,7 +1249,7 @@
         /// checkbox + label on the right), and the shipping form. "Same as billing" defaults on, so the
         /// shipping form starts hidden.
         private func makeShippingSection() -> UIView? {
-            guard let shipping = makeAddressView(mode: shippingMode) else { return nil }
+            guard let shipping = makeAddressView(mode: shippingMode, options: .shipping) else { return nil }
             shippingAddressView = shipping
 
             let title = makeSectionTitle("sunbay.address.shippingTitle")

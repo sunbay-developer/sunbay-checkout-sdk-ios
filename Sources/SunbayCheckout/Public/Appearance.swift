@@ -38,10 +38,12 @@
         public var density: Density = .comfortable
         /// Where the express-checkout (wallet) row is placed on the home page (top / bottom / off).
         public var expressPosition: ExpressPosition = .top
-        /// Billing address collection mode.
-        public var billingAddressMode: AddressCollectionMode = .simple
-        /// Shipping address collection mode.
-        public var shippingAddressMode: AddressCollectionMode = .simple
+        /// Billing address collection mode. Defaults to `.automatic` (follows the session's
+        /// `collectBillingAddress` flag).
+        public var billingAddressMode: AddressCollectionMode = .automatic
+        /// Shipping address collection mode. Defaults to `.automatic` (follows the session's
+        /// `collectShippingAddress` flag).
+        public var shippingAddressMode: AddressCollectionMode = .automatic
 
         /// Whether the "Scan card" button is offered on the new-card page. Defaults to `.automatic`.
         public var cardScanning: CardScanning = .automatic
@@ -95,12 +97,25 @@
 
         /// Address collection mode.
         public enum AddressCollectionMode: Sendable {
+            /// Follows the checkout session: the backend `collect…Address` flag on → `.full`, off → `.off`.
+            /// This is the default. `.simple` / `.full` / `.off` are explicit choices that ignore the flag.
+            case automatic
             /// Three fields: country / line1 / postal code.
             case simple
             /// Backend-layout-driven full address form.
             case full
             /// Not collected: the section is not shown at all.
             case off
+
+            /// Resolves a configured mode against the session's collect flag.
+            ///
+            /// - Parameters:
+            ///   - mode: The configured mode.
+            ///   - collect: The session's `collectBillingAddress` / `collectShippingAddress` flag.
+            /// - Returns: `.full` or `.off` for `.automatic`; any explicit mode unchanged.
+            static func resolveAddressMode(_ mode: AddressCollectionMode, collect: Bool) -> AddressCollectionMode {
+                mode == .automatic ? (collect ? .full : .off) : mode
+            }
         }
 
         /// Bottom-sheet sizing policy.

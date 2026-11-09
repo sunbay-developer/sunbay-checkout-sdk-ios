@@ -23,6 +23,7 @@
     /// iOS-only: gated by `#if canImport(UIKit)`; does not compile under the macOS host (`swift test`).
     final class DynamicAddressFormView: UIView {
         private let appearance: ResolvedAppearance
+        private let options: AddressFormOptions
         private let localize: (String) -> String
         private let service: any AddressMetadataService
 
@@ -64,12 +65,15 @@
         ///   - localize: The localization closure (error / retry copy; field labels come from the backend).
         ///   - service: The address-metadata service (host-injected; mock or real adapter).
         ///   - locale: The effective locale for the initial fetch (nil uses the backend default).
+        ///   - options: Per-form switches (for example whether names are collected); defaults to billing.
         init(
             appearance: ResolvedAppearance,
             localize: @escaping (String) -> String,
             service: any AddressMetadataService,
-            locale: String?
+            locale: String?,
+            options: AddressFormOptions = .billing
         ) {
+            self.options = options
             self.appearance = appearance
             self.localize = localize
             self.service = service
@@ -195,7 +199,7 @@
             contentStack.addArrangedSubview(makeCountryRow())
 
             if let config {
-                let rows = AddressFormLayoutResolver.renderRows(config: config, collectName: false)
+                let rows = AddressFormLayoutResolver.renderRows(config: config, collectName: options.collectName)
                 for row in rows {
                     let fields = row.filter { $0.type != .country }
                     guard !fields.isEmpty else { continue }
@@ -372,6 +376,9 @@
                 RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
             }
         }
+
+        /// The text-field types currently rendered (names appear only when the options collect them).
+        var renderedFieldTypesForTest: Set<AddressFieldType> { Set(textFields.keys) }
 
         /// Sets the postal-code field text directly (bypassing keystrokes) for tests.
         func setPostalCodeForTest(_ value: String) {
