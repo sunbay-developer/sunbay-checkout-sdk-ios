@@ -71,6 +71,30 @@ final class SunbayAPIClientTests: XCTestCase {
         await expectError("HTTP_502", .network)
     }
 
+    func testHTTP502WithBusinessEnvelopeIsNetwork() async {
+        StubURLProtocol.handler = {
+            self.respond(502, #"{"code":"SOME_BIZ_ERROR","msg":"x","traceId":"t9"}"#, for: $0)
+        }
+        await expectError("HTTP_502", .network, traceId: "t9")
+    }
+
+    func testHTTP500WithSuccessEnvelopeIsNetwork() async {
+        StubURLProtocol.handler = { self.respond(500, #"{"code":"0","msg":"ok","data":{"x":1}}"#, for: $0) }
+        await expectError("HTTP_500", .network)
+    }
+
+    func testHTTP400WithEnvelopeStaysPayment() async {
+        StubURLProtocol.handler = {
+            self.respond(400, #"{"code":"PAYMENT_METHOD_NOT_ALLOWED","msg":"no","traceId":"t4"}"#, for: $0)
+        }
+        await expectError("PAYMENT_METHOD_NOT_ALLOWED", .payment, traceId: "t4")
+    }
+
+    func testHTTP200WithEnvelopeErrorStaysPayment() async {
+        StubURLProtocol.handler = { self.respond(200, #"{"code":"DECLINED","msg":"no","traceId":"t2"}"#, for: $0) }
+        await expectError("DECLINED", .payment, traceId: "t2")
+    }
+
     func testHTTP200WithHTML() async {
         StubURLProtocol.handler = { self.respond(200, "<html>hi</html>", for: $0) }
         await expectError("INVALID_RESPONSE", .network)

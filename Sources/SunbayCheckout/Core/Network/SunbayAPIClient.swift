@@ -88,6 +88,14 @@ struct SunbayAPIClient: Sendable {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         let decoder = JSONDecoder()
 
+        // A 5xx is ambiguous (the request may have been processed), so it is always a network
+        // failure regardless of any envelope body. The envelope traceId is kept; it is not secret.
+        if status >= 500 {
+            let traceId = (try? decoder.decode(ErrorEnvelope.self, from: data))?.traceId
+            throw CheckoutError(code: "HTTP_\(status)", message: "The server returned an HTTP error.",
+                                category: .network, traceId: traceId)
+        }
+
         if let envelope = try? decoder.decode(ErrorEnvelope.self, from: data), let code = envelope.code {
             if code != "0" {
                 throw CheckoutError(code: code, message: envelope.msg ?? "The payment request failed.",
