@@ -199,7 +199,8 @@ enum ContractDecoding {
     struct ResultWire: Decodable {
         let txnId: String?
         let txnStatus: String
-        let sessionId: String
+        /// Absent on `payment/result` responses (present on submit); callers supply a fallback.
+        let sessionId: String?
         let action: ActionWire?
     }
 
@@ -212,10 +213,11 @@ enum ContractDecoding {
     /// Decodes the result JSON into a `ResultEnvelope` (snapshot + optional action).
     ///
     /// - Parameter data: The result JSON data.
+    /// - Parameter fallbackSessionId: Session id used when the wire omits `sessionId`.
     /// - Returns: The decoded result envelope.
     /// - Throws: Throws `DecodingError` when the JSON structure does not match or `txnStatus` is invalid.
-    static func decodeResult(from data: Data) throws -> ResultEnvelope {
-        try JSONDecoder().decode(ResultWire.self, from: data).toEnvelope()
+    static func decodeResult(from data: Data, fallbackSessionId: String = "") throws -> ResultEnvelope {
+        try JSONDecoder().decode(ResultWire.self, from: data).toEnvelope(fallbackSessionId: fallbackSessionId)
     }
 
     /// Maps the `action` object to a `PaymentAction`; downgrades to `.unknown` when unrecognized.
@@ -302,7 +304,8 @@ extension ContractDecoding.ResultWire {
     /// `qrCode` → `.qrCode`; `showContent` → `.showContent`; everything else → `.unknown`.
     ///
     /// - Throws: `DecodingError` when `txnStatus` is not recognized.
-    func toEnvelope() throws -> ResultEnvelope {
+    /// - Parameter fallbackSessionId: The session the SDK asked about; used when the wire omits `sessionId`.
+    func toEnvelope(fallbackSessionId: String) throws -> ResultEnvelope {
         guard let status = TxnStatus(rawValue: txnStatus) else {
             throw DecodingError.dataCorrupted(
                 DecodingError.Context(
@@ -311,7 +314,7 @@ extension ContractDecoding.ResultWire {
                 )
             )
         }
-        let snapshot = PaymentSnapshot(sessionId: sessionId, status: status, txnId: txnId)
+        let snapshot = PaymentSnapshot(sessionId: sessionId ?? fallbackSessionId, status: status, txnId: txnId)
         let mapped: PaymentAction? = status == .requiresAction ? ContractDecoding.mapAction(action) : nil
         return ResultEnvelope(snapshot: snapshot, action: mapped)
     }

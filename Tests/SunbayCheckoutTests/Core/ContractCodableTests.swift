@@ -208,6 +208,19 @@ final class ContractCodableTests: XCTestCase {
         XCTAssertNil(session.rsaPublicKey)
     }
 
+    func test_decodeResult_withoutSessionId_usesFallback() throws {
+        let json = #"{"txnId":"t9","txnStatus":"S","totalAmount":"1.13","currency":"USD","failureReason":"success"}"#
+        let envelope = try ContractDecoding.decodeResult(from: Data(json.utf8), fallbackSessionId: "s1")
+        XCTAssertEqual(envelope.snapshot.sessionId, "s1")
+        XCTAssertEqual(envelope.snapshot.txnId, "t9")
+    }
+
+    func test_decodeResult_wireSessionIdWinsOverFallback() throws {
+        let json = #"{"txnStatus":"S","sessionId":"wire"}"#
+        let envelope = try ContractDecoding.decodeResult(from: Data(json.utf8), fallbackSessionId: "other")
+        XCTAssertEqual(envelope.snapshot.sessionId, "wire")
+    }
+
     func test_decodeResult_unknownTxnStatus_throws() {
         let json = #"{"txnStatus":"Z","sessionId":"sess_1"}"#
         XCTAssertThrowsError(try ContractDecoding.decodeResult(from: Data(json.utf8)))
