@@ -48,6 +48,18 @@ Apple Pay needs a real device; the Real mode's standalone Apple Pay button is no
 new-card and Apple Pay payments have not been verified by the Example; see
 `docs/real-api-integration-checklist.md`.
 
+## Card on file switches
+
+The settings screen has two toggles next to the mock COF switch. They feed
+`CheckoutConfiguration(cardOnFile:)` in both Mock and Real modes:
+
+- **Card on file enabled** (default on): `CardOnFileOptions.isEnabled`. Turn it off to hide saved cards
+  and the save checkbox. It can only disable COF; the session must also allow it.
+- **Pre-tick save card** (default off): `CardOnFileOptions.saveByDefault`. Only sets the checkbox's
+  initial state; the card is saved only if the checkbox is on at submit.
+
+In Mock mode the scripted saved cards keep working. In Real mode the list comes from the backend.
+
 ## Generate & build
 
 The app is declared by a checked-in Tuist manifest (`Project.swift`) plus Swift sources under

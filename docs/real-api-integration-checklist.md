@@ -135,6 +135,15 @@ Open verification items:
       to the backend) is OPEN and must be decided before an App Store release (ruling R8).
 - [ ] Product/legal must confirm whether the backend requires a consent record when `storeCard` is true
       (the UI checkbox still reads as consent).
+- [x] Card list via the real adapter (`HTTPCofService`, `POST card/list`, verified 2026-11-09): a wrong
+      `customerAccessSecret` returns `S06`; a missing one returns `C16`. Listing failures degrade to "no saved cards".
+- [ ] Does a `storeCard: true` new-card submit also need `customerAccessSecret` to bind the card to the
+      customer? Verify with `RealAPICofTests.testStoreThenPayWithSavedCard` (needs `SUNBAY_TEST_CARD_*`).
+- [ ] Backend `supportStoreCard` rename is still pending (the session still returns `storeCard`).
+- [x] `E03` is returned only for failed payments, so treating it as a definite failure is correct
+      (confirmed by the user, 2026-11-09). This resolves the `E03` candidate above.
+- [ ] `R` with a redirect returns `pending` without a result query or polling; revisit when QR payments
+      are supported (user decision, 2026-11-09).
 - [ ] Real new-card payment end to end (needs `SUNBAY_TEST_CARD_*` env for the opt-in tests).
 - [ ] Apple Pay real-device verification (capability, wallet sheet, token accepted by the backend).
 - [x] Dev origin accepts SDK requests (observed 2026-11-09, no WAF block).
@@ -142,7 +151,7 @@ Open verification items:
 
 Still built ahead of their API (phase 2+):
 
-- Saved-card list (`CofService`): mock baseline; `HTTPCofService` is phase 2 (`POST card/list`).
+- Saved-card list: now real (`HTTPCofService`); end-to-end save-then-pay is pending a sandbox test card.
 - Address metadata (`AddressMetadataService`): full-mode address is protocol, UI and cache only;
   `HTTPAddressMetadataService` exists but is not wired to real data. See the UI redesign spec.
 - Card rules and BIN: section 1.

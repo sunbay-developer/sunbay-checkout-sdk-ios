@@ -227,6 +227,10 @@ struct DemoSettings: Codable, Equatable {
     var methods: Set<DemoMethod>
     /// Whether COF (saved cards) is enabled on the scripted session.
     var cofEnabled: Bool
+    /// Host-side card-on-file switch (maps to `CardOnFileOptions.isEnabled`). Default on.
+    var cardOnFileEnabled: Bool = true
+    /// Pre-tick the "save card" checkbox (maps to `CardOnFileOptions.saveByDefault`). Default off.
+    var preTickSaveCard: Bool = false
     /// The appearance preset (maps to an `Appearance` at Pay time).
     var appearancePreset: DemoAppearancePreset
     /// The color-scheme override (maps to `Appearance.colorScheme`).
