@@ -137,7 +137,7 @@ Open verification items:
 - [x] Card list via the real adapter (`HTTPCofService`, `POST card/list`, verified 2026-11-09): a wrong
       `customerAccessSecret` returns `S06`; a missing one returns `C16`. Listing failures degrade to "no saved cards".
 - [ ] Does a `storeCard: true` new-card submit also need `customerAccessSecret` to bind the card to the
-      customer? Not yet answerable: both variants fail with `C01` until `payerBillingInfo` is sent (see above).
+      customer? Not yet answerable: both variants fail with `C01` until `payerBillingInfo` is sent (the SDK now sends it; see above).
 - [ ] Backend `supportStoreCard` rename is still pending (the session still returns `storeCard`).
 - [x] `E03` is returned only for failed payments, so treating it as a definite failure is correct
       (confirmed by the user, 2026-11-09). This resolves the `E03` candidate above.
@@ -149,8 +149,11 @@ Open verification items:
       is rejected with `C01` "Request parameter missing:payerBillingInfo is null" (with or without
       `customerAccessSecret`). With a billing address the dev merchant returns `txnStatus F` "No available
       channel" (a `tokenId` is returned but the card does not appear in `card/list`). Unblocking needs
-      (a) the SDK to send `payerBillingInfo` (phase 3) and (b) the backend/merchant store-card channel
-      configured. `RealAPICofTests.testStoreThenPayWithSavedCard` is expected to fail at step 1 until then.
+      (a) the SDK to send `payerBillingInfo` (done in phase 3) and (b) the backend/merchant store-card channel
+      configured. `RealAPICofTests.testStoreThenPayWithSavedCard` is expected to fail at step 1 until (b).
+      Phase 3 check: `RealAPIAddressTests.testNewCardWithHostBillingAddressIsNotC01` asserts the new-card
+      submit with `save: true` and a host billing address no longer fails with `C01`.
+      Observed result: not yet recorded (needs the sandbox test card; record the outcome case and code here after the run).
       Decision (user, 2026-11-09): the SDK capability stays as is (the "save this card" checkbox stays
       visible under the effective COF rule; no SDK-side hiding or workaround). The billing-address
       requirement and the store-card channel are fixed in coordination with the backend; re-run
@@ -159,10 +162,21 @@ Open verification items:
 - [x] Dev origin accepts SDK requests (observed 2026-11-09, no WAF block).
 - [ ] WAF behavior for native clients on test and production (headers, rate limits).
 
+### Address (phase 3)
+
+- [x] Address metadata live on dev (2026-11-09): `GET /api/address/country` returns 16 countries plus the
+      detected country; `GET /api/address/country/US` returns fields, layout and 50+ subdivisions
+      (`RealAPIAddressTests.testAddressMetadataCountriesAndUSConfig`).
+- [x] Address submit: `payerBillingInfo` / `payerShippingAddress` are sent from the host address or the form.
+- [ ] Postal code to state auto-fill is deferred (user decision).
+- [ ] Google address autocomplete is deferred and needs an HPP proxy: a browser Maps key cannot be used
+      from apps. Options: HPP proxy (recommended), Google Places SDK for iOS with per-bundle keys, MapKit
+      `MKLocalSearchCompleter`.
+
 Still built ahead of their API (phase 2+):
 
-- Saved-card list: now real (`HTTPCofService`); end-to-end save-then-pay is blocked until the SDK sends `payerBillingInfo` (phase 3) and the
-  store-card channel is configured (see above).
-- Address metadata (`AddressMetadataService`): full-mode address is protocol, UI and cache only;
-  `HTTPAddressMetadataService` exists but is not wired to real data. See the UI redesign spec.
+- Saved-card list: now real (`HTTPCofService`); end-to-end save-then-pay now depends only on the backend
+  store-card channel being configured (see above).
+- Address metadata and address submit are now real (see "Address (phase 3)" above). Open there: postal code
+  to state, and Google autocomplete.
 - Card rules and BIN: section 1.

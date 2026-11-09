@@ -101,7 +101,7 @@ public struct CardOnFileOptions: Sendable, Equatable {
     public init(isEnabled: Bool = true, saveByDefault: Bool = false)
 }
 
-// Note: saving a card currently also needs a billing address (`payerBillingInfo`, phase 3).
+// Note: saving a card needs a billing address (`payerBillingInfo`): collected by the sheet or passed by the host (see Address collection modes).
 
 public final class SunbayCheckout {
     /// Builds the default HTTP services for the configured environment (the real backend).
@@ -143,14 +143,14 @@ public struct Appearance: Sendable, Equatable {
     public var colorScheme: ColorScheme = .automatic // drives overrideUserInterfaceStyle (light/dark/follow-system)
     public var density: Density = .comfortable
     public var expressPosition: ExpressPosition = .top
-    public var billingAddressMode: AddressCollectionMode = .simple
-    public var shippingAddressMode: AddressCollectionMode = .simple
+    public var billingAddressMode: AddressCollectionMode = .automatic
+    public var shippingAddressMode: AddressCollectionMode = .automatic
     public var pageTransitionsEnabled: Bool = true // forward/back slide between in-sheet pages
 
     public enum ColorScheme: Sendable { case light, dark, automatic }
     public enum Density: Sendable { case comfortable, compact }
     public enum ExpressPosition: Sendable { case top, bottom, off }
-    public enum AddressCollectionMode: Sendable { case simple, full }
+    public enum AddressCollectionMode: Sendable { case automatic, simple, full, off }
 
     public struct Colors: Sendable, Equatable {       // primary/background/componentBackground/text/
         public init() {}                              // textSecondary/border/danger/success,全部 UIColor?,
@@ -226,10 +226,24 @@ UI 层拆成两层,单向依赖 `Container → Content → Theme`:
 由 `Appearance.billingAddressMode` / `shippingAddressMode` 决定(SDK 配置决定「怎么收」,后端只决定
 「是否收」):
 
-- `.simple`(默认,零网络)——仅 3 个字段:国家 / 地址行 1(line1)/ 邮编(postalCode)。
-- `.full`——后端布局驱动的动态地址表单,数据来自注入的 `AddressMetadataService` 协议
-  (Core/AddressMetadata,无 UIKit)。**本阶段仅建到 protocol + UI + cache,不接真实数据**
-  (`HTTPAddressMetadataService` 适配器已备但未接线,demo/tests 用注入的 mock double)。
+- `.automatic` (default for both modes): follows the checkout session. Session `collectBillingAddress` /
+  `collectShippingAddress` on resolves to `.full`; off resolves to `.off`.
+- `.simple`: three fields only (country / line1 / postal code), no network.
+- `.full`: backend-layout-driven address form. Data comes from `AddressMetadataService`
+  (Core/AddressMetadata, no UIKit); the default `SunbayCheckout(configuration:)` wires the real HPP adapter
+  (`HTTPAddressMetadataService`: `GET /api/address/country` and `GET /api/address/country/{code}`).
+  Shipping asks for first/last name, billing does not (like HPP).
+- `.off`: not collected; the section is not shown.
+- `.simple`, `.full` and `.off` are explicit host choices and ignore the session flag.
+
+Host-provided addresses: `PaymentSheet(... billingAddress:shippingAddress:)` and
+`ApplePayButton(... billingAddress:shippingAddress:)` take an optional `AddressInput` each. Merge rule per
+kind: host address ?? SDK form address. The SDK never blocks a submit because an address is missing; the
+backend decides. Addresses are PII: never logged or returned in callbacks.
+
+Deferred: Google address autocomplete (a browser Maps key cannot be used from apps; options: an HPP proxy,
+recommended; Google Places SDK for iOS with per-bundle keys; MapKit `MKLocalSearchCompleter`) and
+postal-code to state lookup. The per-form name-field options are internal and not exposed.
 
 ### 2.2 L1 — 黑盒支付页 `PaymentSheet`
 
@@ -588,6 +602,11 @@ SubmitRequest(
 ```
 
 - `storeCard: true` requires `payerBillingInfo` in the body; without it the backend rejects the submit with `C01`.
+- Address mapping: the body carries `payerBillingInfo` and `payerShippingAddress`, each an `AddressInfo` with
+  keys `country, state, city, address, address2, postalCode, firstName, lastName, phone, email`
+  (`line1` -> `address`, `line2` -> `address2`; `district` is not sent). Empty or whitespace-only values are
+  omitted, and an address with no remaining field is omitted entirely. Per kind the value is the host
+  address ?? the SDK form address.
 - The body also carries an optional `userDeviceInfo` (see `security-and-pci.md` §4.1).
 - A 5xx or lost response is ambiguous: at most one result query, then `unknown`. A non-network business
   error is a definite failure. The SDK never blindly resubmits.
