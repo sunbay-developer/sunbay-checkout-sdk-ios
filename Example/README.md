@@ -56,7 +56,7 @@ The settings screen has two toggles next to the mock COF switch. They feed
 - **Card on file enabled** (default on): `CardOnFileOptions.isEnabled`. Turn it off to hide saved cards
   and the save checkbox. It can only disable COF; the session must also allow it.
 - **Pre-tick save card** (default off): `CardOnFileOptions.saveByDefault`. Only sets the checkbox's
-  initial state; the card is saved only if the checkbox is on at submit.
+  initial state; the card is saved only if the checkbox is on at submit. Note: saving a card against the real backend currently fails (`C01`, billing address required) until phase 3.
 
 In Mock mode the scripted saved cards keep working. In Real mode the list comes from the backend.
 

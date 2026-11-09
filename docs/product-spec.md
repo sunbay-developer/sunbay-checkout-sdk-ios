@@ -85,6 +85,10 @@ public struct CheckoutConfiguration {
     public let locale: String?
     /// Card-on-file options (saved cards + "save this card"). Defaults to `CardOnFileOptions()`.
     public let cardOnFile: CardOnFileOptions
+
+    public init(environment: Environment = .production, applePayMerchantId: String? = nil,
+                appearance: Appearance? = nil, locale: String? = nil, paymentSheetTitle: String? = nil,
+                cardOnFile: CardOnFileOptions = CardOnFileOptions())
 }
 
 public struct CardOnFileOptions: Sendable, Equatable {
@@ -93,7 +97,11 @@ public struct CardOnFileOptions: Sendable, Equatable {
     /// Initial state of the "save card" checkbox. Defaults to `false`. The user's checkbox at submit
     /// time, not this value, decides whether `storeCard: true` is sent.
     public var saveByDefault: Bool
+
+    public init(isEnabled: Bool = true, saveByDefault: Bool = false)
 }
+
+// Note: saving a card currently also needs a billing address (`payerBillingInfo`, phase 3).
 
 public final class SunbayCheckout {
     /// Builds the default HTTP services for the configured environment (the real backend).
@@ -579,6 +587,7 @@ SubmitRequest(
 )
 ```
 
+- `storeCard: true` requires `payerBillingInfo` in the body; without it the backend rejects the submit with `C01`.
 - The body also carries an optional `userDeviceInfo` (see `security-and-pci.md` §4.1).
 - A 5xx or lost response is ambiguous: at most one result query, then `unknown`. A non-network business
   error is a definite failure. The SDK never blindly resubmits.

@@ -13,12 +13,12 @@
     /// and returns the result, holding no business rules.
     ///
     /// ## Automatic COF inclusion (§2.2)
-    /// When **both** "the host passed in a `customerAccessSecret`" and "the session
-    /// `cofEnabled == true`" hold, the page automatically shows the saved-card list (select a
-    /// card to pay, zero verification), and a new card can still be checked to save. The
-    /// authority to decide availability is on the backend (it delivers `cofEnabled`), and the
-    /// client follows automatically: no secret or the backend has COF off → degrades to new card
-    /// + wallet only, with no extra code needed from the host. Listing cards itself never throws
+    /// Card-on-file is effective only when **all** of these hold: the session's `supportStoreCard`
+    /// is true, `CheckoutConfiguration.cardOnFile.isEnabled` is true, and the host passed in a
+    /// `customerAccessSecret`. When effective, the page shows the saved-card list (select a
+    /// card to pay, zero verification) and a new card can still be checked to save; `storeCard` is
+    /// sent only when the user's checkbox is on and COF is effective. Otherwise the page
+    /// degrades to new card + wallet only, with no extra code needed from the host. Listing cards itself never throws
     /// (`CheckoutController.listSavedCards` degrades internally).
     ///
     /// ## Testable logic vs. the `present()` wrapper (split rationale)
@@ -421,7 +421,7 @@
         func execute(_ action: UserAction) async -> AttemptResult {
             switch action {
             case let .confirmNewCard(input, save):
-                // `save` maps to `storeCard` in the controller (only when the session supports storing cards).
+                // `save` maps to `storeCard` in the controller (sent only when the checkbox is on and COF is effective: session `supportStoreCard`, host `cardOnFile.isEnabled`, and a `customerAccessSecret`).
                 return .outcome(await controller.confirmNewCard(input, save: save))
             case let .confirmSavedCard(paymentMethodId):
                 return .outcome(await controller.confirmSavedCard(paymentMethodId: paymentMethodId))

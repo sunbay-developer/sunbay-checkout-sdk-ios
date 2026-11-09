@@ -124,11 +124,12 @@ Open verification items:
       `storeCard`; the SDK reads only `supportStoreCard` (absent means `true`). Re-check after deployment.
 - [ ] Unknown or malformed currency codes are now rejected (`INVALID_RESPONSE`); confirm the backend's
       currency table only issues codes Foundation knows.
-- [ ] Release gate: confirm with the backend that no submit business code means in-doubt (processing,
+- [x] Release gate: confirm with the backend that no submit business code means in-doubt (processing,
       acquirer timeout, upstream unavailable); any such code must be mapped to ambiguous. Until confirmed,
       the SDK treats a non-network business error on submit as a definite failure. Concrete candidate:
       `E03` "System busy, please try again later" on HTTP 200 (observed 2026-11-09 on a submit with an
-      invalid ciphertext); ask whether `E03` can be returned after the payment was processed.
+      invalid ciphertext). Resolved: the user confirmed on 2026-11-09 that `E03` is returned only for failed
+      payments (see the `E03` item below), so it is a definite failure.
 - [ ] `getResult` after a lost submit may return a previous attempt's terminal state for the same session
       (confirm with the backend).
 - [ ] Release gate: the `PrivacyInfo.xcprivacy` collected-data declaration (payment info, device info sent
@@ -138,20 +139,28 @@ Open verification items:
 - [x] Card list via the real adapter (`HTTPCofService`, `POST card/list`, verified 2026-11-09): a wrong
       `customerAccessSecret` returns `S06`; a missing one returns `C16`. Listing failures degrade to "no saved cards".
 - [ ] Does a `storeCard: true` new-card submit also need `customerAccessSecret` to bind the card to the
-      customer? Verify with `RealAPICofTests.testStoreThenPayWithSavedCard` (needs `SUNBAY_TEST_CARD_*`).
+      customer? Not yet answerable: both variants fail with `C01` until `payerBillingInfo` is sent (see above).
 - [ ] Backend `supportStoreCard` rename is still pending (the session still returns `storeCard`).
 - [x] `E03` is returned only for failed payments, so treating it as a definite failure is correct
       (confirmed by the user, 2026-11-09). This resolves the `E03` candidate above.
 - [ ] `R` with a redirect returns `pending` without a result query or polling; revisit when QR payments
       are supported (user decision, 2026-11-09).
-- [ ] Real new-card payment end to end (needs `SUNBAY_TEST_CARD_*` env for the opt-in tests).
+- [x] Real new-card payment end to end: passes against dev as of 2026-11-09 (submit `S` + `retrievePayment`).
+- [x] `payment/result` responses omit `sessionId` (observed 2026-11-09); the SDK falls back to the queried session.
+- [ ] Saving a card is blocked (live facts, dev, 2026-11-09): `storeCard: true` without `payerBillingInfo`
+      is rejected with `C01` "Request parameter missing:payerBillingInfo is null" (with or without
+      `customerAccessSecret`). With a billing address the dev merchant returns `txnStatus F` "No available
+      channel" (a `tokenId` is returned but the card does not appear in `card/list`). Unblocking needs
+      (a) the SDK to send `payerBillingInfo` (phase 3) and (b) the backend/merchant store-card channel
+      configured. `RealAPICofTests.testStoreThenPayWithSavedCard` is expected to fail at step 1 until then.
 - [ ] Apple Pay real-device verification (capability, wallet sheet, token accepted by the backend).
 - [x] Dev origin accepts SDK requests (observed 2026-11-09, no WAF block).
 - [ ] WAF behavior for native clients on test and production (headers, rate limits).
 
 Still built ahead of their API (phase 2+):
 
-- Saved-card list: now real (`HTTPCofService`); end-to-end save-then-pay is pending a sandbox test card.
+- Saved-card list: now real (`HTTPCofService`); end-to-end save-then-pay is blocked until the SDK sends `payerBillingInfo` (phase 3) and the
+  store-card channel is configured (see above).
 - Address metadata (`AddressMetadataService`): full-mode address is protocol, UI and cache only;
   `HTTPAddressMetadataService` exists but is not wired to real data. See the UI redesign spec.
 - Card rules and BIN: section 1.
