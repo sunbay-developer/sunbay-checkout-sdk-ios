@@ -18,7 +18,7 @@ public enum AddressFieldType: String, Sendable {
 
 /// A selectable country entry for the address form country list.
 ///
-/// Corresponds to an element of `countries` in the §7.5 `/address/country` response.
+/// Corresponds to an element of `countries` in the HPP address spec `/api/address/country` response.
 public struct AddressCountry: Sendable, Equatable {
     /// ISO country code (such as `"US"`).
     public let code: String
@@ -91,7 +91,7 @@ public struct AddressFieldConfig: Sendable, Equatable {
 
 /// The full address-form configuration for one country.
 ///
-/// Corresponds to the §7.5 `/address/country/{code}` response: the per-field config, the visual
+/// Corresponds to the HPP address spec `/api/address/country/{code}` response: the per-field config, the visual
 /// `layout` (ordered rows of field types), and the `subdivisions` list. The full-mode dynamic
 /// address form renders from this (labels/placeholders/names are already localized by the backend).
 public struct AddressCountryConfig: Sendable, Equatable {
@@ -126,7 +126,7 @@ public struct AddressCountryConfig: Sendable, Equatable {
 
 /// The country list plus the backend-detected default country.
 ///
-/// Corresponds to the §7.5 `/address/country` response: `{ countries:[{code,name}], detectedCountry? }`.
+/// Corresponds to the HPP address spec `/api/address/country` response: `{ countries:[{code,name}], detectedCountry? }`.
 public struct AddressCountryList: Sendable, Equatable {
     /// The selectable countries (localized names).
     public let countries: [AddressCountry]

@@ -90,6 +90,9 @@ final class RealAPICofTests: XCTestCase {
         }
     }
 
+    /// Pays a new card with `save: true` and a host billing address, then pays the saved card on a new session.
+    /// On the dev merchant this is currently expected to fail at step 1 with `PAYMENT_FAILED`
+    /// ("No available channel") until the store-card channel is configured.
     func testStoreThenPayWithSavedCard() async throws {
         let card = try testCard()
         let last4 = String(card.number.filter(\.isNumber).suffix(4))
@@ -106,7 +109,12 @@ final class RealAPICofTests: XCTestCase {
         }
 
         // Step 1: pay a new card and ask the backend to store it.
-        let (first, firstSecret) = try await newSession()
+        let dev1 = try await DevSessionClient(serverURL: try devServerURL())
+            .createSession(collectBillingAddress: true)
+        guard let firstSecret = dev1.customerAccessSecret else {
+            throw XCTSkip("The dev server did not return a customerAccessSecret.")
+        }
+        let first = dev1
         let credentials = CredentialStore()
         let controller = makeController(credentials: credentials)
         do {
@@ -118,7 +126,9 @@ final class RealAPICofTests: XCTestCase {
         }
         let storeOutcome = await controller.confirmNewCard(
             CardInput(cardNumber: card.number, expiryMonth: card.month, expiryYear: card.year, cvv: card.cvv),
-            save: true)
+            save: true,
+            billingAddress: AddressInput(country: "US", line1: "1 Test St", city: "San Jose", state: "CA",
+                                         postalCode: "95112", firstName: "Test", lastName: "User"))
         guard case .succeeded = storeOutcome else {
             return XCTFail("Step 1 (pay new card with save) outcome: \(describe(storeOutcome)).")
         }

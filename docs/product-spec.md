@@ -607,6 +607,10 @@ SubmitRequest(
   (`line1` -> `address`, `line2` -> `address2`; `district` is not sent). Empty or whitespace-only values are
   omitted, and an address with no remaining field is omitted entirely. Per kind the value is the host
   address ?? the SDK form address.
+- With "same as billing" on, shipping is a copy of the billing form value, which carries no names because
+  the billing form does not collect them. If the host passes `billingAddress` while a billing form is also
+  shown, the submitted billing is the host's, but "same as billing" shipping copies the form's billing
+  value; hosts should hide the billing form (`.off`) when they pass their own billing address.
 - The body also carries an optional `userDeviceInfo` (see `security-and-pci.md` §4.1).
 - A 5xx or lost response is ambiguous: at most one result query, then `unknown`. A non-network business
   error is a definite failure. The SDK never blindly resubmits.

@@ -293,10 +293,11 @@
             var billingAddressViewForTest: UIView? { billingAddressView }
             var shippingAddressViewForTest: UIView? { shippingAddressView }
 
-            /// Sets the "same as billing" checkbox and applies its effect.
+            /// Test readout: whether the "same as billing" checkbox exists (only with a billing form).
             var hasSameAsBillingCheckboxForTest: Bool { shippingSameAsBillingSwitch != nil }
             var isSameAsBillingOnForTest: Bool { shippingSameAsBillingSwitch?.isOn ?? false }
 
+            /// Sets the "same as billing" checkbox and applies its effect.
             func setSameAsBillingForTest(_ on: Bool) {
                 shippingSameAsBillingSwitch?.isOn = on
                 handleSameAsBillingChanged()
@@ -1249,8 +1250,9 @@
         }
 
         /// Builds the shipping section: a header row (uppercase title on the left, a "same as billing"
-        /// checkbox + label on the right), and the shipping form. "Same as billing" defaults on, so the
-        /// shipping form starts hidden.
+        /// checkbox + label on the right), and the shipping form. The checkbox exists only when a billing
+        /// form exists; it defaults on, so the shipping form then starts hidden. With no billing form
+        /// there is nothing to copy from, so the shipping form is visible from the start.
         private func makeShippingSection() -> UIView? {
             guard let shipping = makeAddressView(mode: shippingMode, options: .shipping) else { return nil }
             shippingAddressView = shipping

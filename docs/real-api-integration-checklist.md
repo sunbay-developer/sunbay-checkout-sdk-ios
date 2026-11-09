@@ -24,7 +24,7 @@ State today (what was built ahead of the API):
 ### 1.1 Wire the real services
 
 - [ ] Add HTTP adapters for `GET /api/card/rules` and `POST /api/card/bin`, modeled on
-      `HTTPAddressMetadataService` (thin adapter, `baseURL` injected by the host, nothing hard-coded).
+      `HTTPAddressMetadataService` (thin adapter built on `SunbayAPIClient` and the environment-built host; no baseURL is injected or hard-coded anywhere).
 - [ ] The protocols are `internal` today. Make them `public` and inject them through
       `SunbayCheckout.init(...)` as optional parameters defaulting to `nil` (the fail-soft empty
       implementation). This adds public API: minor version bump, and update
@@ -137,7 +137,8 @@ Open verification items:
 - [x] Card list via the real adapter (`HTTPCofService`, `POST card/list`, verified 2026-11-09): a wrong
       `customerAccessSecret` returns `S06`; a missing one returns `C16`. Listing failures degrade to "no saved cards".
 - [ ] Does a `storeCard: true` new-card submit also need `customerAccessSecret` to bind the card to the
-      customer? Not yet answerable: both variants fail with `C01` until `payerBillingInfo` is sent (the SDK now sends it; see above).
+      customer? The `C01` requirement is resolved by sending `payerBillingInfo` (the SDK now does). Whether
+      `customerAccessSecret` is needed on store-card submit is still unanswered until a store-card channel exists.
 - [ ] Backend `supportStoreCard` rename is still pending (the session still returns `storeCard`).
 - [x] `E03` is returned only for failed payments, so treating it as a definite failure is correct
       (confirmed by the user, 2026-11-09). This resolves the `E03` candidate above.
@@ -153,7 +154,10 @@ Open verification items:
       configured. `RealAPICofTests.testStoreThenPayWithSavedCard` is expected to fail at step 1 until (b).
       Phase 3 check: `RealAPIAddressTests.testNewCardWithHostBillingAddressIsNotC01` asserts the new-card
       submit with `save: true` and a host billing address no longer fails with `C01`.
-      Observed result: not yet recorded (needs the sandbox test card; record the outcome case and code here after the run).
+      Observed result: on 2026-11-09, with the sandbox test card and a host billing address on dev, the
+      store-card submit returns `failed` with SDK code `PAYMENT_FAILED` (backend `F` "No available channel"),
+      no longer `C01`. The billing-address requirement is therefore satisfied by phase 3; the only remaining
+      blocker is the merchant's store-card channel.
       Decision (user, 2026-11-09): the SDK capability stays as is (the "save this card" checkbox stays
       visible under the effective COF rule; no SDK-side hiding or workaround). The billing-address
       requirement and the store-card channel are fixed in coordination with the backend; re-run
@@ -172,6 +176,15 @@ Open verification items:
 - [ ] Google address autocomplete is deferred and needs an HPP proxy: a browser Maps key cannot be used
       from apps. Options: HPP proxy (recommended), Google Places SDK for iOS with per-bundle keys, MapKit
       `MKLocalSearchCompleter`.
+
+Integrator notes (phase 3):
+
+- Saved-card and wallet payments in the sheet send only host-provided addresses (the SDK address form exists
+  only on the new-card page). Hosts whose sessions require an address must pass `billingAddress` /
+  `shippingAddress`.
+- Release-notes source-compatibility note: the `.automatic` default and the new `AddressCollectionMode.automatic`
+  case break exhaustive `switch`es over the enum. AGENTS.md rule 3 says breaking changes bump major; the owner
+  must decide the version when the first release is cut (no tags exist yet).
 
 Still built ahead of their API (phase 2+):
 
