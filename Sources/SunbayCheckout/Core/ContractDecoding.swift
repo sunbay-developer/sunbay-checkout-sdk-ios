@@ -217,30 +217,58 @@ enum ContractDecoding {
         }
     }
 
-    // MARK: - ISO-8601
+    // MARK: - Date parsing
 
-    /// Parses an ISO-8601 string into a `Date`.
+    // Formatters are configured exactly once (static let initializer, thread-safe by Swift's lazy
+    // static semantics) and only read afterwards via `date(from:)`, which is documented as safe
+    // for concurrent use on modern Foundation; nothing mutates them after configuration.
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static func makeFormatter(_ format: String, utc: Bool) -> DateFormatter {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        if utc { f.timeZone = TimeZone(secondsFromGMT: 0) }
+        f.dateFormat = format
+        return f
+    }
+
+    /// Offsets without a colon (`+0800`), which `ISO8601DateFormatter` rejects.
+    private static let noColonOffsetFormatters: [DateFormatter] = [
+        makeFormatter("yyyy-MM-dd'T'HH:mm:ssZ", utc: false),
+        makeFormatter("yyyy-MM-dd'T'HH:mm:ss.SSSZ", utc: false),
+    ]
+
+    /// The backend's zone-less format, which is UTC (ruling R6).
+    private static let zonelessUTCFormatters: [DateFormatter] = [
+        makeFormatter("yyyy-MM-dd HH:mm:ss", utc: true),
+        makeFormatter("yyyy-MM-dd HH:mm:ss.SSS", utc: true),
+    ]
+
+    /// Parses a backend timestamp into a `Date`.
     ///
-    /// Supports offsets with and without a colon (`+08:00` / `+0800`), with and without fractional seconds.
+    /// Accepts ISO-8601 with an offset (with/without colon, with/without fractional seconds) and the
+    /// zone-less `yyyy-MM-dd HH:mm:ss[.SSS]` form, interpreted as UTC.
     fileprivate static func parseISO8601(_ string: String) -> Date? {
-        let withFractional = ISO8601DateFormatter()
-        withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = withFractional.date(from: string) {
-            return date
+        if let date = isoFractional.date(from: string) { return date }
+        if let date = isoPlain.date(from: string) { return date }
+        for formatter in noColonOffsetFormatters {
+            if let date = formatter.date(from: string) { return date }
         }
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
-        if let date = plain.date(from: string) {
-            return date
-        }
-        // Fallback for offsets without a colon, which ISO8601DateFormatter rejects.
-        for format in ["yyyy-MM-dd'T'HH:mm:ssZ", "yyyy-MM-dd'T'HH:mm:ss.SSSZ"] {
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.dateFormat = format
-            if let date = formatter.date(from: string) {
-                return date
-            }
+        // DateFormatter tolerates mismatched separators (e.g. "2026/11/09"), so check the shape first.
+        let shape = #"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{3})?$"#
+        guard string.range(of: shape, options: .regularExpression) != nil else { return nil }
+        for formatter in zonelessUTCFormatters {
+            if let date = formatter.date(from: string) { return date }
         }
         return nil
     }

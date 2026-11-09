@@ -95,6 +95,24 @@ final class ContractCodableTests: XCTestCase {
             frac.timeIntervalSince1970 - base.timeIntervalSince1970, 0.123, accuracy: 0.001)
     }
 
+    func test_decodeSession_zonelessSpaceFormat_isUTC() throws {
+        let expected = Date(timeIntervalSince1970: 1_794_215_372)  // 2026-11-09T09:09:32Z
+        let plain = try ContractDecoding.decodeSession(
+            from: sessionJSON(expiresAt: "2026-11-09 09:09:32")).expiresAt
+        XCTAssertEqual(plain, expected)
+        let offset = try ContractDecoding.decodeSession(
+            from: sessionJSON(expiresAt: "2026-11-09T17:09:32+08:00")).expiresAt
+        XCTAssertEqual(offset, plain)
+        let frac = try ContractDecoding.decodeSession(
+            from: sessionJSON(expiresAt: "2026-11-09 09:09:32.500")).expiresAt
+        XCTAssertEqual(frac.timeIntervalSince1970, expected.timeIntervalSince1970 + 0.5, accuracy: 0.0001)
+    }
+
+    func test_decodeSession_slashSeparatedDate_throws() {
+        XCTAssertThrowsError(
+            try ContractDecoding.decodeSession(from: sessionJSON(expiresAt: "2026/11/09 09:09:32")))
+    }
+
     private func minorUnits(_ total: String, _ currency: String) throws -> Int64 {
         try ContractDecoding.decodeSession(
             from: sessionJSON(totalAmount: total, currency: currency)).amount.minorUnits
