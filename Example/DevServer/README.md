@@ -18,3 +18,11 @@ node --test "test/*.test.mjs"
 - `GET /healthz` returns `{ok, hasCredentials, warning}`.
 
 Binds `HOST` (default 127.0.0.1) and `PORT` (default 8095).
+
+## Logs
+
+The server prints one timestamped line per request and, for `create-session`, the incoming request, the
+upstream request (business fields only) and the upstream response (`code`, `msg`, `traceId`, `sessionId`,
+`expiresAt`). The API key and the `Authorization` header are never logged; `checkoutClientSecret` and
+`customerAccessSecret` are masked to their prefix plus the last 4 characters (for example `ccs_…08f3`) so
+a log line can be matched with what the app received. Use the `traceId` when asking the backend team.

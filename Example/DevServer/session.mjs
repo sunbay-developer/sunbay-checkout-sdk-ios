@@ -9,6 +9,7 @@
  * Credentials are loaded from Example/DevServer/.env.local (git-ignored).
  */
 
+import { log, summarizeCreateSessionPayload, summarizeCreateSessionResponse } from './log.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -97,8 +98,11 @@ export async function createSession(input = {}) {
     }
     const now = Date.now();
     const payload = buildCreateSessionPayload(input, CONFIG, now);
+    const url = `${CONFIG.openApiUrl}/v1/checkout/create-session`;
+    log('create-session -> upstream', { url, ...summarizeCreateSessionPayload(payload) });
+    const started = Date.now();
 
-    const res = await fetch(`${CONFIG.openApiUrl}/v1/checkout/create-session`, {
+    const res = await fetch(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -109,7 +113,21 @@ export async function createSession(input = {}) {
         body: JSON.stringify(payload),
     });
 
-    const data = await res.json();
+    let data = null;
+    try {
+        data = await res.json();
+    } catch {
+        // Non-JSON upstream body (for example a gateway HTML page); reported below.
+    }
+    log('create-session <- upstream', {
+        ms: Date.now() - started,
+        ...summarizeCreateSessionResponse(res.status, data),
+    });
+    if (!data) {
+        const err = new Error(`upstream create-session returned a non-JSON body (HTTP ${res.status})`);
+        err.code = `HTTP_${res.status}`;
+        throw err;
+    }
     if (data.code !== '0' || !data.data?.sessionId) {
         const err = new Error(data.msg || `upstream create-session failed (code=${data.code})`);
         err.code = data.code;

@@ -8,6 +8,7 @@
 
 import { createServer } from 'node:http';
 import { createSession, HAS_CREDENTIALS, DEV_WARNING } from './session.mjs';
+import { log } from './log.mjs';
 
 const HOST = process.env.HOST ?? '127.0.0.1';
 const PORT = Number(process.env.PORT ?? 8095);
@@ -21,6 +22,17 @@ function readBody(req) {
     });
 }
 
+/** Business fields of an incoming create-session request worth logging. */
+function summarizeInput(input) {
+    return {
+        amount: input.amount,
+        currency: input.currency,
+        items: Array.isArray(input.items) ? input.items.length : undefined,
+        collectBillingAddress: input.collectBillingAddress,
+        collectShippingAddress: input.collectShippingAddress,
+    };
+}
+
 function sendJson(res, status, obj) {
     const body = JSON.stringify(obj);
     res.writeHead(status, {
@@ -31,6 +43,13 @@ function sendJson(res, status, obj) {
 }
 
 const server = createServer(async (req, res) => {
+    const started = Date.now();
+    res.on('finish', () => {
+        log(`${req.method} ${req.url?.split('?')[0]} -> ${res.statusCode}`, {
+            ms: Date.now() - started,
+            from: req.socket.remoteAddress,
+        });
+    });
     try {
         const path = req.url?.split('?')[0];
         if (req.method === 'GET' && path === '/healthz') {
@@ -52,15 +71,18 @@ const server = createServer(async (req, res) => {
                 sendJson(res, 400, { error: 'request body is not valid JSON' });
                 return;
             }
+            log('create-session request', summarizeInput(input));
             try {
                 sendJson(res, 200, await createSession(input));
             } catch (err) {
+                log('create-session FAILED', { code: err.code ?? null, error: err.message });
                 sendJson(res, 502, { error: err.message, code: err.code });
             }
             return;
         }
         sendJson(res, 404, { error: 'not found' });
     } catch (err) {
+        log('internal error', { error: err.message ?? String(err) });
         sendJson(res, 500, { error: err.message ?? 'internal error' });
     }
 });
