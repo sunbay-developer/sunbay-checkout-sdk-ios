@@ -168,6 +168,10 @@ public struct AddressInput: Sendable, Equatable {
     public var firstName: String?
     /// Last name.
     public var lastName: String?
+    /// Phone number.
+    public var phone: String?
+    /// Email address.
+    public var email: String?
 
     /// Creates an address input; all fields default to nil.
     ///
@@ -181,6 +185,8 @@ public struct AddressInput: Sendable, Equatable {
     ///   - district: District.
     ///   - firstName: First name.
     ///   - lastName: Last name.
+    ///   - phone: Phone number.
+    ///   - email: Email address.
     public init(
         country: String? = nil,
         line1: String? = nil,
@@ -190,7 +196,9 @@ public struct AddressInput: Sendable, Equatable {
         postalCode: String? = nil,
         district: String? = nil,
         firstName: String? = nil,
-        lastName: String? = nil
+        lastName: String? = nil,
+        phone: String? = nil,
+        email: String? = nil
     ) {
         self.country = country
         self.line1 = line1
@@ -201,5 +209,7 @@ public struct AddressInput: Sendable, Equatable {
         self.district = district
         self.firstName = firstName
         self.lastName = lastName
+        self.phone = phone
+        self.email = email
     }
 }

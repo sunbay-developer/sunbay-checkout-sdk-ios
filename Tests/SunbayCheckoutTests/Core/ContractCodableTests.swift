@@ -70,6 +70,19 @@ final class ContractCodableTests: XCTestCase {
         XCTAssertFalse(session.cofEnabled)
     }
 
+    func test_decodeSession_collectAddressFlags_mapped() throws {
+        let session = try ContractDecoding.decodeSession(
+            from: sessionJSON(extra: #""collectBillingAddress": true, "collectShippingAddress": false,"#))
+        XCTAssertTrue(session.collectBillingAddress)
+        XCTAssertFalse(session.collectShippingAddress)
+    }
+
+    func test_decodeSession_collectAddressFlagsAbsent_defaultFalse() throws {
+        let session = try ContractDecoding.decodeSession(from: sessionJSON())
+        XCTAssertFalse(session.collectBillingAddress)
+        XCTAssertFalse(session.collectShippingAddress)
+    }
+
     func test_decodeSession_supportStoreCardAbsent_defaultsToTrue() throws {
         let session = try ContractDecoding.decodeSession(from: sessionJSON())
         XCTAssertTrue(session.cofEnabled)

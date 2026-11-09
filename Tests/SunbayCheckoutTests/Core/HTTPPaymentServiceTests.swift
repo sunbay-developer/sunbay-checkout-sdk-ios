@@ -123,6 +123,34 @@ final class HTTPPaymentServiceTests: XCTestCase {
         XCTAssertEqual(snapshot.txnId, "t1")
     }
 
+    func testSubmitEncodesBillingAndShippingAddresses() async throws {
+        stub([result("S")])
+        let service = await makeService()
+        let billing = AddressInput(
+            country: "US", line1: "1 Main St", line2: " ", city: "San Jose", state: "CA",
+            postalCode: "95112", district: "X", firstName: "A", lastName: "B", phone: "1", email: "a@b.c")
+        let shipping = AddressInput(country: "CA", line1: "2 Side St")
+        _ = try await service.submit(SubmitRequest(
+            sessionId: "s1", paymentMethod: "CARD", attemptId: UUID(), cardEncryptedData: "C",
+            sessionType: "sdk", billingAddress: billing, shippingAddress: shipping))
+        XCTAssertEqual(bodies[0]["payerBillingInfo"] as? [String: String], [
+            "country": "US", "address": "1 Main St", "city": "San Jose", "state": "CA",
+            "postalCode": "95112", "firstName": "A", "lastName": "B", "phone": "1", "email": "a@b.c",
+        ])
+        XCTAssertEqual(bodies[0]["payerShippingAddress"] as? [String: String],
+                       ["country": "CA", "address": "2 Side St"])
+    }
+
+    func testSubmitOmitsEmptyAddresses() async throws {
+        stub([result("S")])
+        let service = await makeService()
+        _ = try await service.submit(SubmitRequest(
+            sessionId: "s1", paymentMethod: "CARD", attemptId: UUID(), cardEncryptedData: "C",
+            sessionType: "sdk", billingAddress: AddressInput(country: "", line1: "  ")))
+        XCTAssertNil(bodies[0]["payerBillingInfo"])
+        XCTAssertNil(bodies[0]["payerShippingAddress"])
+    }
+
     func testSavedCardSubmitBody() async throws {
         stub([result("S")])
         let service = await makeService()

@@ -28,6 +28,10 @@ public struct CheckoutSession: Sendable, Equatable {
     public let cofEnabled: Bool
     /// Backend session type (for example `"sdk"`), echoed back on every payment submit; nil when the backend omits it.
     public let sessionType: String?
+    /// Whether the merchant asks the SDK to collect a billing address (session flag; absent → false).
+    public let collectBillingAddress: Bool
+    /// Whether the merchant asks the SDK to collect a shipping address (session flag; absent → false).
+    public let collectShippingAddress: Bool
 
     /// Creates a checkout session (constructed and returned by the host's `PaymentService.loadSession`).
     ///
@@ -40,6 +44,8 @@ public struct CheckoutSession: Sendable, Equatable {
     ///   - rsaPublicKey: RSA public key (base64) used to locally encrypt card data, defaults to nil.
     ///   - cofEnabled: Whether COF is enabled, defaults to false.
     ///   - sessionType: Backend session type echoed on submit, defaults to nil.
+    ///   - collectBillingAddress: Whether billing address collection is requested, defaults to false.
+    ///   - collectShippingAddress: Whether shipping address collection is requested, defaults to false.
     public init(
         id: String,
         amount: Amount,
@@ -48,7 +54,9 @@ public struct CheckoutSession: Sendable, Equatable {
         expiresAt: Date,
         rsaPublicKey: String? = nil,
         cofEnabled: Bool = false,
-        sessionType: String? = nil
+        sessionType: String? = nil,
+        collectBillingAddress: Bool = false,
+        collectShippingAddress: Bool = false
     ) {
         self.id = id
         self.amount = amount
@@ -58,6 +66,8 @@ public struct CheckoutSession: Sendable, Equatable {
         self.rsaPublicKey = rsaPublicKey
         self.cofEnabled = cofEnabled
         self.sessionType = sessionType
+        self.collectBillingAddress = collectBillingAddress
+        self.collectShippingAddress = collectShippingAddress
     }
 }
 
