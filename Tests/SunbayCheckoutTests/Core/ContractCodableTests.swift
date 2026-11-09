@@ -7,7 +7,7 @@ final class ContractCodableTests: XCTestCase {
         let json = """
             {
               "sessionId": "sess_abc123",
-              "sessionType": "EMBED",
+              "sessionType": "sdk",
               "currency": "USD",
               "totalAmount": "12.99",
               "description": "Order #42",
@@ -26,6 +26,7 @@ final class ContractCodableTests: XCTestCase {
         let session = try ContractDecoding.decodeSession(from: Data(json.utf8))
 
         XCTAssertEqual(session.id, "sess_abc123")
+        XCTAssertEqual(session.sessionType, "sdk")
         XCTAssertEqual(session.amount.minorUnits, 1299)
         XCTAssertEqual(session.amount.currencyCode, "USD")
         XCTAssertEqual(session.merchantName, "Acme Store")

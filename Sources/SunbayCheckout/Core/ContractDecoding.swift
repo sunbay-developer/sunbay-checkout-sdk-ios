@@ -23,6 +23,8 @@ enum ContractDecoding {
     /// The wire format of the session `data` object (only takes the fields Core needs; other fields are ignored).
     struct SessionWire: Decodable {
         let sessionId: String
+        /// Backend session type (for example `"sdk"`); optional on the wire.
+        let sessionType: String?
         let currency: String
         /// Total amount converted from the wire major-unit value to integer minor currency units.
         let totalAmount: Int64
@@ -34,13 +36,14 @@ enum ContractDecoding {
         let paymentMethods: [PaymentMethodWire]
 
         private enum CodingKeys: String, CodingKey {
-            case sessionId, currency, totalAmount, expiresAt, merchantName
+            case sessionId, sessionType, currency, totalAmount, expiresAt, merchantName
             case rsaPublicKey, supportStoreCard, paymentMethods
         }
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             sessionId = try c.decode(String.self, forKey: .sessionId)
+            sessionType = try c.decodeIfPresent(String.self, forKey: .sessionType)
             currency = try c.decode(String.self, forKey: .currency)
             totalAmount = try ContractDecoding.decodeMinorUnits(
                 from: c, forKey: .totalAmount, currencyCode: currency)
@@ -78,7 +81,8 @@ enum ContractDecoding {
                 methods: methods,
                 expiresAt: expiresAt,
                 rsaPublicKey: rsaPublicKey,
-                cofEnabled: supportStoreCard
+                cofEnabled: supportStoreCard,
+                sessionType: sessionType
             )
         }
     }

@@ -31,7 +31,8 @@ final class CheckoutControllerTests: XCTestCase {
             methods: [.card, .applePay],
             expiresAt: expiresAt,
             rsaPublicKey: rsaPublicKey,
-            cofEnabled: cofEnabled
+            cofEnabled: cofEnabled,
+            sessionType: "sdk"
         )
     }
 
@@ -236,6 +237,31 @@ final class CheckoutControllerTests: XCTestCase {
         XCTAssertFalse(req.cardEncryptedData?.isEmpty ?? true, "a new card should carry non-empty ciphertext")
         XCTAssertNil(req.savedCardId, "a new card must not carry savedCardId")
         XCTAssertNil(req.walletToken)
+    }
+
+    // MARK: - sessionType is echoed from the loaded session on every path
+
+    func test_allPaths_submitSessionTypeFromLoadedSession() async throws {
+        let rsaKey = try makeRSAPublicKey()
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession(rsaPublicKey: rsaKey))
+        payment.stubSubmit([terminalSucceeded()])
+        var controller = makeController(payment: payment)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+        _ = await controller.confirmNewCard(newCardInput(), save: false)
+        XCTAssertEqual(payment.lastSubmitRequest?.sessionType, "sdk")
+
+        payment.stubSubmit([terminalSucceeded()])
+        controller = makeController(payment: payment)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+        _ = await controller.confirmSavedCard(paymentMethodId: "sc_1")
+        XCTAssertEqual(payment.lastSubmitRequest?.sessionType, "sdk")
+
+        payment.stubSubmit([terminalSucceeded()])
+        controller = makeController(payment: payment)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = await controller.confirmWallet(token: Data("{}".utf8))
+        XCTAssertEqual(payment.lastSubmitRequest?.sessionType, "sdk")
     }
 
     // MARK: - Saved card: carry only paymentMethodId, no card data

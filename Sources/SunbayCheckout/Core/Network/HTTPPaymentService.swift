@@ -35,6 +35,7 @@ final class HTTPPaymentService: PaymentService, PaymentActionProviding, @uncheck
 
     private struct SubmitBody: Encodable, Sendable {
         let sessionId: String
+        let sessionType: String?
         let paymentMethod: String
         let cardEncryptedData: String?
         let storeCard: Bool?
@@ -68,7 +69,7 @@ final class HTTPPaymentService: PaymentService, PaymentActionProviding, @uncheck
         var secret = req.checkoutClientSecret
         if secret == nil { secret = await credentials.currentCheckoutClientSecret() }
         let body = SubmitBody(
-            sessionId: req.sessionId, paymentMethod: req.paymentMethod, cardEncryptedData: cipher,
+            sessionId: req.sessionId, sessionType: req.sessionType, paymentMethod: req.paymentMethod, cardEncryptedData: cipher,
             storeCard: req.storeCard, savedCardId: req.savedCardId,
             customerAccessSecret: req.customerAccessSecret, checkoutClientSecret: secret,
             userDeviceInfo: deviceInfo())

@@ -26,6 +26,8 @@ public struct CheckoutSession: Sendable, Equatable {
     public let rsaPublicKey: String?
     /// Whether COF (saved card / one-tap) is enabled.
     public let cofEnabled: Bool
+    /// Backend session type (for example `"sdk"`), echoed back on every payment submit; nil when the backend omits it.
+    public let sessionType: String?
 
     /// Creates a checkout session (constructed and returned by the host's `PaymentService.loadSession`).
     ///
@@ -37,6 +39,7 @@ public struct CheckoutSession: Sendable, Equatable {
     ///   - expiresAt: Session expiry time.
     ///   - rsaPublicKey: RSA public key (base64) used to locally encrypt card data, defaults to nil.
     ///   - cofEnabled: Whether COF is enabled, defaults to false.
+    ///   - sessionType: Backend session type echoed on submit, defaults to nil.
     public init(
         id: String,
         amount: Amount,
@@ -44,7 +47,8 @@ public struct CheckoutSession: Sendable, Equatable {
         methods: Set<PaymentMethodKind>,
         expiresAt: Date,
         rsaPublicKey: String? = nil,
-        cofEnabled: Bool = false
+        cofEnabled: Bool = false,
+        sessionType: String? = nil
     ) {
         self.id = id
         self.amount = amount
@@ -53,6 +57,7 @@ public struct CheckoutSession: Sendable, Equatable {
         self.expiresAt = expiresAt
         self.rsaPublicKey = rsaPublicKey
         self.cofEnabled = cofEnabled
+        self.sessionType = sessionType
     }
 }
 

@@ -222,7 +222,8 @@ actor CheckoutController {
             attemptId: attemptId,
             cardEncryptedData: encrypted,
             storeCard: (save && session.cofEnabled) ? true : nil,
-            checkoutClientSecret: await credentials.currentCheckoutClientSecret()
+            checkoutClientSecret: await credentials.currentCheckoutClientSecret(),
+            sessionType: session.sessionType
         )
         return await submitAndResolve(request)
     }
@@ -244,7 +245,8 @@ actor CheckoutController {
             attemptId: attemptId,
             savedCardId: paymentMethodId,
             customerAccessSecret: await credentials.current(),
-            checkoutClientSecret: await credentials.currentCheckoutClientSecret()
+            checkoutClientSecret: await credentials.currentCheckoutClientSecret(),
+            sessionType: session.sessionType
         )
         return await submitAndResolve(request)
     }
@@ -265,7 +267,8 @@ actor CheckoutController {
             paymentMethod: "APPLE_PAY",
             attemptId: attemptId,
             walletToken: token,
-            checkoutClientSecret: await credentials.currentCheckoutClientSecret()
+            checkoutClientSecret: await credentials.currentCheckoutClientSecret(),
+            sessionType: session.sessionType
         )
         return await submitAndResolve(request)
     }

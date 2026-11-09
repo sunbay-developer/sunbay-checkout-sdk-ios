@@ -52,7 +52,7 @@ final class HTTPPaymentServiceTests: XCTestCase {
     }
 
     private let sessionJSON = #"""
-    {"code":"0","msg":"ok","data":{"sessionId":"s1","currency":"USD","totalAmount":1000,
+    {"code":"0","msg":"ok","data":{"sessionId":"s1","sessionType":"sdk","currency":"USD","totalAmount":1000,
     "expiresAt":"2030-01-01T00:00:00Z","merchantName":"M","supportStoreCard":false,
     "paymentMethods":[{"method":"VISA","type":"CARD"}]}}
     """#
@@ -68,6 +68,7 @@ final class HTTPPaymentServiceTests: XCTestCase {
         XCTAssertEqual(captured.first?.url?.path, "/api/checkout/web/session/s1")
         XCTAssertEqual(bodies.first as? [String: String], ["checkoutClientSecret": "ccs_x"])
         XCTAssertEqual(session.id, "s1")
+        XCTAssertEqual(session.sessionType, "sdk")
         XCTAssertFalse(session.cofEnabled)
     }
 
@@ -105,11 +106,13 @@ final class HTTPPaymentServiceTests: XCTestCase {
         let service = await makeService()
         let snapshot = try await service.submit(SubmitRequest(
             sessionId: "s1", paymentMethod: "CARD", attemptId: UUID(),
-            cardEncryptedData: "CIPHER", storeCard: true, checkoutClientSecret: "ccs_x"))
+            cardEncryptedData: "CIPHER", storeCard: true, checkoutClientSecret: "ccs_x",
+            sessionType: "sdk"))
         XCTAssertEqual(captured.first?.url?.path, "/api/checkout/web/payment/submit")
         let body = bodies[0]
         XCTAssertEqual(body["sessionId"] as? String, "s1")
         XCTAssertEqual(body["paymentMethod"] as? String, "CARD")
+        XCTAssertEqual(body["sessionType"] as? String, "sdk")
         XCTAssertEqual(body["cardEncryptedData"] as? String, "CIPHER")
         XCTAssertEqual(body["checkoutClientSecret"] as? String, "ccs_x")
         XCTAssertEqual(body["storeCard"] as? Bool, true)
