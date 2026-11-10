@@ -65,7 +65,7 @@ final class PaymentMethodModelTests: XCTestCase {
 
     func test_randomFilters_yieldSubPermutationAndUniqueIgnored() {
         let pool = ["CARD", "VISA", "AMEX", "APPLE_PAY", "", "x", "card"]
-        var generator = SystemRandomNumberGenerator()
+        var generator = SeededGenerator(seed: 0x5EED)
         for _ in 0..<200 {
             let hide = (0..<Int.random(in: 0...4, using: &generator)).map { _ in PaymentMethodID(rawValue: pool.randomElement()!) }
             let order = (0..<Int.random(in: 0...4, using: &generator)).map { _ in PaymentMethodID(rawValue: pool.randomElement()!) }
@@ -75,8 +75,26 @@ final class PaymentMethodModelTests: XCTestCase {
                 guard let index = remaining.firstIndex(of: e) else { return XCTFail("result is not a sub-permutation") }
                 remaining.remove(at: index)
             }
+            let hiddenKeys = Set(hide.map(\.rawValue))
+            for e in result.entries {
+                XCTAssertFalse(hiddenKeys.contains(PaymentMethodModel.logicalKey(e)), "hidden id leaked: \(e.method)")
+                XCTAssertFalse(hiddenKeys.contains(e.method), "hidden id leaked: \(e.method)")
+            }
             let ids = result.ignored.map(\.identifier)
             XCTAssertEqual(ids.count, Set(ids).count)
         }
+    }
+}
+
+/// Deterministic SplitMix64 generator so the randomized test is reproducible.
+private struct SeededGenerator: RandomNumberGenerator {
+    private var state: UInt64
+    init(seed: UInt64) { state = seed }
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
     }
 }

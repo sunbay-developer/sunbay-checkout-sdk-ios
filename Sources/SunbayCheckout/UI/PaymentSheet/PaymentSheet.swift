@@ -441,14 +441,19 @@
             let filtered = PaymentMethodModel.apply(paymentMethodFilter, to: session.methodEntries)
             await controller.reportFilterIgnored(filtered.ignored)
             let expressOff = appearance.expressPosition == .off
+            var walletMissing: [String] = []
             let available = PaymentProviderRegistry.available(entries: filtered.entries) { provider in
                 guard provider.key == "APPLE_PAY" else { return true }
-                return !expressOff
-                    && ApplePayAvailability.evaluate(
-                        session: session, hiddenByFilter: false, authorizer: walletAuthorizer,
-                        merchantId: walletMerchantId
-                    ).available
+                guard !expressOff else { return false }
+                let availability = ApplePayAvailability.evaluate(
+                    session: session, hiddenByFilter: false, authorizer: walletAuthorizer,
+                    merchantId: walletMerchantId)
+                walletMissing = availability.missing
+                return availability.available
             }
+            // The entry survived the filter (this closure only runs for visible entries), so unusable wallet
+            // parameters are reported once (deduplicated by the reporter), even when nothing else is available.
+            await controller.reportWalletParamsInvalid(missing: walletMissing)
             guard !available.isEmpty else {
                 await controller.dismiss()
                 return .startFailed(.failed(

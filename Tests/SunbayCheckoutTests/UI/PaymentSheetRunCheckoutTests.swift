@@ -714,7 +714,7 @@
 
         private func makeSheet(
             methods: Set<PaymentMethodKind> = [.card, .applePay], filter: PaymentMethodFilter,
-            reporter: DiagnosticsReporter? = nil
+            reporter: DiagnosticsReporter? = nil, missingWalletParams: [String] = []
         ) -> (PaymentSheet, MockCofService) {
             let payment = MockPaymentService()
             payment.stubSession(makeSession(methods: methods))
@@ -725,7 +725,8 @@
                 actionHandler: StubActionHandler(result: .pending), reporter: reporter)
             let sheet = PaymentSheet(
                 controller: controller, sessionId: "sess_filter", customerAccessSecret: "secret",
-                walletAuthorizer: MockWalletAuthorizer(canMake: true, outcome: .success(Data([1]))),
+                walletAuthorizer: MockWalletAuthorizer(
+                    canMake: true, outcome: .success(Data([1])), missing: missingWalletParams),
                 walletMerchantId: "merchant.com.acme", paymentMethodFilter: filter)
             return (sheet, cof)
         }
@@ -737,6 +738,50 @@
                 return .cancel
             }
             return (result, box.context)
+        }
+
+        private func walletWarnings(_ box: Box) -> [CheckoutWarning] {
+            box.warnings.filter { $0.code == .walletParamsInvalid }
+        }
+
+        private func recordingReporter(_ box: Box) -> DiagnosticsReporter {
+            let reporter = DiagnosticsReporter()
+            reporter.handler = { if case let .warning(w) = $0 { box.warnings.append(w) } }
+            return reporter
+        }
+
+        func test_applePayOnly_withBadWalletParams_failsAndReportsWalletParamsInvalidOnce() async {
+            let box = Box()
+            let (sheet, _) = makeSheet(
+                methods: [.applePay], filter: PaymentMethodFilter(), reporter: recordingReporter(box),
+                missingWalletParams: ["supportedNetworks"])
+            let (result, _) = await run(sheet)
+            guard case let .startFailed(.failed(_, error)) = result else { return XCTFail("expected start failure") }
+            XCTAssertEqual(error.code, "NO_PAYMENT_METHOD_AVAILABLE")
+            await MainActor.run {}
+            XCTAssertEqual(walletWarnings(box).count, 1)
+            XCTAssertEqual(walletWarnings(box).first?.ignored, ["supportedNetworks"])
+        }
+
+        func test_cardAndApplePay_withBadWalletParams_reportsExactlyOneWarning() async {
+            let box = Box()
+            let (sheet, _) = makeSheet(
+                filter: PaymentMethodFilter(), reporter: recordingReporter(box),
+                missingWalletParams: ["merchantCapabilities"])
+            let (_, context) = await run(sheet)
+            XCTAssertEqual(context?.visibleEntries.map(\.method), ["CARD", "APPLE_PAY"])
+            await MainActor.run {}
+            XCTAssertEqual(walletWarnings(box).count, 1)
+        }
+
+        func test_badWalletParams_withApplePayHidden_reportsNothing() async {
+            let box = Box()
+            let (sheet, _) = makeSheet(
+                filter: PaymentMethodFilter(hide: ["APPLE_PAY"]), reporter: recordingReporter(box),
+                missingWalletParams: ["supportedNetworks"])
+            _ = await run(sheet)
+            await MainActor.run {}
+            XCTAssertTrue(walletWarnings(box).isEmpty)
         }
 
         func test_hideApplePay_keepsCardOnly() async {

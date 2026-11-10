@@ -39,6 +39,22 @@ final class ContractCodableTests: XCTestCase {
         XCTAssertEqual(session.methods.count, 2)
     }
 
+    func test_decodeSession_withoutCardEntries_hasNoCardMethodEntry() throws {
+        let json = """
+            {
+              "sessionId": "sess_hpp", "currency": "USD", "totalAmount": "1.00",
+              "expiresAt": "2026-11-09T10:00:00+08:00", "merchantName": "Acme",
+              "paymentMethods": [ { "method": "APPLE_PAY", "type": "E_WALLET" } ]
+            }
+            """
+        let session = try ContractDecoding.decodeSession(from: Data(json.utf8))
+        XCTAssertEqual(session.methodEntries.map(\.method), ["APPLE_PAY"])
+        XCTAssertFalse(session.methodEntries.contains { PaymentMethodModel.logicalKey($0) == "CARD" })
+        let visible = PaymentMethodModel.apply(PaymentMethodFilter(), to: session.methodEntries).entries
+        XCTAssertFalse(visible.contains { PaymentMethodModel.logicalKey($0) == "CARD" })
+        XCTAssertFalse(session.methods.contains(.card))
+    }
+
     // MARK: - ewalletParam
 
     private func walletSession(_ ewallet: String?) throws -> CheckoutSession {
