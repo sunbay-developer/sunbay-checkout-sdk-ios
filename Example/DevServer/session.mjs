@@ -27,16 +27,45 @@ export const DEV_WARNING =
 /** Default order amount in MAJOR units (e.g. dollars). */
 export const DEFAULT_AMOUNT = 0.01;
 
-export const CONFIG = {
-    openApiUrl: process.env.OPEN_API_URL ?? 'https://open.sunbay-dev.com',
-    apiKey: process.env.API_KEY,
-    appId: process.env.APP_ID,
-    merchantId: process.env.MERCHANT_ID,
-    currency: process.env.CURRENCY ?? 'USD',
-    customerId: process.env.CUSTOMER_ID ?? 'sunbay-ios-dev-customer',
+/**
+ * Per-environment settings. `dev` reads the unprefixed variables (API_KEY, APP_ID, MERCHANT_ID,
+ * OPEN_API_URL); `test` reads TEST_*; `prod` reads PROD_*. The open-platform hosts below are defaults and
+ * can be overridden with `<PREFIX>OPEN_API_URL`.
+ */
+const ENVIRONMENTS = {
+    dev: { prefix: '', openApiUrl: 'https://open.sunbay-dev.com' },
+    test: { prefix: 'TEST_', openApiUrl: 'https://open.sunbay-uat.us' },
+    prod: { prefix: 'PROD_', openApiUrl: 'https://open.sunbay.us' },
 };
 
-export const HAS_CREDENTIALS = Boolean(CONFIG.apiKey && CONFIG.appId && CONFIG.merchantId);
+export const ENVIRONMENT_NAMES = Object.keys(ENVIRONMENTS);
+
+/** Resolve the upstream configuration of one environment (unknown names fall back to nothing). */
+export function configFor(name = 'dev', env = process.env) {
+    const spec = ENVIRONMENTS[name];
+    if (!spec) return null;
+    const get = (key) => env[`${spec.prefix}${key}`];
+    return {
+        environment: name,
+        openApiUrl: get('OPEN_API_URL') ?? spec.openApiUrl,
+        apiKey: get('API_KEY'),
+        appId: get('APP_ID'),
+        merchantId: get('MERCHANT_ID'),
+        currency: env.CURRENCY ?? 'USD',
+        customerId: env.CUSTOMER_ID ?? 'sunbay-ios-dev-customer',
+    };
+}
+
+/** True when the environment has an API key, app id and merchant id. */
+export function hasCredentialsFor(name, env = process.env) {
+    const c = configFor(name, env);
+    return Boolean(c && c.apiKey && c.appId && c.merchantId);
+}
+
+/** The dev environment (kept for the real-API tests and existing callers). */
+export const CONFIG = configFor('dev');
+
+export const HAS_CREDENTIALS = hasCredentialsFor('dev');
 
 /** Convert a MAJOR-unit amount to minor units: 0.01 -> 1. */
 function toMinorUnits(major) {
@@ -91,22 +120,28 @@ export function buildCreateSessionPayload(input, config, now) {
  * @returns {Promise<{sessionId:string, checkoutClientSecret:string|null, customerAccessSecret:string|null}>}
  */
 export async function createSession(input = {}) {
-    if (!HAS_CREDENTIALS) {
+    const environment = input.environment ?? 'dev';
+    const config = configFor(environment);
+    if (!config) {
+        throw new Error(`Unknown environment "${environment}". Use one of: ${ENVIRONMENT_NAMES.join(', ')}.`);
+    }
+    if (!hasCredentialsFor(environment)) {
+        const prefix = ENVIRONMENTS[environment].prefix;
         throw new Error(
-            'Merchant credentials missing. Copy .env.example to .env.local and fill in API_KEY / APP_ID / MERCHANT_ID.'
+            `Merchant credentials missing for "${environment}". Fill in ${prefix}API_KEY / ${prefix}APP_ID / ${prefix}MERCHANT_ID in .env.local.`
         );
     }
     const now = Date.now();
-    const payload = buildCreateSessionPayload(input, CONFIG, now);
-    const url = `${CONFIG.openApiUrl}/v1/checkout/create-session`;
-    log('create-session -> upstream', { url, ...summarizeCreateSessionPayload(payload) });
+    const payload = buildCreateSessionPayload(input, config, now);
+    const url = `${config.openApiUrl}/v1/checkout/create-session`;
+    log('create-session -> upstream', { environment, url, ...summarizeCreateSessionPayload(payload) });
     const started = Date.now();
 
     const res = await fetch(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${CONFIG.apiKey}`,
+            Authorization: `Bearer ${config.apiKey}`,
             'X-Client-Request-Id': payload.transactionRequestId,
             'X-Timestamp': String(now),
         },

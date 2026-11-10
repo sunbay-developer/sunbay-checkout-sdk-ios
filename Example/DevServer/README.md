@@ -14,8 +14,10 @@ node --test "test/*.test.mjs"
 
 ## Endpoints
 
-- `POST /api/create-session` body `{amount?, items?, currency?, collectBillingAddress?, collectShippingAddress?}` (amount in major units) returns `{sessionId, checkoutClientSecret, customerAccessSecret|null}`.
-- `GET /healthz` returns `{ok, hasCredentials, warning}`.
+- `POST /api/create-session` body `{environment?: "dev"|"test"|"prod", amount?, items?, currency?, collectBillingAddress?, collectShippingAddress?}` (amount in major units) returns `{sessionId, checkoutClientSecret, customerAccessSecret|null}`.
+- `GET /healthz` returns `{ok, hasCredentials, environments: {dev, test, prod}, warning}` (`hasCredentials` is the dev environment).
+
+The environment selects the credentials and open-platform host: `dev` reads `API_KEY` / `APP_ID` / `MERCHANT_ID`, `test` reads the `TEST_` variants and `prod` the `PROD_` variants (`<PREFIX>OPEN_API_URL` overrides the host).
 
 Binds `HOST` (default 127.0.0.1) and `PORT` (default 8095).
 

@@ -10,10 +10,10 @@ import SunbayCheckoutTestSupport
 
     /// The demo configuration playground.
     ///
-    /// A Stripe-style config screen: a `Form` exposing every `DemoSettings` knob, a "Pay (sheet)"
-    /// action that creates a real dev order through the local `Example/DevServer` and presents the SDK
-    /// `PaymentSheet` against the Dev backend, a standalone `ApplePayButton` section, and a
-    /// last-outcome display. The environment is fixed to `.dev`; there is no mock mode.
+    /// A tabbed config screen (Pay / Options / Look) exposing every `DemoSettings` knob, a "Pay (sheet)"
+    /// action that creates a real order through the local `Example/DevServer` and presents the SDK
+    /// `PaymentSheet` against the selected backend, a standalone `ApplePayButton` section, and a
+    /// last-outcome display. The environment is switchable (dev by default); there is no mock mode.
     ///
     /// Consumes only the SDK public API (`SunbayCheckout`, `CheckoutConfiguration`, `PaymentSheet`,
     /// `ApplePayButton`, `CheckoutOutcome`, `CheckoutError`) plus `DevSessionClient` from
@@ -40,41 +40,50 @@ import SunbayCheckoutTestSupport
         }()
 
         var body: some View {
-            NavigationView {
-                Form {
-                    devServerSection
-                    localeSection
-                    appearanceSection
-                    addressSection
-                    methodsSection
-                    amountSection
-                    cofSection
+            TabView {
+                tab("Pay", systemImage: "creditcard") {
+                    backendSection
+                    orderSection
                     paymentSheetSection
                     applePaySection
                     outcomeSection
                 }
-                .navigationTitle("Sunbay Checkout Demo")
-                .safeAreaInset(edge: .top, spacing: 0) { devOnlyBanner }
+                tab("Options", systemImage: "slider.horizontal.3") {
+                    methodsSection
+                    addressSection
+                    cofSection
+                }
+                tab("Look", systemImage: "paintbrush") {
+                    localeSection
+                    appearanceSection
+                }
+            }
+        }
+
+        /// One tab: its own navigation stack around a form, so each tab keeps its scroll position.
+        private func tab<Content: View>(
+            _ title: String, systemImage: String, @ViewBuilder content: () -> Content
+        ) -> some View {
+            NavigationView {
+                Form { content() }
+                    .navigationTitle(title)
+                    .navigationBarTitleDisplayMode(.inline)
             }
             .navigationViewStyle(.stack)
+            .tabItem { Label(title, systemImage: systemImage) }
         }
 
-        // MARK: - Dev server
+        // MARK: - Backend
 
-        /// Persistent warning shown on screen: sessions come from a dev server that holds the API key.
-        private var devOnlyBanner: some View {
-            Text("DEV ONLY: sessions are created by a local dev server that holds your API key. In production, create the session in your own backend.")
-                .font(.footnote.bold())
-                .foregroundColor(.white)
-                .multilineTextAlignment(.leading)
-                .padding(8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.red)
-        }
-
-        /// Dev server URL. The environment is fixed to Dev.
-        private var devServerSection: some View {
+        /// Environment and local session-server URL.
+        private var backendSection: some View {
             Section {
+                Picker("Environment", selection: $settings.environment) {
+                    ForEach(DemoSettings.DemoEnvironment.allCases) { env in
+                        Text(env.label).tag(env)
+                    }
+                }
+                .pickerStyle(.segmented)
                 HStack {
                     Text("Server URL")
                     Spacer()
@@ -85,9 +94,29 @@ import SunbayCheckoutTestSupport
                         .autocorrectionDisabled(true)
                 }
             } header: {
-                Text("Backend (Dev)")
+                Text("Backend")
             } footer: {
-                Text("Pays against the Dev backend (environment is fixed). Start Example/DevServer first; it creates the order session.")
+                Text("The environment selects the SDK backend and the credentials the local DevServer uses (TEST_ / PROD_ variables in .env.local). Prod creates real orders.")
+            }
+        }
+
+        // MARK: - Order
+
+        private var orderSection: some View {
+            Section {
+                HStack {
+                    Text("Amount (minor units, USD)")
+                    Spacer()
+                    TextField("105", text: amountText)
+                        .multilineTextAlignment(.trailing)
+                        .keyboardType(.numberPad)
+                }
+                Toggle("Order requires billing address", isOn: $settings.orderRequiresBillingAddress)
+                Toggle("Order requires shipping address", isOn: $settings.orderRequiresShippingAddress)
+            } header: {
+                Text("Order")
+            } footer: {
+                Text("The server receives the amount in major units (minor units / 100). The \"requires\" toggles set the session's collect flags; see Options for how the sheet shows the address forms.")
             }
         }
 
@@ -143,14 +172,12 @@ import SunbayCheckoutTestSupport
                     }
                 }
                 .pickerStyle(.menu)
-                Toggle("Order requires billing address", isOn: $settings.orderRequiresBillingAddress)
-                Toggle("Order requires shipping address", isOn: $settings.orderRequiresShippingAddress)
                 Toggle("Pass a host billing address", isOn: $settings.passHostBillingAddress)
                 Toggle("Pass a host shipping address", isOn: $settings.passHostShippingAddress)
             } header: {
                 Text("Address collection")
             } footer: {
-                Text("The \"Order requires\" toggles set the dev-server session flags. Automatic follows the session flag (on: full form, off: hidden); Simple, Full and Off ignore it. The \"Pass a host ...\" toggles supply a fixed, complete US test address. A host address is used only when the session collects that kind and the address is complete; Automatic then hides the form for it. A form that is shown wins over the host address.")
+                Text("Automatic follows the session flag set by the \"Order requires\" toggles on the Pay tab (on: full form, off: hidden); Simple, Full and Off ignore it. The \"Pass a host ...\" toggles supply a fixed, complete US test address. A host address is used only when the session collects that kind and the address is complete; Automatic then hides the form for it. A form that is shown wins over the host address.")
             }
         }
 
@@ -165,31 +192,12 @@ import SunbayCheckoutTestSupport
             }
         }
 
-        private var amountSection: some View {
-            Section {
-                HStack {
-                    Text("Currency")
-                    Spacer()
-                    Text("USD").foregroundStyle(.secondary)
-                }
-                HStack {
-                    Text("Minor units")
-                    Spacer()
-                    TextField("105", text: amountText)
-                        .multilineTextAlignment(.trailing)
-                        .keyboardType(.numberPad)
-                }
-            } header: {
-                Text("Amount")
-            } footer: {
-                Text("The currency is fixed to USD. The dev server receives the amount in major units (minor units / 100).")
-            }
-        }
-
         private var cofSection: some View {
             Section {
                 Toggle("Card on file enabled", isOn: $settings.cardOnFileEnabled)
                 Toggle("Pre-tick save card", isOn: $settings.preTickSaveCard)
+            } header: {
+                Text("Saved cards")
             } footer: {
                 Text("The host switch can only disable saved cards; the session must also allow them. \"Pre-tick save card\" only sets the checkbox's initial state.")
             }
@@ -199,7 +207,7 @@ import SunbayCheckoutTestSupport
 
         private var paymentSheetSection: some View {
             Section("PaymentSheet (L1 black-box)") {
-                Text("Creates a Dev order session, then presents the SDK sheet: new-card form, 'Save this card', saved cards (COF one-tap), and an Apple Pay entry row.")
+                Text("Creates an order session, then presents the SDK sheet: new-card form, 'Save this card', saved cards (COF one-tap), and an Apple Pay entry row.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 PaySheetButton(
@@ -218,6 +226,8 @@ import SunbayCheckoutTestSupport
                     request: sessionRequest,
                     onResult: { lastOutcome = describe($0) }
                 )
+                // A session belongs to one environment: switching it drops the bound button.
+                .id(settings.environment)
             }
         }
 
@@ -261,6 +271,7 @@ import SunbayCheckoutTestSupport
         private var sessionRequest: DevSessionRequest {
             DevSessionRequest(
                 serverURL: URL(string: settings.devServerURL),
+                environment: settings.environment.serverName,
                 amountMajorUnits: Double(settings.amountMinorUnits) / 100,
                 collectBillingAddress: settings.orderRequiresBillingAddress,
                 collectShippingAddress: settings.orderRequiresShippingAddress,
@@ -281,6 +292,15 @@ import SunbayCheckoutTestSupport
             postalCode: "95113", firstName: "Test", lastName: "Recipient", phone: "4085550100"
         )
 
+        /// The SDK environment matching the selected demo environment.
+        private var sdkEnvironment: CheckoutConfiguration.Environment {
+            switch settings.environment {
+            case .dev: return .dev
+            case .test: return .test
+            case .prod: return .production
+            }
+        }
+
         /// The payment-method filter derived from the hide toggles.
         private var methodFilter: PaymentMethodFilter {
             var hide: [PaymentMethodID] = []
@@ -299,10 +319,10 @@ import SunbayCheckoutTestSupport
             }
         }
 
-        /// Assembles the public SDK entry point against the Dev environment (real backend adapters).
+        /// Assembles the public SDK entry point for the selected environment (real backend adapters).
         private func makeCheckout() -> SunbayCheckout {
             let config = CheckoutConfiguration(
-                environment: .dev,
+                environment: sdkEnvironment,
                 applePayMerchantId: Self.merchantId,
                 appearance: makeAppearance(),
                 locale: settings.locale.bcp47,
@@ -402,6 +422,8 @@ import SunbayCheckoutTestSupport
     /// What the dev server needs to create an order session. `serverURL` is nil for a malformed URL.
     struct DevSessionRequest {
         let serverURL: URL?
+        /// Server-side environment name (`dev`, `test`, `prod`).
+        let environment: String
         let amountMajorUnits: Double
         let collectBillingAddress: Bool
         let collectShippingAddress: Bool
@@ -416,7 +438,8 @@ import SunbayCheckoutTestSupport
             return try await DevSessionClient(serverURL: serverURL).createSession(
                 amountMajorUnits: amountMajorUnits,
                 collectBillingAddress: collectBillingAddress,
-                collectShippingAddress: collectShippingAddress
+                collectShippingAddress: collectShippingAddress,
+                environment: environment
             )
         }
     }
@@ -518,7 +541,7 @@ import SunbayCheckoutTestSupport
                 } else if let errorMessage {
                     Text(errorMessage).font(.footnote).foregroundColor(.red)
                 } else {
-                    Text("Creates a Dev order session first; the button is then bound to it. Apple Pay needs a real device.")
+                    Text("Creates an order session first; the button is then bound to it. Apple Pay needs a real device.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

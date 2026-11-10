@@ -25,3 +25,17 @@ test('explicit items win over amount', () => {
     assert.equal(p.amount.orderAmount, 1000);
     assert.deepEqual(p.productList, items);
 });
+
+test('configFor reads unprefixed variables for dev and prefixed ones for test and prod', async () => {
+    const { configFor, hasCredentialsFor } = await import('../session.mjs');
+    const env = {
+        API_KEY: 'k', APP_ID: 'a', MERCHANT_ID: 'm',
+        TEST_API_KEY: 'tk', TEST_APP_ID: 'ta', TEST_MERCHANT_ID: 'tm', TEST_OPEN_API_URL: 'https://example.test',
+    };
+    assert.equal(configFor('dev', env).apiKey, 'k');
+    assert.equal(configFor('test', env).apiKey, 'tk');
+    assert.equal(configFor('test', env).openApiUrl, 'https://example.test');
+    assert.equal(configFor('prod', env).openApiUrl, 'https://open.sunbay.us');
+    assert.equal(hasCredentialsFor('prod', env), false);
+    assert.equal(configFor('bogus', env), null);
+});

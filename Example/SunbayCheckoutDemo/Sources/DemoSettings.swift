@@ -5,10 +5,33 @@ import Foundation
 /// The full configuration surface exposed by the demo playground.
 ///
 /// A `Codable`/`Equatable` value type holding every knob the config screen drives. It maps to a
-/// `CheckoutConfiguration` (always the `.dev` environment) plus the dev-session request at Pay time.
+/// `CheckoutConfiguration` (dev by default; the environment is switchable) plus the dev-session request at Pay time.
 /// Deliberately a plain value type (no SDK reference types) so SwiftUI can diff it and so it stays
 /// trivially serializable.
 struct DemoSettings: Codable, Equatable {
+    // MARK: Environment
+
+    /// The backend environment the SDK talks to and the dev server creates sessions for.
+    enum DemoEnvironment: String, Codable, CaseIterable, Identifiable {
+        case dev
+        case test
+        case prod
+
+        var id: String { rawValue }
+
+        /// The name the dev server expects in `environment`.
+        var serverName: String { rawValue }
+
+        /// A short display label.
+        var label: String {
+            switch self {
+            case .dev: return "Dev"
+            case .test: return "Test"
+            case .prod: return "Prod"
+            }
+        }
+    }
+
     // MARK: Locale
 
     /// Locale knob. The raw value is a BCP-47 code passed straight into
@@ -110,6 +133,9 @@ struct DemoSettings: Codable, Equatable {
     }
 
     // MARK: Stored knobs
+
+    /// Backend environment (SDK `CheckoutConfiguration.environment` and the dev server's credentials). Default dev.
+    var environment: DemoEnvironment = .dev
 
     /// Locale (drives SDK PaymentSheet localization).
     var locale: DemoLocale
