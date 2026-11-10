@@ -105,6 +105,94 @@ final class SunbayAPIClientTests: XCTestCase {
         await expectError("INVALID_RESPONSE", .network)
     }
 
+    // MARK: - GET
+
+    private func get() async throws -> Payload {
+        try await client().get(.addressCountries, query: [URLQueryItem(name: "locale", value: "zh-CN")])
+    }
+
+    func testGetRequestShapeAndDecode() async throws {
+        var captured: URLRequest?
+        StubURLProtocol.handler = {
+            captured = $0
+            return self.respond(200, #"{"code":"0","msg":"ok","data":{"x":7}}"#, for: $0)
+        }
+        let result = try await get()
+        XCTAssertEqual(result, Payload(x: 7))
+        XCTAssertEqual(captured?.httpMethod, "GET")
+        XCTAssertNil(captured?.httpBody)
+        XCTAssertNil(captured?.httpBodyStream)
+        XCTAssertEqual(captured?.url?.path, "/api/address/country")
+        XCTAssertEqual(captured?.url?.query, "locale=zh-CN")
+        XCTAssertEqual(captured?.value(forHTTPHeaderField: "Accept-Language"), "zh-CN")
+    }
+
+    func testGetWithoutQueryHasNoQueryString() async throws {
+        var captured: URLRequest?
+        StubURLProtocol.handler = {
+            captured = $0
+            return self.respond(200, #"{"code":"0","msg":"ok","data":{"x":1}}"#, for: $0)
+        }
+        let _: Payload = try await client().get(.addressCountries)
+        XCTAssertNil(captured?.url?.query)
+    }
+
+    func testGetBusinessCodeIsPaymentCategory() async {
+        StubURLProtocol.handler = { self.respond(200, #"{"code":"BAD","msg":"no","traceId":"g1"}"#, for: $0) }
+        do {
+            _ = try await get()
+            XCTFail("expected throw")
+        } catch let error as CheckoutError {
+            XCTAssertEqual(error.code, "BAD")
+            XCTAssertEqual(error.category, .payment)
+            XCTAssertEqual(error.traceId, "g1")
+        } catch {
+            XCTFail("non-CheckoutError thrown")
+        }
+    }
+
+    func testGet5xxIsNetwork() async {
+        StubURLProtocol.handler = { self.respond(503, "<html/>", for: $0) }
+        do {
+            _ = try await get()
+            XCTFail("expected throw")
+        } catch let error as CheckoutError {
+            XCTAssertEqual(error.code, "HTTP_503")
+            XCTAssertEqual(error.category, .network)
+        } catch {
+            XCTFail("non-CheckoutError thrown")
+        }
+    }
+
+    func testGetRetriesOnceOnTransportError() async throws {
+        var calls = 0
+        StubURLProtocol.handler = {
+            calls += 1
+            if calls == 1 { throw URLError(.networkConnectionLost) }
+            return self.respond(200, #"{"code":"0","msg":"ok","data":{"x":2}}"#, for: $0)
+        }
+        let result = try await get()
+        XCTAssertEqual(result, Payload(x: 2))
+        XCTAssertEqual(calls, 2)
+    }
+
+    func testGetGivesUpAfterOneRetry() async {
+        var calls = 0
+        StubURLProtocol.handler = { _ in
+            calls += 1
+            throw URLError(.timedOut)
+        }
+        do {
+            _ = try await get()
+            XCTFail("expected throw")
+        } catch let error as CheckoutError {
+            XCTAssertEqual(error.code, "NETWORK_UNAVAILABLE")
+        } catch {
+            XCTFail("non-CheckoutError thrown")
+        }
+        XCTAssertEqual(calls, 2)
+    }
+
     func testTimeout() async {
         StubURLProtocol.handler = { _ in throw URLError(.timedOut) }
         await expectError("NETWORK_UNAVAILABLE", .network)

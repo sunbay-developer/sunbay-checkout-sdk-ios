@@ -415,6 +415,82 @@ final class CheckoutControllerTests: XCTestCase {
         XCTAssertNil(req.savedCardId)
     }
 
+    // MARK: - Addresses: host over form
+
+    private func addr(_ line: String) -> AddressInput { AddressInput(country: "US", line1: line) }
+
+    func test_address_hostOverridesForm_andFallsBackPerMode() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession(rsaPublicKey: try makeRSAPublicKey()))
+        payment.stubSubmit([terminalSucceeded()])
+        let controller = makeController(payment: payment)
+        _ = try await controller.start(
+            sessionId: "sess_1", customerAccessSecret: nil, billingAddress: addr("H"))
+
+        _ = await controller.confirmNewCard(
+            newCardInput(), save: false, billingAddress: addr("F"), shippingAddress: addr("S"))
+
+        XCTAssertEqual(payment.lastSubmitRequest?.billingAddress, addr("H"))
+        XCTAssertEqual(payment.lastSubmitRequest?.shippingAddress, addr("S"))
+    }
+
+    func test_address_formUsedWhenNoHost() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession(rsaPublicKey: try makeRSAPublicKey()))
+        payment.stubSubmit([terminalSucceeded()])
+        let controller = makeController(payment: payment)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+
+        _ = await controller.confirmNewCard(newCardInput(), save: false, billingAddress: addr("F"))
+
+        XCTAssertEqual(payment.lastSubmitRequest?.billingAddress, addr("F"))
+        XCTAssertNil(payment.lastSubmitRequest?.shippingAddress)
+    }
+
+    func test_address_savedCardAndWalletCarryHostAddresses() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession())
+        payment.stubSubmit([PaymentSnapshot(sessionId: "sess_1", status: .failed, txnId: nil)])
+        let controller = makeController(payment: payment)
+        _ = try await controller.start(
+            sessionId: "sess_1", customerAccessSecret: "cas_1",
+            billingAddress: addr("H"), shippingAddress: addr("HS"))
+
+        _ = await controller.confirmSavedCard(paymentMethodId: "pm")
+        XCTAssertEqual(payment.lastSubmitRequest?.billingAddress, addr("H"))
+        XCTAssertEqual(payment.lastSubmitRequest?.shippingAddress, addr("HS"))
+
+        _ = await controller.confirmWallet(token: Data([1]))
+        XCTAssertEqual(payment.lastSubmitRequest?.billingAddress, addr("H"))
+        XCTAssertEqual(payment.lastSubmitRequest?.shippingAddress, addr("HS"))
+    }
+
+    func test_address_secondStartClearsHostAddresses() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession())
+        payment.stubSubmit([terminalSucceeded()])
+        let controller = makeController(payment: payment)
+        _ = try await controller.start(
+            sessionId: "sess_1", customerAccessSecret: nil, billingAddress: addr("H"))
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+
+        _ = await controller.confirmWallet(token: Data([1]))
+
+        XCTAssertNil(payment.lastSubmitRequest?.billingAddress)
+    }
+
+    func test_address_requestDescriptionIsRedacted() {
+        let request = SubmitRequest(
+            sessionId: "s", paymentMethod: "CARD", attemptId: UUID(),
+            billingAddress: AddressInput(line1: "1 Main St", email: "a@b.c"),
+            shippingAddress: AddressInput(line1: "1 Main St", email: "a@b.c"))
+        for text in [String(reflecting: request), "\(request)", String(describing: request)] {
+            XCTAssertFalse(text.contains("1 Main St"))
+            XCTAssertFalse(text.contains("a@b.c"))
+        }
+        XCTAssertTrue(Mirror(reflecting: request).children.isEmpty)
+    }
+
     // MARK: - COF disabled: saved-card list is empty and CofService is not called
 
     func test_cofDisabled_listSavedCardsEmpty() async throws {

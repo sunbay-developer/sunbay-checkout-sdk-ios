@@ -1,85 +1,47 @@
 import Foundation
 
-/// A thin `URLSession` adapter implementing `AddressMetadataService` against the existing checkout
-/// `/address/*` endpoints (product-spec §7.5).
+/// An `AddressMetadataService` backed by the Sunbay address endpoints, reached through
+/// `SunbayAPIClient` (environment host, enveloped responses).
 ///
-/// Builds `{baseURL}/address/country?locale=&countries=` for the country list and
-/// `{baseURL}/address/country/{code}?locale=` for a single country config, and decodes the JSON via
-/// `Codable` DTOs into the Core models. The backend `fields` JSON is an **object** keyed by
+/// Loads `GET /api/address/country` for the country list and `GET /api/address/country/{code}` for a
+/// single country config, each with an optional `locale` query item, and decodes the envelope's
+/// `data` via `Codable` DTOs into the Core models. The backend `fields` JSON is an **object** keyed by
 /// field-type string, mapped here to `[AddressFieldType: AddressFieldConfig]`.
 ///
-/// - Note: UI-agnostic (Foundation / URLSession only, no UIKit). The `baseURL` is host-injected.
-///   Not wired to real data this phase — demo/tests use an injected mock double.
+/// Errors from the client are rethrown unchanged so the address form can show its own error + retry.
+///
+/// - Note: UI-agnostic (Foundation only, no UIKit).
 struct HTTPAddressMetadataService: AddressMetadataService {
-    /// The backend base URL (such as `https://api.example.com`).
-    private let baseURL: URL
-    /// The URL session used for requests.
-    private let session: URLSession
+    private let client: SunbayAPIClient
 
-    /// Creates an HTTP address-metadata adapter.
+    /// Creates the adapter.
     ///
-    /// - Parameters:
-    ///   - baseURL: The backend base URL.
-    ///   - session: The URL session, defaults to `.shared`.
-    init(baseURL: URL, session: URLSession = .shared) {
-        self.baseURL = baseURL
-        self.session = session
+    /// - Parameter client: The API client bound to the target environment.
+    init(client: SunbayAPIClient) {
+        self.client = client
     }
 
     // MARK: - AddressMetadataService
 
     func countries(locale: String?) async throws -> AddressCountryList {
-        let url = try makeURL(
-            path: "address/country",
-            queryItems: [
-                locale.map { URLQueryItem(name: "locale", value: $0) }
-            ].compactMap { $0 }
-        )
-        let dto: CountryListDTO = try await get(url)
+        let dto: CountryListDTO = try await client.get(.addressCountries, query: Self.query(locale))
         return dto.toModel()
     }
 
     func countryConfig(countryCode: String, locale: String?) async throws -> AddressCountryConfig {
-        let url = try makeURL(
-            path: "address/country/\(countryCode)",
-            queryItems: [
-                locale.map { URLQueryItem(name: "locale", value: $0) }
-            ].compactMap { $0 }
-        )
-        let dto: CountryConfigDTO = try await get(url)
+        let dto: CountryConfigDTO = try await client.get(
+            .addressCountryConfig(code: countryCode), query: Self.query(locale))
         return dto.toModel()
     }
 
-    // MARK: - Networking
-
-    /// Builds a URL by appending `path` to `baseURL` and adding query items.
-    private func makeURL(path: String, queryItems: [URLQueryItem]) throws -> URL {
-        let base = baseURL.appendingPathComponent(path)
-        guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
-            throw URLError(.badURL)
-        }
-        if !queryItems.isEmpty {
-            components.queryItems = queryItems
-        }
-        guard let url = components.url else {
-            throw URLError(.badURL)
-        }
-        return url
-    }
-
-    /// Performs a GET and decodes the JSON body into `T`.
-    private func get<T: Decodable>(_ url: URL) async throws -> T {
-        let (data, response) = try await session.data(from: url)
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw URLError(.badServerResponse)
-        }
-        return try JSONDecoder().decode(T.self, from: data)
+    private static func query(_ locale: String?) -> [URLQueryItem] {
+        locale.map { [URLQueryItem(name: "locale", value: $0)] } ?? []
     }
 
     // MARK: - DTOs (wire format -> Core models)
 
-    /// Wire format of `/address/country`.
-    private struct CountryListDTO: Decodable {
+    /// Wire format of the country list `data`.
+    private struct CountryListDTO: Decodable, Sendable {
         let countries: [CountryDTO]
         let detectedCountry: String?
 
@@ -92,15 +54,15 @@ struct HTTPAddressMetadataService: AddressMetadataService {
     }
 
     /// A country entry.
-    private struct CountryDTO: Decodable {
+    private struct CountryDTO: Decodable, Sendable {
         let code: String
         let name: String
     }
 
-    /// Wire format of `/address/country/{code}`.
+    /// Wire format of the country config `data`.
     ///
     /// `fields` is a JSON **object** keyed by field-type string; unknown keys are ignored (downgrade).
-    private struct CountryConfigDTO: Decodable {
+    private struct CountryConfigDTO: Decodable, Sendable {
         let code: String
         let fields: [String: FieldConfigDTO]
         let layout: [[String]]
@@ -120,7 +82,7 @@ struct HTTPAddressMetadataService: AddressMetadataService {
             }
             let mappedLayout = layout.map { row in
                 row.compactMap { AddressFieldType(rawValue: $0) }
-            }
+            }.filter { !$0.isEmpty }
             let mappedSubdivisions = subdivisions.map {
                 AddressSubdivision(code: $0.code, name: $0.name)
             }
@@ -134,7 +96,7 @@ struct HTTPAddressMetadataService: AddressMetadataService {
     }
 
     /// A single field config value within the `fields` object.
-    private struct FieldConfigDTO: Decodable {
+    private struct FieldConfigDTO: Decodable, Sendable {
         let required: Bool
         let pattern: String?
         let label: String
@@ -142,7 +104,7 @@ struct HTTPAddressMetadataService: AddressMetadataService {
     }
 
     /// A subdivision entry.
-    private struct SubdivisionDTO: Decodable {
+    private struct SubdivisionDTO: Decodable, Sendable {
         let code: String
         let name: String
     }

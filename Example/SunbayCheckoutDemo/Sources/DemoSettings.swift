@@ -87,9 +87,11 @@ struct DemoSettings: Codable, Equatable {
 
     /// Billing/shipping address-collection knob. Maps to `Appearance.AddressCollectionMode`.
     ///
-    /// `.full` drives the backend-layout address form; it has no country data until the backend
-    /// address integration (phase 3). `.off` also tells the dev server not to collect the address.
+    /// `.automatic` follows the session's `collectXAddress` flag (flag on: full form, off: hidden).
+    /// `.simple` / `.full` / `.off` are explicit host choices that ignore the flag. The session flags
+    /// themselves are driven by the separate "Order requires ..." toggles.
     enum DemoAddressMode: String, Codable, CaseIterable, Identifiable {
+        case automatic
         case simple
         case full
         case off
@@ -99,6 +101,7 @@ struct DemoSettings: Codable, Equatable {
         /// A short display label.
         var label: String {
             switch self {
+            case .automatic: return "Automatic (follow session)"
             case .simple: return "Simple (country / line1 / ZIP)"
             case .full: return "Full (backend layout)"
             case .off: return "Off (not collected)"
@@ -124,16 +127,22 @@ struct DemoSettings: Codable, Equatable {
     var billingAddressMode: DemoAddressMode
     /// The shipping address collection mode (maps to `Appearance.shippingAddressMode`).
     var shippingAddressMode: DemoAddressMode
+    /// Ask the dev server to create sessions with `collectBillingAddress` on.
+    var orderRequiresBillingAddress: Bool = false
+    /// Ask the dev server to create sessions with `collectShippingAddress` on.
+    var orderRequiresShippingAddress: Bool = false
+    /// Pass a fixed US test billing address to `PaymentSheet(billingAddress:)`.
+    var passHostBillingAddress: Bool = false
     /// Base URL of the local dev session server.
     var devServerURL: String = "http://127.0.0.1:8095"
 
-    /// Default settings: 1.05 USD, COF on, simple addresses, brand appearance.
+    /// Default settings: 1.05 USD, COF on, automatic addresses, brand appearance.
     static let `default` = DemoSettings(
         locale: .enUS,
         amountMinorUnits: 105,
         appearancePreset: .brandDefault,
         colorScheme: .automatic,
-        billingAddressMode: .simple,
-        shippingAddressMode: .simple
+        billingAddressMode: .automatic,
+        shippingAddressMode: .automatic
     )
 }

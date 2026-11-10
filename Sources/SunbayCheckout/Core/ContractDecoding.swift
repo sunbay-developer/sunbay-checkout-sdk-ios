@@ -34,10 +34,14 @@ enum ContractDecoding {
         /// Backend `supportStoreCard`; absent means `true`.
         let supportStoreCard: Bool
         let paymentMethods: [PaymentMethodWire]
+        /// Backend `collectBillingAddress` / `collectShippingAddress`; absent means `false`.
+        let collectBillingAddress: Bool
+        let collectShippingAddress: Bool
 
         private enum CodingKeys: String, CodingKey {
             case sessionId, sessionType, currency, totalAmount, expiresAt, merchantName
             case rsaPublicKey, supportStoreCard, paymentMethods
+            case collectBillingAddress, collectShippingAddress
         }
 
         init(from decoder: Decoder) throws {
@@ -52,6 +56,8 @@ enum ContractDecoding {
             rsaPublicKey = try c.decodeIfPresent(String.self, forKey: .rsaPublicKey)
             supportStoreCard = try c.decodeIfPresent(Bool.self, forKey: .supportStoreCard) ?? true
             paymentMethods = try c.decode([PaymentMethodWire].self, forKey: .paymentMethods)
+            collectBillingAddress = try c.decodeIfPresent(Bool.self, forKey: .collectBillingAddress) ?? false
+            collectShippingAddress = try c.decodeIfPresent(Bool.self, forKey: .collectShippingAddress) ?? false
         }
 
         /// Converts the wire object into a `CheckoutSession`.
@@ -82,7 +88,9 @@ enum ContractDecoding {
                 expiresAt: expiresAt,
                 rsaPublicKey: rsaPublicKey,
                 cofEnabled: supportStoreCard,
-                sessionType: sessionType
+                sessionType: sessionType,
+                collectBillingAddress: collectBillingAddress,
+                collectShippingAddress: collectShippingAddress
             )
         }
     }

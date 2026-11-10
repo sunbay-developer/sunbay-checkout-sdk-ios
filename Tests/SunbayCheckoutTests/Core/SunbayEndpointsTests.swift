@@ -22,6 +22,17 @@ final class SunbayEndpointsTests: XCTestCase {
         XCTAssertEqual(url.absoluteString, "https://checkout.sunbay-dev.com/api/checkout/web/card/list")
     }
 
+    func testAddressCountriesOnDev() {
+        let url = SunbayEndpoints.url(for: .addressCountries, environment: .dev)
+        XCTAssertEqual(url.absoluteString, "https://checkout.sunbay-dev.com/api/address/country")
+    }
+
+    func testAddressCountryConfigEncodesCodeAsOnePathComponent() {
+        let url = SunbayEndpoints.url(for: .addressCountryConfig(code: "U/S"), environment: .dev)
+        XCTAssertEqual(url.absoluteString, "https://checkout.sunbay-dev.com/api/address/country/U%2FS")
+        XCTAssertNil(url.query)
+    }
+
     func testNonASCIIIdIsPercentEncodedAsPureASCII() {
         let url = SunbayEndpoints.url(for: .loadSession(id: "é中"), environment: .dev)
         XCTAssertTrue(url.absoluteString.allSatisfy { $0.isASCII })

@@ -18,7 +18,7 @@ public enum AddressFieldType: String, Sendable {
 
 /// A selectable country entry for the address form country list.
 ///
-/// Corresponds to an element of `countries` in the §7.5 `/address/country` response.
+/// Corresponds to an element of `countries` in the HPP address spec `/api/address/country` response.
 public struct AddressCountry: Sendable, Equatable {
     /// ISO country code (such as `"US"`).
     public let code: String
@@ -91,7 +91,7 @@ public struct AddressFieldConfig: Sendable, Equatable {
 
 /// The full address-form configuration for one country.
 ///
-/// Corresponds to the §7.5 `/address/country/{code}` response: the per-field config, the visual
+/// Corresponds to the HPP address spec `/api/address/country/{code}` response: the per-field config, the visual
 /// `layout` (ordered rows of field types), and the `subdivisions` list. The full-mode dynamic
 /// address form renders from this (labels/placeholders/names are already localized by the backend).
 public struct AddressCountryConfig: Sendable, Equatable {
@@ -126,7 +126,7 @@ public struct AddressCountryConfig: Sendable, Equatable {
 
 /// The country list plus the backend-detected default country.
 ///
-/// Corresponds to the §7.5 `/address/country` response: `{ countries:[{code,name}], detectedCountry? }`.
+/// Corresponds to the HPP address spec `/api/address/country` response: `{ countries:[{code,name}], detectedCountry? }`.
 public struct AddressCountryList: Sendable, Equatable {
     /// The selectable countries (localized names).
     public let countries: [AddressCountry]
@@ -168,6 +168,10 @@ public struct AddressInput: Sendable, Equatable {
     public var firstName: String?
     /// Last name.
     public var lastName: String?
+    /// Phone number.
+    public var phone: String?
+    /// Email address.
+    public var email: String?
 
     /// Creates an address input; all fields default to nil.
     ///
@@ -181,6 +185,8 @@ public struct AddressInput: Sendable, Equatable {
     ///   - district: District.
     ///   - firstName: First name.
     ///   - lastName: Last name.
+    ///   - phone: Phone number.
+    ///   - email: Email address.
     public init(
         country: String? = nil,
         line1: String? = nil,
@@ -190,7 +196,9 @@ public struct AddressInput: Sendable, Equatable {
         postalCode: String? = nil,
         district: String? = nil,
         firstName: String? = nil,
-        lastName: String? = nil
+        lastName: String? = nil,
+        phone: String? = nil,
+        email: String? = nil
     ) {
         self.country = country
         self.line1 = line1
@@ -201,5 +209,7 @@ public struct AddressInput: Sendable, Equatable {
         self.district = district
         self.firstName = firstName
         self.lastName = lastName
+        self.phone = phone
+        self.email = email
     }
 }

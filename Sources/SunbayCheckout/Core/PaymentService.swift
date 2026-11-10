@@ -29,6 +29,10 @@ public struct SubmitRequest: Sendable, CustomStringConvertible, CustomDebugStrin
     public let checkoutClientSecret: String?
     /// Backend session type from the loaded session (for example `"sdk"`); the submit API requires it.
     public let sessionType: String?
+    /// Billing address to submit (PII; never printed or reflected); nil when none.
+    public let billingAddress: AddressInput?
+    /// Shipping address to submit (PII; never printed or reflected); nil when none.
+    public let shippingAddress: AddressInput?
 
     /// Creates a payment submission request.
     public init(
@@ -41,7 +45,9 @@ public struct SubmitRequest: Sendable, CustomStringConvertible, CustomDebugStrin
         storeCard: Bool? = nil,
         customerAccessSecret: String? = nil,
         checkoutClientSecret: String? = nil,
-        sessionType: String? = nil
+        sessionType: String? = nil,
+        billingAddress: AddressInput? = nil,
+        shippingAddress: AddressInput? = nil
     ) {
         self.sessionId = sessionId
         self.paymentMethod = paymentMethod
@@ -53,6 +59,8 @@ public struct SubmitRequest: Sendable, CustomStringConvertible, CustomDebugStrin
         self.customerAccessSecret = customerAccessSecret
         self.checkoutClientSecret = checkoutClientSecret
         self.sessionType = sessionType
+        self.billingAddress = billingAddress
+        self.shippingAddress = shippingAddress
     }
 
     /// Redacted description: never prints secrets, tokens or ciphertext.

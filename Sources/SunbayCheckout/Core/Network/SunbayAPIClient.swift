@@ -77,14 +77,58 @@ struct SunbayAPIClient: Sendable {
             throw Self.invalidResponse()
         }
 
-        let data: Data
-        let response: URLResponse
+        return try await Self.decodeEnvelope(try await send(request))
+    }
+
+    /// Sends a JSON GET and decodes the envelope's `data`.
+    ///
+    /// GET is idempotent, so a transport failure is retried once before it is reported.
+    ///
+    /// - Parameters:
+    ///   - route: Backend route.
+    ///   - query: Query items appended to the route URL.
+    ///   - timeout: Request timeout in seconds.
+    /// - Returns: The decoded `data` of a successful envelope.
+    /// - Throws: `CheckoutError` for every failure.
+    func get<Response: Decodable & Sendable>(
+        _ route: SunbayEndpoints.Route, query: [URLQueryItem] = [], timeout: TimeInterval = 15
+    ) async throws -> Response {
+        var url = SunbayEndpoints.url(for: route, environment: environment)
+        if !query.isEmpty, var components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            components.queryItems = query
+            url = components.url ?? url
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("ios/\(SDKInfo.version)", forHTTPHeaderField: "X-Sunbay-SDK")
+        if let locale { request.setValue(locale, forHTTPHeaderField: "Accept-Language") }
+
+        let result: (Data, URLResponse)
         do {
-            (data, response) = try await session.data(for: request)
+            result = try await send(request)
+        } catch {
+            result = try await send(request)
+        }
+        return try Self.decodeEnvelope(result)
+    }
+
+    /// Performs the request; any transport failure becomes a generic network `CheckoutError`.
+    private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        do {
+            return try await session.data(for: request)
         } catch {
             throw CheckoutError(code: "NETWORK_UNAVAILABLE", message: "The network request failed.",
                                 category: .network, traceId: nil)
         }
+    }
+
+    /// Maps a raw response to the envelope's `data` or a `CheckoutError`.
+    private static func decodeEnvelope<Response: Decodable & Sendable>(
+        _ result: (Data, URLResponse)
+    ) throws -> Response {
+        let (data, response) = result
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         let decoder = JSONDecoder()
 
@@ -103,7 +147,7 @@ struct SunbayAPIClient: Sendable {
             }
             guard (200..<300).contains(status),
                   let payload = try? decoder.decode(Envelope<Response>.self, from: data).data else {
-                throw Self.invalidResponse()
+                throw invalidResponse()
             }
             return payload
         }
@@ -111,7 +155,7 @@ struct SunbayAPIClient: Sendable {
             throw CheckoutError(code: "HTTP_\(status)", message: "The server returned an HTTP error.",
                                 category: .network, traceId: nil)
         }
-        throw Self.invalidResponse()
+        throw invalidResponse()
     }
 
     private static func invalidResponse() -> CheckoutError {

@@ -118,6 +118,10 @@ actor CheckoutController {
     /// The currently loaded session; written after `start` succeeds.
     private var session: CheckoutSession?
 
+    /// Host-provided addresses for the current start (PII; reset at the top of `start`, cleared on `dismiss`).
+    private var hostBillingAddress: AddressInput?
+    private var hostShippingAddress: AddressInput?
+
     /// Single active session guard (§4.2): `true` means a confirm is in progress.
     ///
     /// Any confirm, on entry, checks and occupies it within the actor isolation domain; a second entry that finds it already occupied →
@@ -165,16 +169,22 @@ actor CheckoutController {
     ///   - sessionId: Session identifier.
     ///   - customerAccessSecret: COF credential (optional); held in memory only, cleared on success / dismiss / session expiry.
     ///   - checkoutClientSecret: Session client secret (optional); held in memory only, cleared together with the other secret.
+    ///   - billingAddress: Host-provided billing address; wins over a form address on every submit.
+    ///   - shippingAddress: Host-provided shipping address; wins over a form address on every submit.
     /// - Returns: The loaded session.
     /// - Throws: Load failures propagate; if the session has expired, throws `CheckoutError` (`.validation`).
     func start(
         sessionId: String,
         customerAccessSecret: String?,
-        checkoutClientSecret: String? = nil
+        checkoutClientSecret: String? = nil,
+        billingAddress: AddressInput? = nil,
+        shippingAddress: AddressInput? = nil
     ) async throws -> CheckoutSession {
         // Reset the previous decision first so a failed / expired re-start never keeps stale COF state.
         session = nil
         cofEffective = false
+        hostBillingAddress = billingAddress
+        hostShippingAddress = shippingAddress
         if let secret = customerAccessSecret {
             await credentials.hold(customerAccessSecret: secret)
         }
@@ -226,7 +236,12 @@ actor CheckoutController {
     /// New-card payment (optionally saving the card).
     ///
     /// Encrypts the card data locally (plaintext lives in memory only at this moment, released with the scope), and submits it as `cardEncryptedData`.
-    func confirmNewCard(_ input: CardInput, save: Bool) async -> CheckoutOutcome {
+    func confirmNewCard(
+        _ input: CardInput,
+        save: Bool,
+        billingAddress: AddressInput? = nil,
+        shippingAddress: AddressInput? = nil
+    ) async -> CheckoutOutcome {
         guard let session else {
             return .failed(txnId: nil, error: CheckoutErrors.sessionExpired())
         }
@@ -254,7 +269,9 @@ actor CheckoutController {
             cardEncryptedData: encrypted,
             storeCard: (save && cofEffective) ? true : nil,
             checkoutClientSecret: await credentials.currentCheckoutClientSecret(),
-            sessionType: session.sessionType
+            sessionType: session.sessionType,
+            billingAddress: hostBillingAddress ?? billingAddress,
+            shippingAddress: hostShippingAddress ?? shippingAddress
         )
         return await submitAndResolve(request)
     }
@@ -280,7 +297,9 @@ actor CheckoutController {
             savedCardId: paymentMethodId,
             customerAccessSecret: await credentials.current(),
             checkoutClientSecret: await credentials.currentCheckoutClientSecret(),
-            sessionType: session.sessionType
+            sessionType: session.sessionType,
+            billingAddress: hostBillingAddress,
+            shippingAddress: hostShippingAddress
         )
         return await submitAndResolve(request)
     }
@@ -302,7 +321,9 @@ actor CheckoutController {
             attemptId: attemptId,
             walletToken: token,
             checkoutClientSecret: await credentials.currentCheckoutClientSecret(),
-            sessionType: session.sessionType
+            sessionType: session.sessionType,
+            billingAddress: hostBillingAddress,
+            shippingAddress: hostShippingAddress
         )
         return await submitAndResolve(request)
     }
@@ -319,6 +340,8 @@ actor CheckoutController {
         isConfirming = false
         session = nil
         cofEffective = false
+        hostBillingAddress = nil
+        hostShippingAddress = nil
         await credentials.clear()
     }
 

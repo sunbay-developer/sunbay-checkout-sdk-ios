@@ -54,7 +54,7 @@ The settings screen has two toggles. They feed `CheckoutConfiguration(cardOnFile
 - **Card on file enabled** (default on): `CardOnFileOptions.isEnabled`. Turn it off to hide saved cards
   and the save checkbox. It can only disable COF; the session must also allow it.
 - **Pre-tick save card** (default off): `CardOnFileOptions.saveByDefault`. Only sets the checkbox's
-  initial state; the card is saved only if the checkbox is on at submit. Note: saving a card against the real backend currently fails (`C01`, billing address required) until phase 3.
+  initial state; the card is saved only if the checkbox is on at submit. Saving a card needs a billing address: turn on "Order requires billing address" or "Pass a host billing address" (see Address collection).
 
 The saved-card list comes from the backend.
 
@@ -132,9 +132,14 @@ maps into a `CheckoutConfiguration` (environment always `.dev`) or the dev-sessi
 - **Locale** - `en-US` / `zh-CN` (maps to `CheckoutConfiguration.locale`). **This drives SDK UI
   localization at runtime** (see below).
 - **Appearance / Color scheme** - presets and light/dark override (maps to `Appearance`).
-- **Address collection** - billing and shipping: Simple / Full / Off. Off sends
-  `collectBillingAddress` / `collectShippingAddress` = false to the dev server; Simple and Full send
-  true. Full mode has no country data until the backend address integration (phase 3).
+- **Address collection** - billing and shipping pickers: Automatic (follow session, default) / Simple /
+  Full / Off. Automatic shows the full backend-layout form when the session flag is on and hides the
+  section otherwise; Simple, Full and Off ignore the session flag. Country and region data come from
+  the real HPP address API.
+  - **Order requires billing address** / **Order requires shipping address** - send
+    `collectBillingAddress` / `collectShippingAddress` to the dev server (independent of the pickers).
+  - **Pass a host billing address** - passes a fixed US test address (San Jose, CA) to
+    `PaymentSheet(billingAddress:)`. It is sent as is and wins over what the form collects.
 - **Amount** - USD only; minor units (default 105 = 1.05). Sent to the dev server as major units.
 - **Card on file** - the two switches above.
 

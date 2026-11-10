@@ -140,10 +140,13 @@ import SunbayCheckoutTestSupport
                     }
                 }
                 .pickerStyle(.menu)
+                Toggle("Order requires billing address", isOn: $settings.orderRequiresBillingAddress)
+                Toggle("Order requires shipping address", isOn: $settings.orderRequiresShippingAddress)
+                Toggle("Pass a host billing address", isOn: $settings.passHostBillingAddress)
             } header: {
                 Text("Address collection")
             } footer: {
-                Text("Off does not ask the dev server to collect the address; Simple and Full do. Full mode has no country data until the backend address integration (phase 3).")
+                Text("The \"Order requires\" toggles set the dev-server session flags. Automatic follows the session flag (on: full form, off: hidden); Simple, Full and Off ignore it. \"Pass a host billing address\" supplies a fixed US test address to the sheet, which wins over the form.")
             }
         }
 
@@ -231,10 +234,17 @@ import SunbayCheckoutTestSupport
             DevSessionRequest(
                 serverURL: URL(string: settings.devServerURL),
                 amountMajorUnits: Double(settings.amountMinorUnits) / 100,
-                collectBillingAddress: settings.billingAddressMode != .off,
-                collectShippingAddress: settings.shippingAddressMode != .off
+                collectBillingAddress: settings.orderRequiresBillingAddress,
+                collectShippingAddress: settings.orderRequiresShippingAddress,
+                hostBillingAddress: settings.passHostBillingAddress ? Self.testBillingAddress : nil
             )
         }
+
+        /// Fixed US test address handed to the sheet when "Pass a host billing address" is on.
+        private static let testBillingAddress = AddressInput(
+            country: "US", line1: "1 Test St", city: "San Jose", state: "CA",
+            postalCode: "95112", firstName: "Test", lastName: "User"
+        )
 
         /// Assembles the public SDK entry point against the Dev environment (real backend adapters).
         private func makeCheckout() -> SunbayCheckout {
@@ -291,6 +301,7 @@ import SunbayCheckoutTestSupport
         /// Maps a demo address-mode knob to the SDK's `Appearance.AddressCollectionMode`.
         private func addressMode(_ mode: DemoSettings.DemoAddressMode) -> Appearance.AddressCollectionMode {
             switch mode {
+            case .automatic: return .automatic
             case .simple: return .simple
             case .full: return .full
             case .off: return .off
@@ -335,6 +346,8 @@ import SunbayCheckoutTestSupport
         let amountMajorUnits: Double
         let collectBillingAddress: Bool
         let collectShippingAddress: Bool
+        /// Host-provided billing address for `PaymentSheet(billingAddress:)` (nil: let the form collect it).
+        let hostBillingAddress: AddressInput?
 
         /// Creates the session through the dev server. Throws `DevSessionError` with a readable message.
         func create() async throws -> DevSession {
@@ -378,7 +391,8 @@ import SunbayCheckoutTestSupport
                             checkout: checkout,
                             sessionId: session.sessionId,
                             customerAccessSecret: session.customerAccessSecret,
-                            checkoutClientSecret: session.checkoutClientSecret
+                            checkoutClientSecret: session.checkoutClientSecret,
+                            billingAddress: request.hostBillingAddress
                         )
                         sheet.onStateChange = onState
                         let outcome = await sheet.present(from: presenter)

@@ -177,6 +177,25 @@ final class SunbayCheckoutDefaultWiringTests: XCTestCase {
         XCTAssertEqual(cards.map(\.id), ["sc_1"])
     }
 
+    func test_defaultInit_addressServiceHitsAddressEndpointOnTheDevHost() async throws {
+        StubURLProtocol.handler = { request in
+            self.hosts.append(request.url?.host ?? "")
+            self.paths.append(request.url?.path ?? "")
+            let body = #"{"code":"0","msg":"ok","data":{"countries":[{"code":"US","name":"United States"}],"detectedCountry":"US"}}"#
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(body.utf8))
+        }
+        let checkout = SunbayCheckout(
+            configuration: CheckoutConfiguration(environment: .dev),
+            urlSession: StubURLProtocol.session())
+
+        let list = try await checkout.addressMetadataService.countries(locale: "en-US")
+
+        XCTAssertEqual(hosts, ["checkout.sunbay-dev.com"])
+        XCTAssertEqual(paths, ["/api/address/country"])
+        XCTAssertEqual(list.countries.map(\.code), ["US"])
+    }
+
     func test_injectingInit_stillUsesTheInjectedMock() async throws {
         let payment = MockPaymentService()
         payment.stubSession(

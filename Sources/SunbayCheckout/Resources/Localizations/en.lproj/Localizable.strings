@@ -22,6 +22,8 @@
 "sunbay.address.billingTitle" = "Billing address";
 "sunbay.address.shippingTitle" = "Shipping address";
 "sunbay.address.sameAsBilling" = "Same as billing";
+"sunbay.address.firstName" = "First name";
+"sunbay.address.lastName" = "Last name";
 "sunbay.address.country" = "Country";
 "sunbay.address.line1" = "Address";
 "sunbay.address.postalCode" = "Postal code";
