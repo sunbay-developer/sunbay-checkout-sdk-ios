@@ -88,7 +88,15 @@ public struct CheckoutConfiguration {
 
     public init(environment: Environment = .production, applePayMerchantId: String? = nil,
                 appearance: Appearance? = nil, locale: String? = nil, paymentSheetTitle: String? = nil,
-                cardOnFile: CardOnFileOptions = CardOnFileOptions())
+                cardOnFile: CardOnFileOptions = CardOnFileOptions(),
+                paymentMethodFilter: PaymentMethodFilter = PaymentMethodFilter())
+}
+
+/// Hides and reorders payment methods. Identifiers are case-sensitive.
+public struct PaymentMethodFilter: Sendable, Equatable {
+    public var hide: [PaymentMethodID]
+    public var order: [PaymentMethodID]
+    public init(hide: [PaymentMethodID] = [], order: [PaymentMethodID] = [])
 }
 
 public struct CardOnFileOptions: Sendable, Equatable {
@@ -106,6 +114,8 @@ public struct CardOnFileOptions: Sendable, Equatable {
 public final class SunbayCheckout {
     /// Builds the default HTTP services for the configured environment (the real backend).
     public init(configuration: CheckoutConfiguration)
+    /// Non-fatal advisories and recovered errors (see "Diagnostics" below). Delivered on the main thread.
+    public var onDiagnostic: ((CheckoutDiagnostic) -> Void)?
     /// Injects scripted services (examples, e2e, test support).
     public init(configuration: CheckoutConfiguration, paymentService: any PaymentService, cofService: any CofService, addressMetadataService: (any AddressMetadataService)? = nil)
 }
@@ -121,6 +131,36 @@ ApplePayButton(checkout:sessionId:...checkoutClientSecret:)
 passed a non-nil `customerAccessSecret`. The host can never enable COF that the session disabled. When
 COF is not effective: no `card/list` request, no saved-card UI, no save checkbox, and `storeCard` is never
 sent.
+
+**Payment method filter.** `PaymentMethodFilter` lets the host hide and reorder the session's payment methods.
+
+- Identifiers are case-sensitive. Matching tries the logical key first (`CARD` covers every entry whose backend
+  `type` is `CARD`, that is new card and saved cards; `APPLE_PAY`), then the raw backend method (for example
+  `AMEX`). `PaymentMethodID` has `.card` and `.applePay` constants and is string-literal expressible.
+- `hide` wins over `order`. `order` is stable: listed items come first in the listed order, unlisted items keep
+  their original order after them. `order` never moves a group (the express group position comes from
+  `Appearance.expressPosition`).
+- `hide: ["CARD"]` hides the new-card row and the saved cards and skips the saved-card list request; Apple Pay
+  stays.
+- An identifier that matches nothing is ignored and reported once as `PAYMENT_METHOD_FILTER_IGNORED`; the filter
+  never fails a payment because of a bad identifier.
+- A provider is available iff the session has a matching entry, its static check passes and the filter did not
+  hide it. If none is available, `PaymentSheet.present` returns `.failed` with code `NO_PAYMENT_METHOD_AVAILABLE`
+  (category `.configuration`) before any UI is shown.
+
+**Diagnostics.** `SunbayCheckout.onDiagnostic` delivers `CheckoutDiagnostic` events: `.warning(CheckoutWarning)`
+(non-fatal advisories about host input) and `.error(CheckoutError, sessionId:)` (non-terminal errors the SDK
+recovered from).
+
+- Delivery is on the main thread, in order. Events raised before the handler is assigned are buffered (the last
+  50 are kept, oldest dropped) and replayed in order on first assignment.
+- Warning codes: `PAYMENT_METHOD_FILTER_IGNORED`, `ADDRESS_INCOMPLETE`, `ADDRESS_ENTRY_IGNORED`,
+  `WALLET_PARAMS_INVALID`. A warning is deduplicated per code plus identifiers. `ignored` lists names only
+  (`billingAddress`, `shippingAddress`, filter identifiers, `supportedNetworks`, `merchantCapabilities`), never
+  values.
+- Warnings never change a payment result and never appear on `CheckoutOutcome`. Terminal failures are returned
+  as the outcome and are not mirrored as diagnostics. Diagnostics never contain card values, wallet tokens,
+  secrets or address contents.
 
 #### `Appearance`(Stripe 风格嵌套;UI 层已消费)
 
@@ -226,8 +266,9 @@ UI 层拆成两层,单向依赖 `Container → Content → Theme`:
 由 `Appearance.billingAddressMode` / `shippingAddressMode` 决定(SDK 配置决定「怎么收」,后端只决定
 「是否收」):
 
-- `.automatic` (default for both modes): follows the checkout session. Session `collectBillingAddress` /
-  `collectShippingAddress` on resolves to `.full`; off resolves to `.off`.
+- `.automatic` (default for both modes): follows the checkout session. For a kind, it shows a full form iff the
+  session collects that kind (`collectBillingAddress` / `collectShippingAddress`) and there is no usable host
+  entry for it; otherwise the form is hidden (a usable host entry hides the form).
 - `.simple`: three fields only (country / line1 / postal code), no network.
 - `.full`: backend-layout-driven address form. Data comes from `AddressMetadataService`
   (Core/AddressMetadata, no UIKit); the default `SunbayCheckout(configuration:)` wires the real HPP adapter
@@ -237,9 +278,23 @@ UI 层拆成两层,单向依赖 `Container → Content → Theme`:
 - `.simple`, `.full` and `.off` are explicit host choices and ignore the session flag.
 
 Host-provided addresses: `PaymentSheet(... billingAddress:shippingAddress:)` and
-`ApplePayButton(... billingAddress:shippingAddress:)` take an optional `AddressInput` each. Merge rule per
-kind: host address ?? SDK form address. The SDK never blocks a submit because an address is missing; the
-backend decides. Addresses are PII: never logged or returned in callbacks.
+`ApplePayButton(... billingAddress:shippingAddress:)` take an optional `AddressInput` each. Addresses are PII:
+never logged, never returned in callbacks and never part of a diagnostic. The rules (aligned with the JS SDK):
+
+- **Complete.** Billing needs non-blank `country`, `city`, `line1` and `postalCode`. Shipping needs those plus
+  `firstName`, `lastName` and `phone`.
+- **Usable host entry** for a kind: the session collects that kind and the sanitized entry is complete. If the
+  session collects the kind and the entry is present but incomplete, it is not used and `ADDRESS_INCOMPLETE` is
+  reported. If the session does not collect the kind, the entry is not used and nothing is reported.
+- **Draft.** A sanitized form value with at least one non-blank field other than `country` (the country
+  pre-fill alone does not count).
+- **New card, per kind.** A draft wins; if a host entry was also present, `ADDRESS_ENTRY_IGNORED` is reported.
+  Otherwise the usable host entry is used.
+- **Wallet (Apple Pay), per kind.** The address returned by the Apple Pay sheet; else (no form shown for that
+  kind) the usable host entry. If a form is shown for the kind, the host entry is ignored for the wallet and
+  `ADDRESS_ENTRY_IGNORED` is reported.
+- **Saved card.** Usable host entries only.
+- The SDK never blocks a submit because an address is missing; the backend decides.
 
 Deferred: Google address autocomplete (a browser Maps key cannot be used from apps; options: an HPP proxy,
 recommended; Google Places SDK for iOS with per-bundle keys; MapKit `MKLocalSearchCompleter`) and
@@ -364,6 +419,25 @@ Controller → 四态去重 → Outcome
 ```
 
 钱包授权成功 ≠ 交易成功;只有后端确认的终态才算。
+
+**Apple Pay request rules.**
+
+- Parameters come from the `APPLE_PAY` entry's `ewalletParam` (a JSON string holding an object, or an object).
+  Only `countryCode`, `supportedNetworks` and `merchantCapabilities` are read; no other key is used. Parsing is
+  tolerant: a malformed value never fails the session.
+- `countryCode` is the non-blank backend value uppercased, else `US`. `currencyCode` and the amount come from
+  the session. The summary label is the merchant name, else "Total".
+- Networks are matched to PassKit constants case-insensitively; unknown names are dropped and duplicates
+  removed. Capabilities `supports3DS`, `supportsEMV`, `supportsCredit` and `supportsDebit` are mapped; unknown
+  names are dropped.
+- Apple Pay is unavailable (the button/row is hidden and `WALLET_PARAMS_INVALID` is reported once, naming
+  `supportedNetworks` and/or `merchantCapabilities`) when either list is empty after mapping, or when
+  `ewalletParam` is absent.
+- Contacts: the sheet requests a contact for a kind iff the session collects that kind and (there is no usable
+  host entry for it, or a form for that kind is shown). Billing requests `postalAddress` and `name`; shipping
+  requests `postalAddress`, `name` and `phoneNumber`. Returned contacts are submitted as returned (a shipping
+  contact without phone or name is not rejected); `customerName` falls back to the address names and
+  `customerEmail` is nil when the sheet returns none.
 
 ### 3.3 COF 历史卡快捷支付(首期,零验证)
 
@@ -605,12 +679,15 @@ SubmitRequest(
 - Address mapping: the body carries `payerBillingInfo` and `payerShippingAddress`, each an `AddressInfo` with
   keys `country, state, city, address, address2, postalCode, firstName, lastName, phone, email`
   (`line1` -> `address`, `line2` -> `address2`; `district` is not sent). Empty or whitespace-only values are
-  omitted, and an address with no remaining field is omitted entirely. Per kind the value is the host
-  address ?? the SDK form address.
-- With "same as billing" on, shipping is a copy of the billing form value, which carries no names because
-  the billing form does not collect them. If the host passes `billingAddress` while a billing form is also
-  shown, the submitted billing is the host's, but "same as billing" shipping copies the form's billing
-  value; hosts should hide the billing form (`.off`) when they pass their own billing address.
+  omitted, and an address with no remaining field is omitted entirely. Which value is
+  used per kind is decided by the address rules in §2.1.
+- Shipping has its own form with first name, last name and phone; there is no "same as billing" option (the
+  checkbox was removed when the JS-aligned address rules landed). Product follow-up: a partial "same as billing"
+  (copy the address fields, still collect shipping name and phone) can be restored if product wants it; it is
+  tracked in `docs/real-api-integration-checklist.md`.
+- Which address is submitted per payment path follows the rules in "Address collection modes" (§2.1): per kind a
+  draft form value or the usable host entry for a card, the wallet's returned address (else the usable host
+  entry) for Apple Pay, usable host entries only for a saved card.
 - The body also carries an optional `userDeviceInfo` (see `security-and-pci.md` §4.1).
 - A 5xx or lost response is ambiguous: at most one result query, then `unknown`. A non-network business
   error is a definite failure. The SDK never blindly resubmits.

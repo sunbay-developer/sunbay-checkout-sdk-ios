@@ -29,6 +29,8 @@ import SunbayCheckoutTestSupport
         @State private var lastOutcome: String = "-"
         /// The most recent presentation state observed via `PaymentSheet.onStateChange`.
         @State private var lastState: String = "-"
+        /// Diagnostic events received through `SunbayCheckout.onDiagnostic` (code, ignored names, reason only).
+        @State private var diagnostics: [String] = []
 
         /// The Apple Pay merchant id baked into Info.plist (`SunbayDemoMerchantId`) by the Tuist
         /// manifest, so it always matches the entitlement. Falls back to the committed placeholder.
@@ -44,6 +46,7 @@ import SunbayCheckoutTestSupport
                     localeSection
                     appearanceSection
                     addressSection
+                    methodsSection
                     amountSection
                     cofSection
                     paymentSheetSection
@@ -143,10 +146,22 @@ import SunbayCheckoutTestSupport
                 Toggle("Order requires billing address", isOn: $settings.orderRequiresBillingAddress)
                 Toggle("Order requires shipping address", isOn: $settings.orderRequiresShippingAddress)
                 Toggle("Pass a host billing address", isOn: $settings.passHostBillingAddress)
+                Toggle("Pass a host shipping address", isOn: $settings.passHostShippingAddress)
             } header: {
                 Text("Address collection")
             } footer: {
-                Text("The \"Order requires\" toggles set the dev-server session flags. Automatic follows the session flag (on: full form, off: hidden); Simple, Full and Off ignore it. \"Pass a host billing address\" supplies a fixed US test address to the sheet, which wins over the form.")
+                Text("The \"Order requires\" toggles set the dev-server session flags. Automatic follows the session flag (on: full form, off: hidden); Simple, Full and Off ignore it. The \"Pass a host ...\" toggles supply a fixed, complete US test address. A host address is used only when the session collects that kind and the address is complete; Automatic then hides the form for it. A form that is shown wins over the host address.")
+            }
+        }
+
+        private var methodsSection: some View {
+            Section {
+                Toggle("Hide Apple Pay", isOn: $settings.hideApplePay)
+                Toggle("Hide Card", isOn: $settings.hideCard)
+            } header: {
+                Text("Payment methods")
+            } footer: {
+                Text("Maps to PaymentMethodFilter(hide:). Hiding Card also hides saved cards. Hiding every method makes present() fail with NO_PAYMENT_METHOD_AVAILABLE.")
             }
         }
 
@@ -214,6 +229,19 @@ import SunbayCheckoutTestSupport
                     Spacer()
                     Text(lastState).font(.body.monospaced()).foregroundStyle(.secondary)
                 }
+                HStack {
+                    Text("Diagnostics")
+                    Spacer()
+                    Button("Clear") { diagnostics = [] }
+                        .disabled(diagnostics.isEmpty)
+                }
+                if diagnostics.isEmpty {
+                    Text("-").font(.footnote.monospaced()).foregroundStyle(.secondary)
+                } else {
+                    ForEach(Array(diagnostics.enumerated()), id: \.offset) { _, line in
+                        Text(line).font(.footnote.monospaced())
+                    }
+                }
             }
         }
 
@@ -236,7 +264,8 @@ import SunbayCheckoutTestSupport
                 amountMajorUnits: Double(settings.amountMinorUnits) / 100,
                 collectBillingAddress: settings.orderRequiresBillingAddress,
                 collectShippingAddress: settings.orderRequiresShippingAddress,
-                hostBillingAddress: settings.passHostBillingAddress ? Self.testBillingAddress : nil
+                hostBillingAddress: settings.passHostBillingAddress ? Self.testBillingAddress : nil,
+                hostShippingAddress: settings.passHostShippingAddress ? Self.testShippingAddress : nil
             )
         }
 
@@ -246,6 +275,30 @@ import SunbayCheckoutTestSupport
             postalCode: "95112", firstName: "Test", lastName: "User"
         )
 
+        /// Fixed US test address (with names and phone) handed to the sheet when "Pass a host shipping address" is on.
+        private static let testShippingAddress = AddressInput(
+            country: "US", line1: "2 Test Ave", city: "San Jose", state: "CA",
+            postalCode: "95113", firstName: "Test", lastName: "Recipient", phone: "4085550100"
+        )
+
+        /// The payment-method filter derived from the hide toggles.
+        private var methodFilter: PaymentMethodFilter {
+            var hide: [PaymentMethodID] = []
+            if settings.hideApplePay { hide.append(.applePay) }
+            if settings.hideCard { hide.append(.card) }
+            return PaymentMethodFilter(hide: hide)
+        }
+
+        /// One readable line for a diagnostic: code, ignored names and reason only (never values).
+        private static func describe(_ event: CheckoutDiagnostic) -> String {
+            switch event {
+            case let .warning(warning):
+                return "\(warning.code.rawValue) [\(warning.ignored.joined(separator: ", "))] \(warning.reason)"
+            case let .error(error, _):
+                return "ERROR \(error.code) (\(error.category))"
+            }
+        }
+
         /// Assembles the public SDK entry point against the Dev environment (real backend adapters).
         private func makeCheckout() -> SunbayCheckout {
             let config = CheckoutConfiguration(
@@ -254,9 +307,15 @@ import SunbayCheckoutTestSupport
                 appearance: makeAppearance(),
                 locale: settings.locale.bcp47,
                 cardOnFile: CardOnFileOptions(isEnabled: settings.cardOnFileEnabled,
-                                              saveByDefault: settings.preTickSaveCard)
+                                              saveByDefault: settings.preTickSaveCard),
+                paymentMethodFilter: methodFilter
             )
-            return SunbayCheckout(configuration: config)
+            let checkout = SunbayCheckout(configuration: config)
+            let sink = $diagnostics
+            checkout.onDiagnostic = { event in
+                sink.wrappedValue.append(Self.describe(event))
+            }
+            return checkout
         }
 
         /// Builds an `Appearance` from the preset + scheme + address-mode knobs.
@@ -348,6 +407,8 @@ import SunbayCheckoutTestSupport
         let collectShippingAddress: Bool
         /// Host-provided billing address for `PaymentSheet(billingAddress:)` (nil: let the form collect it).
         let hostBillingAddress: AddressInput?
+        /// Host-provided shipping address for `PaymentSheet(shippingAddress:)` (nil: let the form collect it).
+        let hostShippingAddress: AddressInput?
 
         /// Creates the session through the dev server. Throws `DevSessionError` with a readable message.
         func create() async throws -> DevSession {
@@ -392,7 +453,8 @@ import SunbayCheckoutTestSupport
                             sessionId: session.sessionId,
                             customerAccessSecret: session.customerAccessSecret,
                             checkoutClientSecret: session.checkoutClientSecret,
-                            billingAddress: request.hostBillingAddress
+                            billingAddress: request.hostBillingAddress,
+                            shippingAddress: request.hostShippingAddress
                         )
                         sheet.onStateChange = onState
                         let outcome = await sheet.present(from: presenter)

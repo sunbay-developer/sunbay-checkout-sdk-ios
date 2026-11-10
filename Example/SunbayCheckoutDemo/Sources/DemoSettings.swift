@@ -133,6 +133,12 @@ struct DemoSettings: Codable, Equatable {
     var orderRequiresShippingAddress: Bool = false
     /// Pass a fixed US test billing address to `PaymentSheet(billingAddress:)`.
     var passHostBillingAddress: Bool = false
+    /// Pass a fixed, complete US test shipping address (with names and phone) to `PaymentSheet(shippingAddress:)`.
+    var passHostShippingAddress: Bool = false
+    /// Hide Apple Pay through `PaymentMethodFilter(hide:)`.
+    var hideApplePay: Bool = false
+    /// Hide the card methods (new card and saved cards) through `PaymentMethodFilter(hide:)`.
+    var hideCard: Bool = false
     /// Base URL of the local dev session server.
     var devServerURL: String = "http://127.0.0.1:8095"
 

@@ -138,12 +138,21 @@ maps into a `CheckoutConfiguration` (environment always `.dev`) or the dev-sessi
   the real HPP address API.
   - **Order requires billing address** / **Order requires shipping address** - send
     `collectBillingAddress` / `collectShippingAddress` to the dev server (independent of the pickers).
-  - **Pass a host billing address** - passes a fixed US test address (San Jose, CA) to
-    `PaymentSheet(billingAddress:)`. It is sent as is and wins over what the form collects.
+  - **Pass a host billing address** / **Pass a host shipping address** - pass a fixed, complete US test
+    address (San Jose, CA; the shipping one has names and a phone) to
+    `PaymentSheet(billingAddress:shippingAddress:)`. A host address is used only when the session collects
+    that kind and the address is complete; with Automatic the form for that kind is then hidden. A form that
+    is shown wins over the host address.
+- **Payment methods** - **Hide Apple Pay** / **Hide Card** build `CheckoutConfiguration.paymentMethodFilter`
+  (`PaymentMethodFilter(hide:)`). Hiding Card also hides saved cards; hiding both makes `present` fail with
+  `NO_PAYMENT_METHOD_AVAILABLE`.
 - **Amount** - USD only; minor units (default 105 = 1.05). Sent to the dev server as major units.
 - **Card on file** - the two switches above.
 
 Below the knobs:
+
+- **Diagnostics** (inside "Last outcome") - every event delivered through `SunbayCheckout.onDiagnostic`,
+  one line each: code, ignored names and reason only (never address values). "Clear" empties the list.
 
 - **PaymentSheet (L1 black-box)** - "Pay (sheet)" creates a session through the dev server, then
   constructs `PaymentSheet(checkout:sessionId:customerAccessSecret:checkoutClientSecret:)` and calls
