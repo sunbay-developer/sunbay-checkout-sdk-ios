@@ -181,8 +181,9 @@ Open verification items:
 
 Integrator notes (phase 3):
 
-- Saved-card and wallet payments in the sheet send only host-provided addresses (the SDK address form exists
-  only on the new-card page). Hosts whose sessions require an address must pass `billingAddress` /
+- Saved-card payments send only usable host-provided addresses (the SDK address form exists only on the
+  new-card page). Wallet payments use the address returned by the wallet, else the usable host entry. Hosts
+  whose sessions require an address for saved-card payments must pass a complete `billingAddress` /
   `shippingAddress`.
 - Release-notes source-compatibility note: the `.automatic` default and the new `AddressCollectionMode.automatic`
   case break exhaustive `switch`es over the enum. AGENTS.md rule 3 says breaking changes bump major; the owner

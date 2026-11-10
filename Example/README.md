@@ -170,12 +170,13 @@ hand-writes **no** Chinese string literals; the configured `CheckoutConfiguratio
 the SDK, whose bundled `.strings` provide the localized titles. This app is the UI localization
 verification surface.
 
-## In-sheet Apple Pay (known v-next wiring item)
+## Apple Pay in the sheet and standalone
 
-The Apple Pay **row inside the PaymentSheet** is currently a cancel-only placeholder in the SDK
-(wiring it to real wallet authorization would require changing SDK internals, out of scope here).
-**The working wallet path in this release is the standalone `ApplePayButton`**, which drives
-`confirmWallet` end-to-end.
+Both the Apple Pay row inside the PaymentSheet and the standalone `ApplePayButton` authorize through the
+same wallet path: the request is built from the session's `ewalletParam`, contacts are requested only when
+the session collects an address that the host did not supply, and the returned addresses are submitted with
+the payment. Use the "Hide Apple Pay" toggle to exercise `paymentMethodFilter`. Real-device behavior is
+tracked in `docs/real-api-integration-checklist.md`.
 
 ## Apple Pay on device
 
