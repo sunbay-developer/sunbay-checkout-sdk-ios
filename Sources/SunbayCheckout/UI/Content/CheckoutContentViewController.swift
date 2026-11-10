@@ -110,7 +110,6 @@
 
         private var billingAddressView: UIView?
         private var shippingAddressView: UIView?
-        private var shippingSameAsBillingSwitch: CheckboxControl?
         private var shippingContainer: UIStackView?
 
         // MARK: - Layout containers
@@ -293,22 +292,12 @@
             /// Test readout: the billing address form is part of the new-card page.
             var isBillingFormVisibleForTest: Bool { billingAddressView.map { !$0.isHidden } ?? false }
 
-            /// Test readout: the shipping form is shown (section present and "same as billing" off).
+            /// Test readout: the shipping form is shown (section present).
             var isShippingFormVisibleForTest: Bool { shippingAddressView.map { !$0.isHidden } ?? false }
 
             /// The billing / shipping address form views (nil when the section is off).
             var billingAddressViewForTest: UIView? { billingAddressView }
             var shippingAddressViewForTest: UIView? { shippingAddressView }
-
-            /// Test readout: whether the "same as billing" checkbox exists (only with a billing form).
-            var hasSameAsBillingCheckboxForTest: Bool { shippingSameAsBillingSwitch != nil }
-            var isSameAsBillingOnForTest: Bool { shippingSameAsBillingSwitch?.isOn ?? false }
-
-            /// Sets the "same as billing" checkbox and applies its effect.
-            func setSameAsBillingForTest(_ on: Bool) {
-                shippingSameAsBillingSwitch?.isOn = on
-                handleSameAsBillingChanged()
-            }
 
             /// Test readout: the save-card checkbox state (false when the row is absent).
             var isSaveCardOnForTest: Bool { saveCardSwitch?.isOn ?? false }
@@ -574,16 +563,8 @@
             }
             let save = saveCardSwitch?.isOn ?? false
             let billing = formAddress(from: billingAddressView)
-            // "Same as billing" (or no shipping form) reuses the billing form values; otherwise the
-            // shipping form's own values. With no shipping section at all the form shipping is nil.
-            let shipping: AddressInput?
-            if shippingAddressView == nil {
-                shipping = nil
-            } else if let sameAsBilling = shippingSameAsBillingSwitch, sameAsBilling.isOn {
-                shipping = billing
-            } else {
-                shipping = formAddress(from: shippingAddressView)
-            }
+            // The shipping form's own values; nil when there is no shipping section.
+            let shipping = formAddress(from: shippingAddressView)
             guard beginProcessing() else { return }
             delegate?.content(
                 self,
@@ -1260,59 +1241,16 @@
             }
         }
 
-        /// Builds the shipping section: a header row (uppercase title on the left, a "same as billing"
-        /// checkbox + label on the right), and the shipping form. The checkbox exists only when a billing
-        /// form exists; it defaults on, so the shipping form then starts hidden. With no billing form
-        /// there is nothing to copy from, so the shipping form is visible from the start.
+        /// Builds the shipping section: a title and the shipping form. There is no "same as billing"
+        /// shortcut because the shipping form also collects name and phone, which billing does not.
         private func makeShippingSection() -> UIView? {
             guard let shipping = makeAddressView(mode: shippingMode, options: .shipping) else { return nil }
             shippingAddressView = shipping
-
-            // Without a billing form there is nothing to copy from: show the shipping form directly,
-            // with no "same as billing" checkbox, and Pay uses the shipping form's own values.
-            if billingAddressView == nil {
-                let title = makeSectionTitle("sunbay.address.shippingTitle")
-                let container = UIStackView(arrangedSubviews: [title, shipping])
-                container.axis = .vertical
-                container.spacing = 12
-                shippingContainer = container
-                return container
-            }
-
-            let title = makeSectionTitle("sunbay.address.shippingTitle")
-            title.setContentHuggingPriority(.defaultLow, for: .horizontal)
-
-            let checkbox = CheckboxControl(appearance: appearance)
-            checkbox.isOn = true
-            checkbox.addTarget(self, action: #selector(handleSameAsBillingChanged), for: .valueChanged)
-            shippingSameAsBillingSwitch = checkbox
-
-            let toggleLabel = UILabel()
-            toggleLabel.text = localize("sunbay.address.sameAsBilling")
-            toggleLabel.font = appearance.optionLabelFont
-            toggleLabel.textColor = appearance.optionLabelColor
-            toggleLabel.setContentHuggingPriority(.required, for: .horizontal)
-            checkbox.attachLabel(toggleLabel)
-
-            // Header row: title (left) ... checkbox + label (right), on one line.
-            let headerRow = UIStackView(arrangedSubviews: [title, checkbox, toggleLabel])
-            headerRow.axis = .horizontal
-            headerRow.alignment = .center
-            headerRow.spacing = 10
-
-            let container = UIStackView(arrangedSubviews: [headerRow, shipping])
+            let container = UIStackView(arrangedSubviews: [makeSectionTitle("sunbay.address.shippingTitle"), shipping])
             container.axis = .vertical
             container.spacing = 12
             shippingContainer = container
-
-            // Default: "same as billing" is on, so the shipping form is hidden initially.
-            shipping.isHidden = true
             return container
-        }
-
-        @objc private func handleSameAsBillingChanged() {
-            guard let sameAsBilling = shippingSameAsBillingSwitch?.isOn else { return }
-            shippingAddressView?.isHidden = sameAsBilling
         }
 
         // MARK: - Header / navigation

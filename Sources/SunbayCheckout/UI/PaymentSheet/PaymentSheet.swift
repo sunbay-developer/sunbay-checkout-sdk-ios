@@ -436,11 +436,16 @@
 
             // Host address entries: report incomplete ones once, and tell the UI which are usable (so
             // `.automatic` shows no form for them).
-            await controller.evaluateHostEntries(
-                billingFormShown: appearance.billingAddressMode != .off,
-                shippingFormShown: appearance.shippingAddressMode != .off)
             let billingEntryUsable = await controller.usableHostEntry(.billing) != nil
             let shippingEntryUsable = await controller.usableHostEntry(.shipping) != nil
+            let billingFormShown = Appearance.AddressCollectionMode.resolveAddressMode(
+                appearance.billingAddressMode, collect: session.collectBillingAddress,
+                hasUsableEntry: billingEntryUsable) != .off
+            let shippingFormShown = Appearance.AddressCollectionMode.resolveAddressMode(
+                appearance.shippingAddressMode, collect: session.collectShippingAddress,
+                hasUsableEntry: shippingEntryUsable) != .off
+            await controller.evaluateHostEntries(
+                billingFormShown: billingFormShown, shippingFormShown: shippingFormShown)
 
             // 3. Wait for the user action.
             let action = await seam(CheckoutContext(

@@ -192,13 +192,6 @@
             XCTAssertEqual(payment.submitCallCount, 0, "an auth failure must not submit")
         }
 
-        // MARK: - Manually trigger control events (no host app environment)
-
-        /// Triggers `.touchUpInside` directly based on the control's target-action registry.
-        ///
-        /// In an xctest process without a host app, `UIApplication.shared` is nil and `sendActions`
-        /// does not dispatch; this reads the target/action the control registered itself and calls it
-        /// directly, equivalent to a tap.
         // MARK: - Host addresses
 
         /// Setting / clearing the public address properties reaches the controller's host entries.
@@ -238,6 +231,13 @@
             XCTAssertEqual(actual, expected)
         }
 
+        // MARK: - Manually trigger control events (no host app environment)
+
+        /// Triggers `.touchUpInside` directly based on the control's target-action registry.
+        ///
+        /// In an xctest process without a host app, `UIApplication.shared` is nil and `sendActions`
+        /// does not dispatch; this reads the target/action the control registered itself and calls it
+        /// directly, equivalent to a tap.
         private func fireTouchUpInside(on control: UIControl) {
             for target in control.allTargets {
                 let actions = control.actions(forTarget: target, forControlEvent: .touchUpInside) ?? []

@@ -36,7 +36,6 @@ enum SunbayUIStringKeys {
         // Address
         "sunbay.address.billingTitle",
         "sunbay.address.shippingTitle",
-        "sunbay.address.sameAsBilling",
         "sunbay.address.country",
         "sunbay.address.line1",
         "sunbay.address.postalCode",

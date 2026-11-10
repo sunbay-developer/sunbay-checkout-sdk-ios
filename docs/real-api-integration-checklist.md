@@ -177,6 +177,8 @@ Open verification items:
       from apps. Options: HPP proxy (recommended), Google Places SDK for iOS with per-bundle keys, MapKit
       `MKLocalSearchCompleter`.
 
+- Product follow-up: partial "same as billing" (copy address fields, still collect shipping name/phone) was removed in the address-rules change; restore if product wants it.
+
 Integrator notes (phase 3):
 
 - Saved-card and wallet payments in the sheet send only host-provided addresses (the SDK address form exists

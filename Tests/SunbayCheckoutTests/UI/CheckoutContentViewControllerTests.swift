@@ -1138,20 +1138,6 @@
             }
         }
 
-        func test_noBillingForm_shippingShownDirectly_withoutSameAsBillingCheckbox() {
-            let (vc, _) = makeVC(collectBilling: false, collectShipping: true)
-            XCTAssertFalse(vc.isBillingFormVisibleForTest)
-            XCTAssertFalse(vc.hasSameAsBillingCheckboxForTest)
-            XCTAssertTrue(vc.isShippingFormVisibleForTest)
-        }
-
-        func test_bothForms_haveSameAsBillingCheckbox_defaultingOn() {
-            let (vc, _) = makeVC(collectBilling: true, collectShipping: true)
-            XCTAssertTrue(vc.hasSameAsBillingCheckboxForTest)
-            XCTAssertTrue(vc.isSameAsBillingOnForTest)
-            XCTAssertFalse(vc.isShippingFormVisibleForTest)
-        }
-
         func test_pay_noBillingForm_sendsShippingFormValues_andNilBilling() {
             let (vc, delegate) = makeVC(billing: .off, shipping: .simple)
             (vc.shippingAddressViewForTest as? SimpleAddressFormView)?
@@ -1201,7 +1187,6 @@
         func test_automatic_shippingFlagShowsShippingSection() {
             let (vc, _) = makeVC(collectBilling: false, collectShipping: true)
             XCTAssertFalse(vc.isBillingFormVisibleForTest)
-            vc.setSameAsBillingForTest(false)
             XCTAssertTrue(vc.isShippingFormVisibleForTest)
         }
 
@@ -1212,7 +1197,6 @@
 
         func test_fullBillingHasNoNameFields_fullShippingHasNameFields() {
             let (vc, _) = makeVC(collectBilling: true, collectShipping: true)
-            vc.setSameAsBillingForTest(false)
             let billing = vc.billingAddressViewForTest as? DynamicAddressFormView
             let shipping = vc.shippingAddressViewForTest as? DynamicAddressFormView
             XCTAssertNotNil(billing)
@@ -1242,18 +1226,24 @@
             XCTAssertEqual(shipping?.addressInput.lastName, "Lovelace")
         }
 
-        func test_pay_sameAsBilling_sendsBillingValuesAsShipping() {
+        func test_bothForms_shippingFormWithNamePhoneVisible_andValuesReachSubmit() {
             let (vc, delegate) = makeVC(billing: .simple, shipping: .simple)
+            XCTAssertTrue(vc.isBillingFormVisibleForTest)
+            XCTAssertTrue(vc.isShippingFormVisibleForTest)
+            let shippingForm = vc.shippingAddressViewForTest as? SimpleAddressFormView
+            XCTAssertEqual(shippingForm?.hasNameFieldsForTest, true)
             (vc.billingAddressViewForTest as? SimpleAddressFormView)?
                 .fillForTest(country: "US", line1: "1 Main", postalCode: "94103")
+            shippingForm?.fillForTest(
+                country: "CA", line1: "2 Side", postalCode: "M5V", firstName: "Ada", lastName: "L", phone: "5551234")
             vc.fillCardForTest()
             vc.sendTouchOnPayButtonForTest()
-            let expected = AddressInput(country: "US", line1: "1 Main", postalCode: "94103")
-            guard case let .confirmNewCard(_, _, billing, shipping, _, _)? = delegate.action else {
+            guard case let .confirmNewCard(_, _, _, shipping, _, _)? = delegate.action else {
                 return XCTFail("expected .confirmNewCard")
             }
-            XCTAssertEqual(billing, expected)
-            XCTAssertEqual(shipping, expected)
+            XCTAssertEqual(shipping?.country, "CA")
+            XCTAssertEqual(shipping?.firstName, "Ada")
+            XCTAssertEqual(shipping?.phone, "5551234")
         }
 
         func test_pay_shippingSectionOff_sendsNilShipping() {
@@ -1273,7 +1263,6 @@
             let (vc, delegate) = makeVC(billing: .simple, shipping: .simple)
             (vc.billingAddressViewForTest as? SimpleAddressFormView)?
                 .fillForTest(country: "US", line1: "1 Main", postalCode: "94103")
-            vc.setSameAsBillingForTest(false)
             (vc.shippingAddressViewForTest as? SimpleAddressFormView)?
                 .fillForTest(country: "CA", line1: "2 Side", postalCode: "M5V", firstName: "Ada", lastName: "L")
             vc.fillCardForTest()
@@ -1322,14 +1311,6 @@
             }
             XCTAssertFalse(billingShown)
             XCTAssertFalse(shippingShown)
-        }
-
-        func test_billingOff_shippingShown_hasNoSameAsBillingCheckbox_evenWithBillingEntry() {
-            let (vc, _) = makeVC(
-                collectBilling: true, collectShipping: true, billingEntryUsable: true)
-            XCTAssertNil(vc.billingAddressViewForTest)
-            XCTAssertNotNil(vc.shippingAddressViewForTest)
-            XCTAssertFalse(vc.hasSameAsBillingCheckboxForTest)
         }
 
         func test_simpleForms_phoneOnShippingOnly() {
