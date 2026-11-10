@@ -48,6 +48,18 @@ public final class SunbayCheckout {
     /// presents (`PaymentSheet.present`) and read from the submit path (which runs off the main thread).
     let screenMetrics: ScreenMetricsStore
 
+    /// Diagnostics channel shared by this instance's controllers and views (internal).
+    let diagnostics: DiagnosticsReporter
+
+    /// Receives non-fatal diagnostics (warnings and non-terminal errors), always on the main thread.
+    ///
+    /// Events raised before a handler is set are buffered (last 50) and replayed in order when it is
+    /// assigned. Diagnostics never contain card values or secrets.
+    public var onDiagnostic: ((CheckoutDiagnostic) -> Void)? {
+        get { diagnostics.handler }
+        set { diagnostics.handler = newValue }
+    }
+
     /// Creates the entry point from a configuration; talks to the real Sunbay backend for the
     /// configured environment (the default).
     ///
@@ -66,6 +78,7 @@ public final class SunbayCheckout {
             SunbayAPIClient(environment: configuration.environment, locale: configuration.locale, session: $0)
         } ?? SunbayAPIClient(environment: configuration.environment, locale: configuration.locale)
         let metrics = ScreenMetricsStore()
+        let diagnostics = DiagnosticsReporter()
         self.init(
             configuration: configuration,
             serviceFactory: { credentials in
@@ -77,8 +90,10 @@ public final class SunbayCheckout {
                     HTTPCofService(client: client)
                 )
             },
-            addressMetadataService: HTTPAddressMetadataService(client: client),
-            screenMetrics: metrics)
+            addressMetadataService: ReportingAddressMetadataService(
+                wrapping: HTTPAddressMetadataService(client: client), reporter: diagnostics),
+            screenMetrics: metrics,
+            diagnostics: diagnostics)
     }
 
     /// Internal designated seam: any per-controller service factory.
@@ -86,9 +101,11 @@ public final class SunbayCheckout {
         configuration: CheckoutConfiguration,
         serviceFactory: @escaping (CredentialStore) -> (any PaymentService, any CofService),
         addressMetadataService: (any AddressMetadataService)? = nil,
-        screenMetrics: ScreenMetricsStore = ScreenMetricsStore()
+        screenMetrics: ScreenMetricsStore = ScreenMetricsStore(),
+        diagnostics: DiagnosticsReporter = DiagnosticsReporter()
     ) {
         self.configuration = configuration
+        self.diagnostics = diagnostics
         self.serviceFactory = serviceFactory
         self.screenMetrics = screenMetrics
         self.addressMetadataService = AddressMetadataCache(
@@ -174,7 +191,8 @@ public final class SunbayCheckout {
             cofService: cofService,
             credentials: credentials,
             actionHandler: actionHandler,
-            cardOnFile: cardOnFile
+            cardOnFile: cardOnFile,
+            reporter: diagnostics
         )
     }
 }

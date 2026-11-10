@@ -32,6 +32,11 @@ public struct CheckoutSession: Sendable, Equatable {
     public let collectBillingAddress: Bool
     /// Whether the merchant asks the SDK to collect a shipping address (session flag; absent → false).
     public let collectShippingAddress: Bool
+    /// Apple Pay request parameters from the `APPLE_PAY` entry's `ewalletParam`; nil when absent or unreadable.
+    var applePayParams: ApplePayParams? = nil
+    /// The session's payment method entries in backend order. A decoded session carries the backend's entries;
+    /// a session built through `init` derives one entry per kind in `methods` (`CARD` / `APPLE_PAY`).
+    var methodEntries: [MethodEntry] = []
 
     /// Creates a checkout session (constructed and returned by the host's `PaymentService.loadSession`).
     ///
@@ -68,6 +73,12 @@ public struct CheckoutSession: Sendable, Equatable {
         self.sessionType = sessionType
         self.collectBillingAddress = collectBillingAddress
         self.collectShippingAddress = collectShippingAddress
+        var derived: [MethodEntry] = []
+        if methods.contains(.card) { derived.append(MethodEntry(method: "CARD", type: "CARD", name: "", logoURL: nil)) }
+        if methods.contains(.applePay) {
+            derived.append(MethodEntry(method: "APPLE_PAY", type: "E_WALLET", name: "", logoURL: nil))
+        }
+        self.methodEntries = derived
     }
 }
 

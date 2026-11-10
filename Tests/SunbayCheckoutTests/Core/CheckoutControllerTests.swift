@@ -22,7 +22,9 @@ final class CheckoutControllerTests: XCTestCase {
         id: String = "sess_1",
         cofEnabled: Bool = true,
         rsaPublicKey: String? = nil,
-        expiresAt: Date = Date().addingTimeInterval(600)
+        expiresAt: Date = Date().addingTimeInterval(600),
+        collectBilling: Bool = false,
+        collectShipping: Bool = false
     ) -> CheckoutSession {
         CheckoutSession(
             id: id,
@@ -32,7 +34,9 @@ final class CheckoutControllerTests: XCTestCase {
             expiresAt: expiresAt,
             rsaPublicKey: rsaPublicKey,
             cofEnabled: cofEnabled,
-            sessionType: "sdk"
+            sessionType: "sdk",
+            collectBillingAddress: collectBilling,
+            collectShippingAddress: collectShipping
         )
     }
 
@@ -48,14 +52,16 @@ final class CheckoutControllerTests: XCTestCase {
         cof: MockCofService = MockCofService(),
         credentials: CredentialStore = CredentialStore(),
         actionHandler: StubActionHandler = StubActionHandler(),
-        cardOnFile: CardOnFileOptions = CardOnFileOptions()
+        cardOnFile: CardOnFileOptions = CardOnFileOptions(),
+        reporter: DiagnosticsReporter? = nil
     ) -> CheckoutController {
         CheckoutController(
             paymentService: payment,
             cofService: cof,
             credentials: credentials,
             actionHandler: actionHandler,
-            cardOnFile: cardOnFile
+            cardOnFile: cardOnFile,
+            reporter: reporter
         )
     }
 
@@ -262,7 +268,7 @@ final class CheckoutControllerTests: XCTestCase {
         payment.stubSubmit([terminalSucceeded()])
         controller = makeController(payment: payment)
         _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
-        _ = await controller.confirmWallet(token: Data("{}".utf8))
+        _ = await controller.confirmWallet(WalletAuthorization(token: Data("{}".utf8), billing: nil, shipping: nil, email: nil))
         XCTAssertEqual(payment.lastSubmitRequest?.sessionType, "sdk")
     }
 
@@ -285,6 +291,30 @@ final class CheckoutControllerTests: XCTestCase {
         XCTAssertNil(req.walletToken)
     }
 
+
+    // MARK: - Diagnostics
+
+    func test_listSavedCards_failure_returnsEmptyAndReportsError() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession(cofEnabled: true))
+        let cof = MockCofService()
+        cof.stubError(CheckoutError(code: "COF_DOWN", message: "down", category: .network, traceId: nil))
+        let reporter = DiagnosticsReporter()
+        let e = expectation(description: "diagnostic")
+        nonisolated(unsafe) var received: [CheckoutDiagnostic] = []
+        reporter.handler = { received.append($0); e.fulfill() }
+        let controller = makeController(payment: payment, cof: cof, reporter: reporter)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+
+        let cards = await controller.listSavedCards()
+
+        XCTAssertEqual(cards, [])
+        await fulfillment(of: [e], timeout: 2)
+        XCTAssertEqual(received.count, 1)
+        guard case .error(let error, let sessionId) = received[0] else { return XCTFail("expected error") }
+        XCTAssertEqual(error.code, "COF_DOWN")
+        XCTAssertEqual(sessionId, "sess_1")
+    }
 
     // MARK: - Real submit contract (Task 4)
 
@@ -406,7 +436,7 @@ final class CheckoutControllerTests: XCTestCase {
         let controller = makeController(payment: payment)
         _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
-        _ = await controller.confirmWallet(token: Data([0x01, 0x02]))
+        _ = await controller.confirmWallet(WalletAuthorization(token: Data([0x01, 0x02]), billing: nil, shipping: nil, email: nil))
 
         let req = try XCTUnwrap(payment.lastSubmitRequest)
         XCTAssertEqual(req.walletToken, Data([0x01, 0x02]))
@@ -415,78 +445,317 @@ final class CheckoutControllerTests: XCTestCase {
         XCTAssertNil(req.savedCardId)
     }
 
-    // MARK: - Addresses: host over form
+    // MARK: - Addresses (JS rules: form draft > host entry; entry only when collected and complete)
 
     private func addr(_ line: String) -> AddressInput { AddressInput(country: "US", line1: line) }
 
-    func test_address_hostOverridesForm_andFallsBackPerMode() async throws {
-        let payment = MockPaymentService()
-        payment.stubSession(makeSession(rsaPublicKey: try makeRSAPublicKey()))
-        payment.stubSubmit([terminalSucceeded()])
-        let controller = makeController(payment: payment)
-        _ = try await controller.start(
-            sessionId: "sess_1", customerAccessSecret: nil, billingAddress: addr("H"))
-
-        _ = await controller.confirmNewCard(
-            newCardInput(), save: false, billingAddress: addr("F"), shippingAddress: addr("S"))
-
-        XCTAssertEqual(payment.lastSubmitRequest?.billingAddress, addr("H"))
-        XCTAssertEqual(payment.lastSubmitRequest?.shippingAddress, addr("S"))
+    private func fullBilling(_ line: String = "1 Main St") -> AddressInput {
+        AddressInput(country: "US", line1: line, city: "San Jose", postalCode: "95112")
     }
 
-    func test_address_formUsedWhenNoHost() async throws {
-        let payment = MockPaymentService()
-        payment.stubSession(makeSession(rsaPublicKey: try makeRSAPublicKey()))
-        payment.stubSubmit([terminalSucceeded()])
-        let controller = makeController(payment: payment)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
-
-        _ = await controller.confirmNewCard(newCardInput(), save: false, billingAddress: addr("F"))
-
-        XCTAssertEqual(payment.lastSubmitRequest?.billingAddress, addr("F"))
-        XCTAssertNil(payment.lastSubmitRequest?.shippingAddress)
+    private func fullShipping(_ line: String = "2 Side St") -> AddressInput {
+        AddressInput(
+            country: "US", line1: line, city: "Austin", postalCode: "73301",
+            firstName: "Ada", lastName: "Lovelace", phone: "5551234")
     }
 
-    func test_address_savedCardAndWalletCarryHostAddresses() async throws {
+    private final class WarningBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var items: [CheckoutWarning] = []
+        func add(_ d: CheckoutDiagnostic) {
+            if case let .warning(w) = d { lock.lock(); items.append(w); lock.unlock() }
+        }
+        var all: [CheckoutWarning] { lock.lock(); defer { lock.unlock() }; return items }
+    }
+
+    private struct AddressRig {
+        let payment: MockPaymentService
+        let controller: CheckoutController
+        let warnings: WarningBox
+
+        /// Waits for the reporter's main-queue deliveries issued so far.
+        func warningsFlushed() async -> [CheckoutWarning] {
+            await MainActor.run {}
+            return warnings.all
+        }
+    }
+
+    private func addressRig(
+        collectBilling: Bool, collectShipping: Bool = false,
+        billing: AddressInput? = nil, shipping: AddressInput? = nil
+    ) async throws -> AddressRig {
         let payment = MockPaymentService()
-        payment.stubSession(makeSession())
+        payment.stubSession(makeSession(
+            rsaPublicKey: try makeRSAPublicKey(), collectBilling: collectBilling,
+            collectShipping: collectShipping))
         payment.stubSubmit([PaymentSnapshot(sessionId: "sess_1", status: .failed, txnId: nil)])
-        let controller = makeController(payment: payment)
+        let warnings = WarningBox()
+        let reporter = DiagnosticsReporter()
+        reporter.handler = { warnings.add($0) }
+        let controller = makeController(payment: payment, reporter: reporter)
         _ = try await controller.start(
             sessionId: "sess_1", customerAccessSecret: "cas_1",
-            billingAddress: addr("H"), shippingAddress: addr("HS"))
-
-        _ = await controller.confirmSavedCard(paymentMethodId: "pm")
-        XCTAssertEqual(payment.lastSubmitRequest?.billingAddress, addr("H"))
-        XCTAssertEqual(payment.lastSubmitRequest?.shippingAddress, addr("HS"))
-
-        _ = await controller.confirmWallet(token: Data([1]))
-        XCTAssertEqual(payment.lastSubmitRequest?.billingAddress, addr("H"))
-        XCTAssertEqual(payment.lastSubmitRequest?.shippingAddress, addr("HS"))
+            billingAddress: billing, shippingAddress: shipping)
+        return AddressRig(payment: payment, controller: controller, warnings: warnings)
     }
 
-    func test_address_secondStartClearsHostAddresses() async throws {
-        let payment = MockPaymentService()
-        payment.stubSession(makeSession())
-        payment.stubSubmit([terminalSucceeded()])
-        let controller = makeController(payment: payment)
-        _ = try await controller.start(
-            sessionId: "sess_1", customerAccessSecret: nil, billingAddress: addr("H"))
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+    func test_walletParamsInvalid_isReportedAgainAfterStartAndDismiss() async throws {
+        let rig = try await addressRig(collectBilling: false)
+        await rig.controller.reportWalletParamsInvalid(missing: ["supportedNetworks"])
+        await rig.controller.reportWalletParamsInvalid(missing: ["supportedNetworks"])
+        var warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.map(\.code), [.walletParamsInvalid])
 
-        _ = await controller.confirmWallet(token: Data([1]))
+        _ = try await rig.controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+        await rig.controller.reportWalletParamsInvalid(missing: ["supportedNetworks"])
+        warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.count, 2)
 
-        XCTAssertNil(payment.lastSubmitRequest?.billingAddress)
+        await rig.controller.dismiss()
+        await rig.controller.reportWalletParamsInvalid(missing: ["supportedNetworks"])
+        warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.count, 3)
+    }
+
+    func test_address_notCollected_entryIsNotSubmittedAndSilent() async throws {
+        let rig = try await addressRig(collectBilling: false, billing: fullBilling())
+        _ = await rig.controller.confirmNewCard(newCardInput(), save: false)
+        XCTAssertNil(rig.payment.lastSubmitRequest?.billingAddress)
+        let warnings = await rig.warningsFlushed()
+        XCTAssertTrue(warnings.isEmpty)
+    }
+
+    func test_address_collectedButIncomplete_reportsOnceAndSubmitsNone() async throws {
+        let rig = try await addressRig(collectBilling: true, billing: addr("1 Main St"))
+        _ = await rig.controller.confirmNewCard(newCardInput(), save: false)
+        _ = await rig.controller.confirmNewCard(newCardInput(), save: false)
+        XCTAssertNil(rig.payment.lastSubmitRequest?.billingAddress)
+        let warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.map(\.code), [.addressIncomplete])
+        XCTAssertEqual(warnings.first?.ignored, ["billingAddress"])
+        XCTAssertEqual(warnings.first?.sessionId, "sess_1")
+    }
+
+    func test_address_card_usableEntrySubmittedWhenNoForm() async throws {
+        let rig = try await addressRig(collectBilling: true, billing: fullBilling())
+        _ = await rig.controller.confirmNewCard(newCardInput(), save: false)
+        XCTAssertEqual(rig.payment.lastSubmitRequest?.billingAddress, fullBilling())
+    }
+
+    func test_address_card_draftBeatsEntryAndReportsIgnoredOnce() async throws {
+        let rig = try await addressRig(collectBilling: true, billing: fullBilling("Entry"))
+        let draft = AddressInput(country: "US", line1: " Draft ")
+        _ = await rig.controller.confirmNewCard(
+            newCardInput(), save: false, billingAddress: draft, billingFormShown: true)
+        _ = await rig.controller.confirmNewCard(
+            newCardInput(), save: false, billingAddress: draft, billingFormShown: true)
+        XCTAssertEqual(rig.payment.lastSubmitRequest?.billingAddress, addr("Draft"))
+        let warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.map(\.code), [.addressEntryIgnored])
+        XCTAssertEqual(warnings.first?.ignored, ["billingAddress"])
+    }
+
+    func test_address_card_countryOnlyFormValueFallsBackToEntry() async throws {
+        let rig = try await addressRig(collectBilling: true, billing: fullBilling())
+        _ = await rig.controller.confirmNewCard(
+            newCardInput(), save: false, billingAddress: AddressInput(country: "CA"), billingFormShown: true)
+        XCTAssertEqual(rig.payment.lastSubmitRequest?.billingAddress, fullBilling())
+        let warnings = await rig.warningsFlushed()
+        XCTAssertTrue(warnings.isEmpty)
+    }
+
+    func test_address_savedCard_usesUsableEntries() async throws {
+        let rig = try await addressRig(
+            collectBilling: true, collectShipping: false, billing: fullBilling(), shipping: fullShipping())
+        _ = await rig.controller.confirmSavedCard(paymentMethodId: "pm")
+        XCTAssertEqual(rig.payment.lastSubmitRequest?.billingAddress, fullBilling())
+        XCTAssertNil(rig.payment.lastSubmitRequest?.shippingAddress)
+    }
+
+    func test_address_wallet_walletContactBeatsEntry() async throws {
+        let rig = try await addressRig(collectBilling: true, billing: fullBilling("Entry"))
+        let auth = WalletAuthorization(
+            token: Data([1]), billing: fullBilling("Wallet"), shipping: nil, email: nil)
+        _ = await rig.controller.confirmWallet(auth)
+        XCTAssertEqual(rig.payment.lastSubmitRequest?.billingAddress, fullBilling("Wallet"))
+    }
+
+    func test_address_wallet_entryUsedWhenNoFormAndNoContact() async throws {
+        let rig = try await addressRig(collectBilling: false, collectShipping: true, shipping: fullShipping())
+        let auth = WalletAuthorization(token: Data([1]), billing: nil, shipping: nil, email: nil)
+        _ = await rig.controller.confirmWallet(auth)
+        XCTAssertEqual(rig.payment.lastSubmitRequest?.shippingAddress, fullShipping())
+    }
+
+    func test_address_wallet_formShownIgnoresEntryAndReports() async throws {
+        let rig = try await addressRig(collectBilling: false, collectShipping: true, shipping: fullShipping())
+        let auth = WalletAuthorization(token: Data([1]), billing: nil, shipping: nil, email: nil)
+        _ = await rig.controller.confirmWallet(auth, shippingFormShown: true)
+        XCTAssertNil(rig.payment.lastSubmitRequest?.shippingAddress)
+        let warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.map(\.code), [.addressEntryIgnored])
+        XCTAssertEqual(warnings.first?.ignored, ["shippingAddress"])
+    }
+
+    func test_address_evaluateHostEntries_reportsOnlyIncomplete() async throws {
+        // incomplete + collect: exactly one ADDRESS_INCOMPLETE, even when called twice with forms shown
+        var rig = try await addressRig(collectBilling: true, billing: addr("1 Main St"))
+        await rig.controller.evaluateHostEntries(billingFormShown: true, shippingFormShown: true)
+        await rig.controller.evaluateHostEntries(billingFormShown: true, shippingFormShown: true)
+        var warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.map(\.code), [.addressIncomplete])
+
+        // complete, absent and collect-false entries: nothing (no ADDRESS_ENTRY_IGNORED for usable entries)
+        rig = try await addressRig(
+            collectBilling: true, collectShipping: false, billing: fullBilling(), shipping: addr("x"))
+        await rig.controller.evaluateHostEntries(billingFormShown: true, shippingFormShown: true)
+        warnings = await rig.warningsFlushed()
+        XCTAssertTrue(warnings.isEmpty)
+    }
+
+    func test_address_usableHostEntry() async throws {
+        let rig = try await addressRig(
+            collectBilling: true, collectShipping: false, billing: fullBilling(), shipping: fullShipping())
+        let billing = await rig.controller.usableHostEntry(.billing)
+        let shipping = await rig.controller.usableHostEntry(.shipping)
+        XCTAssertEqual(billing, fullBilling())
+        XCTAssertNil(shipping)  // collect false
+        let incomplete = try await addressRig(collectBilling: true, billing: addr("x"))
+        let none = await incomplete.controller.usableHostEntry(.billing)
+        XCTAssertNil(none)
+    }
+
+    func test_address_updateHostAddresses_replacesEntriesAndRedeliversWarning() async throws {
+        let rig = try await addressRig(collectBilling: true, billing: addr("1 Main St"))
+        await rig.controller.evaluateHostEntries(billingFormShown: false, shippingFormShown: false)
+        var warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.map(\.code), [.addressIncomplete])
+
+        await rig.controller.updateHostAddresses(billing: addr("2 Other St"), shipping: nil)
+        await rig.controller.evaluateHostEntries(billingFormShown: false, shippingFormShown: false)
+        warnings = await rig.warningsFlushed()  // cumulative: the second delivery proves dedup was reset
+        XCTAssertEqual(warnings.map(\.code), [.addressIncomplete, .addressIncomplete])
+
+        await rig.controller.updateHostAddresses(billing: fullBilling(), shipping: nil)
+        let usable = await rig.controller.usableHostEntry(.billing)
+        XCTAssertEqual(usable, fullBilling())
+    }
+
+    func test_address_card_draftBeatsEntryReportsIgnoredEvenWhenKindNotCollected() async throws {
+        let rig = try await addressRig(collectBilling: false, billing: fullBilling("Entry"))
+        let draft = AddressInput(country: "US", line1: "Draft")
+        _ = await rig.controller.confirmNewCard(
+            newCardInput(), save: false, billingAddress: draft, billingFormShown: true)
+        XCTAssertEqual(rig.payment.lastSubmitRequest?.billingAddress, addr("Draft"))
+        let warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.map(\.code), [.addressEntryIgnored])
+    }
+
+    func test_address_wallet_contactWinsButShownFormStillReportsIgnoredOnce() async throws {
+        let rig = try await addressRig(collectBilling: true, billing: fullBilling("Entry"))
+        let auth = WalletAuthorization(
+            token: Data([1]), billing: fullBilling("Wallet"), shipping: nil, email: nil)
+        _ = await rig.controller.confirmWallet(auth, billingFormShown: true)
+        XCTAssertEqual(rig.payment.lastSubmitRequest?.billingAddress, fullBilling("Wallet"))
+        let warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.map(\.code), [.addressEntryIgnored])
+        XCTAssertEqual(warnings.first?.ignored, ["billingAddress"])
+    }
+
+    func test_address_updateHostAddresses_reportsIncompleteImmediately() async throws {
+        let rig = try await addressRig(collectBilling: true)
+        await rig.controller.updateHostAddresses(billing: addr("1 Main St"), shipping: nil)
+        let warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.map(\.code), [.addressIncomplete])
+    }
+
+    func test_addressMetadataError_isDeliveredAgainAfterStart() async throws {
+        let rig = try await addressRig(collectBilling: false)
+        let errors = ErrorCounter()
+        let reporter = DiagnosticsReporter()
+        reporter.handler = { if case .error = $0 { errors.bump() } }
+        let controller = makeController(payment: rig.payment, reporter: reporter)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+        let err = CheckoutError(code: "ADDRESS_METADATA_FAILED", message: "m", category: .network, traceId: nil)
+        reporter.error(err, sessionId: nil)
+        reporter.error(err, sessionId: nil)
+        await MainActor.run {}
+        XCTAssertEqual(errors.count, 1)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+        reporter.error(err, sessionId: nil)
+        await MainActor.run {}
+        XCTAssertEqual(errors.count, 2)
+    }
+
+    private final class ErrorCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var n = 0
+        func bump() { lock.lock(); n += 1; lock.unlock() }
+        var count: Int { lock.lock(); defer { lock.unlock() }; return n }
+    }
+
+    func test_address_walletContactRequest_table() async throws {
+        // collect false: never requested, even with a form shown
+        var rig = try await addressRig(collectBilling: false, collectShipping: false)
+        var req = await rig.controller.walletContactRequest(billingFormShown: true, shippingFormShown: true)
+        XCTAssertEqual(req, WalletContactRequest(billing: false, shipping: false))
+
+        // collect true, no entry: requested
+        rig = try await addressRig(collectBilling: true, collectShipping: true)
+        req = await rig.controller.walletContactRequest(billingFormShown: false, shippingFormShown: false)
+        XCTAssertEqual(req, WalletContactRequest(billing: true, shipping: true))
+
+        // collect true, usable entry: not requested unless a form is shown
+        rig = try await addressRig(
+            collectBilling: true, collectShipping: true, billing: fullBilling(), shipping: fullShipping())
+        req = await rig.controller.walletContactRequest(billingFormShown: false, shippingFormShown: false)
+        XCTAssertEqual(req, WalletContactRequest(billing: false, shipping: false))
+        req = await rig.controller.walletContactRequest(billingFormShown: true, shippingFormShown: false)
+        XCTAssertEqual(req, WalletContactRequest(billing: true, shipping: false))
+
+        // collect true, incomplete entry: counts as absent
+        rig = try await addressRig(collectBilling: true, billing: addr("x"))
+        req = await rig.controller.walletContactRequest(billingFormShown: false, shippingFormShown: false)
+        XCTAssertEqual(req, WalletContactRequest(billing: true, shipping: false))
+    }
+
+    func test_address_customerNameAndEmailAreSubmitted() async throws {
+        let rig = try await addressRig(collectBilling: false, collectShipping: true)
+        let auth = WalletAuthorization(
+            token: Data([1]), billing: nil, shipping: fullShipping(), email: "ada@example.com")
+        _ = await rig.controller.confirmWallet(auth)
+        XCTAssertEqual(rig.payment.lastSubmitRequest?.customerName, "Ada Lovelace")
+        XCTAssertEqual(rig.payment.lastSubmitRequest?.customerEmail, "ada@example.com")
+
+        _ = await rig.controller.confirmSavedCard(paymentMethodId: "pm")
+        XCTAssertNil(rig.payment.lastSubmitRequest?.customerEmail)
+    }
+
+    func test_address_secondStartClearsEntriesAndDedup() async throws {
+        let rig = try await addressRig(collectBilling: true, billing: addr("x"))
+        _ = await rig.controller.confirmNewCard(newCardInput(), save: false)
+        _ = try await rig.controller.start(sessionId: "sess_1", customerAccessSecret: nil)
+        _ = await rig.controller.confirmNewCard(newCardInput(), save: false)
+        XCTAssertNil(rig.payment.lastSubmitRequest?.billingAddress)
+
+        _ = try await rig.controller.start(
+            sessionId: "sess_1", customerAccessSecret: nil, billingAddress: addr("y"))
+        _ = await rig.controller.confirmNewCard(newCardInput(), save: false)
+        let warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.map(\.code), [.addressIncomplete, .addressIncomplete])
     }
 
     func test_address_requestDescriptionIsRedacted() {
         let request = SubmitRequest(
             sessionId: "s", paymentMethod: "CARD", attemptId: UUID(),
             billingAddress: AddressInput(line1: "1 Main St", email: "a@b.c"),
-            shippingAddress: AddressInput(line1: "1 Main St", email: "a@b.c"))
+            shippingAddress: AddressInput(line1: "1 Main St", email: "a@b.c"),
+            customerName: "Ada Lovelace", customerEmail: "ada@b.c")
         for text in [String(reflecting: request), "\(request)", String(describing: request)] {
             XCTAssertFalse(text.contains("1 Main St"))
             XCTAssertFalse(text.contains("a@b.c"))
+            XCTAssertFalse(text.contains("Ada"))
+            XCTAssertFalse(text.contains("ada@b.c"))
         }
         XCTAssertTrue(Mirror(reflecting: request).children.isEmpty)
     }
@@ -555,9 +824,9 @@ final class CheckoutControllerTests: XCTestCase {
         _ = try await controller.start(
             sessionId: "sess_1", customerAccessSecret: "cas_1", checkoutClientSecret: "ccs_1")
 
-        let first = await controller.confirmWallet(token: Data([1]))
+        let first = await controller.confirmWallet(WalletAuthorization(token: Data([1]), billing: nil, shipping: nil, email: nil))
         guard case .failed = first else { return XCTFail("expected failed, got \(first)") }
-        _ = await controller.confirmWallet(token: Data([2]))
+        _ = await controller.confirmWallet(WalletAuthorization(token: Data([2]), billing: nil, shipping: nil, email: nil))
 
         let req = try XCTUnwrap(payment.lastSubmitRequest)
         XCTAssertEqual(req.checkoutClientSecret, "ccs_1")
@@ -572,9 +841,9 @@ final class CheckoutControllerTests: XCTestCase {
         _ = try await controller.start(
             sessionId: "sess_1", customerAccessSecret: "cas_1", checkoutClientSecret: "ccs_1")
 
-        let first = await controller.confirmWallet(token: Data([1]))
+        let first = await controller.confirmWallet(WalletAuthorization(token: Data([1]), billing: nil, shipping: nil, email: nil))
         guard case .unknown = first else { return XCTFail("expected unknown, got \(first)") }
-        _ = await controller.confirmWallet(token: Data([2]))
+        _ = await controller.confirmWallet(WalletAuthorization(token: Data([2]), billing: nil, shipping: nil, email: nil))
 
         let req = try XCTUnwrap(payment.lastSubmitRequest)
         XCTAssertEqual(req.checkoutClientSecret, "ccs_1")
@@ -589,7 +858,7 @@ final class CheckoutControllerTests: XCTestCase {
         _ = try await controller.start(
             sessionId: "sess_1", customerAccessSecret: "cas_1", checkoutClientSecret: "ccs_1")
 
-        _ = await controller.confirmWallet(token: Data([1]))
+        _ = await controller.confirmWallet(WalletAuthorization(token: Data([1]), billing: nil, shipping: nil, email: nil))
 
         let cas = await credentials.current()
         let ccs = await credentials.currentCheckoutClientSecret()
@@ -606,7 +875,7 @@ final class CheckoutControllerTests: XCTestCase {
         let controller = makeController(payment: payment, credentials: credentials)
         _ = try await controller.start(
             sessionId: "sess_1", customerAccessSecret: "cas_1", checkoutClientSecret: "ccs_1")
-        _ = await controller.confirmWallet(token: Data([1]))
+        _ = await controller.confirmWallet(WalletAuthorization(token: Data([1]), billing: nil, shipping: nil, email: nil))
         let keptCcs = await credentials.currentCheckoutClientSecret()
         XCTAssertEqual(keptCcs, "ccs_1")
 

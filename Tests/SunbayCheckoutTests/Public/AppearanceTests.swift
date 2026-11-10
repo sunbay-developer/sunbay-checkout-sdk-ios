@@ -12,16 +12,22 @@
             XCTAssertEqual(appearance.shippingAddressMode, .automatic)
         }
 
-        func test_resolveAddressMode_automaticFollowsSessionFlag() {
-            XCTAssertEqual(Appearance.AddressCollectionMode.resolveAddressMode(.automatic, collect: true), .full)
-            XCTAssertEqual(Appearance.AddressCollectionMode.resolveAddressMode(.automatic, collect: false), .off)
+        func test_resolveAddressMode_automaticFollowsSessionFlagAndEntry() {
+            typealias Mode = Appearance.AddressCollectionMode
+            XCTAssertEqual(Mode.resolveAddressMode(.automatic, collect: true, hasUsableEntry: false), .full)
+            XCTAssertEqual(Mode.resolveAddressMode(.automatic, collect: false, hasUsableEntry: false), .off)
+            XCTAssertEqual(Mode.resolveAddressMode(.automatic, collect: true, hasUsableEntry: true), .off)
+            XCTAssertEqual(Mode.resolveAddressMode(.automatic, collect: false, hasUsableEntry: true), .off)
         }
 
-        func test_resolveAddressMode_explicitModesIgnoreSessionFlag() {
+        func test_resolveAddressMode_explicitModesIgnoreSessionFlagAndEntry() {
+            typealias Mode = Appearance.AddressCollectionMode
             for collect in [true, false] {
-                XCTAssertEqual(Appearance.AddressCollectionMode.resolveAddressMode(.simple, collect: collect), .simple)
-                XCTAssertEqual(Appearance.AddressCollectionMode.resolveAddressMode(.full, collect: collect), .full)
-                XCTAssertEqual(Appearance.AddressCollectionMode.resolveAddressMode(.off, collect: collect), .off)
+                for usable in [true, false] {
+                    XCTAssertEqual(Mode.resolveAddressMode(.simple, collect: collect, hasUsableEntry: usable), .simple)
+                    XCTAssertEqual(Mode.resolveAddressMode(.full, collect: collect, hasUsableEntry: usable), .full)
+                    XCTAssertEqual(Mode.resolveAddressMode(.off, collect: collect, hasUsableEntry: usable), .off)
+                }
             }
         }
     }

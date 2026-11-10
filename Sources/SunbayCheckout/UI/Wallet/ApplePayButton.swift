@@ -29,7 +29,7 @@
     ///
     /// ## Result (onResult)
     /// Tap → `WalletAuthorizing.authorize(...)` presents the Apple Pay sheet; each authorized token is
-    /// confirmed via `controller.confirmWallet(token:)` while the sheet is still open, the sheet shows
+    /// confirmed via `controller.confirmWallet(_:)` while the sheet is still open, the sheet shows
     /// the backend-derived status, and once it closes the final `CheckoutOutcome` fires `onResult` on
     /// the main thread. Wallet authorization success ≠
     /// transaction success (§3.2): the real conclusion comes from `confirmWallet`'s outcome. The user
@@ -78,8 +78,15 @@
         private let controller: CheckoutController
         private let walletAuthorizer: any WalletAuthorizing
         private let sessionId: String
+        /// Diagnostics sink (nil when constructed without a host channel).
+        private let reporter: DiagnosticsReporter?
+        /// The host's payment-method filter; `hide ["APPLE_PAY"]` makes the button unavailable.
+        private let paymentMethodFilter: PaymentMethodFilter
         /// The amount for this payment; overwritten with the session amount once the session finishes loading (may be a nil placeholder at construction).
         private var amount: Amount?
+        /// Merchant name and Apple Pay parameters of the loaded session (used to build the sheet request).
+        private var merchantName = ""
+        private var applePayParams: ApplePayParams?
         /// The resolved Apple Pay merchant id (host configuration takes precedence); nil means not configured → not available.
         private let resolvedMerchantId: String?
 
@@ -99,9 +106,16 @@
         /// Client secret issued by the host backend with the session (optional); memory only, never logged.
         /// Kept across failed / unknown attempts so a second tap still carries it; cleared on success / dismiss / expiry.
         private let checkoutClientSecret: String?
-        /// Host-provided addresses (PII; memory only, never logged); passed to the controller at start.
-        private let billingAddress: AddressInput?
-        private let shippingAddress: AddressInput?
+        /// Host-provided billing address (PII; memory only, never logged). Passed to the controller at start;
+        /// later changes are pushed to the controller so the next tap uses the latest value.
+        public var billingAddress: AddressInput? {
+            didSet { pushHostAddresses() }
+        }
+
+        /// Host-provided shipping address (PII; memory only, never logged); same rules as `billingAddress`.
+        public var shippingAddress: AddressInput? {
+            didSet { pushHostAddresses() }
+        }
 
         // MARK: - Public initialization (assembles the real dependencies)
 
@@ -148,7 +162,9 @@
                 style: style,
                 checkoutClientSecret: checkoutClientSecret,
                 billingAddress: billingAddress,
-                shippingAddress: shippingAddress
+                shippingAddress: shippingAddress,
+                reporter: checkout.diagnostics,
+                paymentMethodFilter: checkout.configuration.paymentMethodFilter
             )
         }
 
@@ -172,8 +188,12 @@
             style: ApplePayButtonStyle = .automatic,
             checkoutClientSecret: String? = nil,
             billingAddress: AddressInput? = nil,
-            shippingAddress: AddressInput? = nil
+            shippingAddress: AddressInput? = nil,
+            reporter: DiagnosticsReporter? = nil,
+            paymentMethodFilter: PaymentMethodFilter = PaymentMethodFilter()
         ) {
+            self.paymentMethodFilter = paymentMethodFilter
+            self.reporter = reporter
             self.controller = controller
             self.checkoutClientSecret = checkoutClientSecret
             self.billingAddress = billingAddress
@@ -224,12 +244,42 @@
                     billingAddress: billingAddress,
                     shippingAddress: shippingAddress
                 )
-                backendAllowed = session.methods.contains(.applePay)
+                // The session is now known, so incomplete host entries can be reported right away.
+                await controller.evaluateHostEntries(billingFormShown: false, shippingFormShown: false)
+                let filtered = PaymentMethodModel.apply(paymentMethodFilter, to: session.methodEntries)
+                await controller.reportFilterIgnored(filtered.ignored)
+                let hiddenByFilter = !filtered.entries.contains { PaymentMethodModel.logicalKey($0) == "APPLE_PAY" }
+                let availability = ApplePayAvailability.evaluate(
+                    session: session, hiddenByFilter: hiddenByFilter, authorizer: walletAuthorizer,
+                    merchantId: resolvedMerchantId)
+                if !availability.missing.isEmpty {
+                    await controller.reportWalletParamsInvalid(missing: availability.missing)
+                }
+                backendAllowed = session.methods.contains(.applePay) && !hiddenByFilter && availability.missing.isEmpty
                 amount = session.amount
+                merchantName = session.merchantName
+                applePayParams = session.applePayParams
             } catch {
+                let reported = (error as? CheckoutError)
+                    ?? CheckoutError(
+                        code: "SESSION_LOAD_FAILED",
+                        message: "The checkout session could not be loaded.",
+                        category: .network,
+                        traceId: nil)
+                reporter?.error(reported, sessionId: sessionId)
                 backendAllowed = false
             }
             recomputeAvailability()
+        }
+
+        /// Pushes the current host addresses to the controller (reads the latest values when it runs).
+        private func pushHostAddresses() {
+            let controller = controller
+            Task { [weak self] in
+                guard let self else { return }
+                let (billing, shipping) = await MainActor.run { (self.billingAddress, self.shippingAddress) }
+                await controller.updateHostAddresses(billing: billing, shipping: shipping)
+            }
         }
 
         /// Recomputes `isAvailable` as the three-factor intersection (its `didSet` is responsible for the main-thread callback when it changes).
@@ -244,17 +294,26 @@
             guard isAvailable, let merchantId = resolvedMerchantId, let amount else { return }
             let authorizer = walletAuthorizer
             let controller = controller
+            let merchantName = merchantName
+            let params = applePayParams
             Task { [weak self] in
                 let outcome: CheckoutOutcome
                 do {
+                    // A standalone button has no SDK address forms: both flags are false.
+                    let contacts = await controller.walletContactRequest(
+                        billingFormShown: false, shippingFormShown: false)
                     // The token is confirmed while the Apple Pay sheet is still open; the sheet shows
                     // success/failure only after the backend outcome is known. The token flows only
                     // into confirmWallet, never into onResult/logs (§5).
                     outcome = try await authorizer.authorize(
                         amount: amount,
-                        merchantId: merchantId
-                    ) { token in
-                        await controller.confirmWallet(token: token)
+                        merchantId: merchantId,
+                        merchantName: merchantName,
+                        params: params,
+                        contacts: contacts
+                    ) { authorization in
+                        await controller.confirmWallet(
+                            authorization, billingFormShown: false, shippingFormShown: false)
                     }
                 } catch {
                     // Authorization ended without a token. Distinguish a user cancel (→ `.canceled`,

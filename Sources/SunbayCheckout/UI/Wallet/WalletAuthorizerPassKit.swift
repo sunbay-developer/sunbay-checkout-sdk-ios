@@ -1,3 +1,4 @@
+import Contacts
 import Foundation
 import PassKit
 
@@ -52,10 +53,29 @@ struct WalletAuthorizer: WalletAuthorizing {
     func authorize(
         amount: Amount,
         merchantId: String,
-        confirm: @escaping @Sendable (Data) async -> CheckoutOutcome
+        merchantName: String,
+        params: ApplePayParams?,
+        contacts: WalletContactRequest,
+        confirm: @escaping @Sendable (WalletAuthorization) async -> CheckoutOutcome
     ) async throws -> CheckoutOutcome {
-        let request = Self.makeRequest(amount: amount, merchantId: merchantId)
+        guard missingParameters(for: params).isEmpty, let params else {
+            throw CheckoutError(
+                code: "WALLET_PARAMS_INVALID",
+                message: "Apple Pay parameters are missing or unusable.",
+                category: .configuration,
+                traceId: nil)
+        }
+        let request = Self.makeRequest(
+            amount: amount, merchantId: merchantId, merchantName: merchantName, params: params, contacts: contacts)
         return try await Self.runAuthorization(request, confirm: confirm)
+    }
+
+    /// `supportedNetworks` / `merchantCapabilities` that map to nothing are reported by name (never values).
+    func missingParameters(for params: ApplePayParams?) -> [String] {
+        var missing: [String] = []
+        if Self.networks(from: params?.supportedNetworks ?? []).isEmpty { missing.append("supportedNetworks") }
+        if Self.capabilities(from: params?.merchantCapabilities ?? []).isEmpty { missing.append("merchantCapabilities") }
+        return missing
     }
 
     /// Maps a backend outcome to the status shown in the Apple Pay sheet (pure; both platforms).
@@ -77,27 +97,99 @@ struct WalletAuthorizer: WalletAuthorizing {
 
     // MARK: - Construction (compiles on both platforms)
 
-    /// Constructs a `PKPaymentRequest` from merchantId + amount.
+    /// Constructs a `PKPaymentRequest` from the merchant id, amount, backend parameters and requested contacts.
     ///
-    /// The amount is converted from the smallest currency unit (minor units) into the decimal
-    /// display amount; network/capability and other details await backend confirmation (aligned
-    /// with the Task 14 on-device probe).
-    static func makeRequest(amount: Amount, merchantId: String) -> PKPaymentRequest {
+    /// The amount is converted from minor units into the decimal display amount; the summary label is the
+    /// merchant name ("Total" when blank); the country code is the backend value uppercased (`US` when blank).
+    static func makeRequest(
+        amount: Amount,
+        merchantId: String,
+        merchantName: String,
+        params: ApplePayParams?,
+        contacts: WalletContactRequest
+    ) -> PKPaymentRequest {
         let request = PKPaymentRequest()
         request.merchantIdentifier = merchantId
         request.currencyCode = amount.currencyCode
-        request.countryCode = "US"
-        request.supportedNetworks = [.visa, .masterCard, .amex]
-        request.merchantCapabilities = [.threeDSecure]
+        let country = params?.countryCode?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() ?? ""
+        request.countryCode = country.isEmpty ? "US" : country
+        request.supportedNetworks = networks(from: params?.supportedNetworks ?? [])
+        request.merchantCapabilities = capabilities(from: params?.merchantCapabilities ?? [])
+        if contacts.billing { request.requiredBillingContactFields = [.postalAddress, .name] }
+        if contacts.shipping { request.requiredShippingContactFields = [.postalAddress, .name, .phoneNumber] }
 
+        let label = merchantName.trimmingCharacters(in: .whitespacesAndNewlines)
         let decimal = Decimal(amount.minorUnits) / Decimal(100)
         request.paymentSummaryItems = [
             PKPaymentSummaryItem(
-                label: "Total",
+                label: label.isEmpty ? "Total" : label,
                 amount: NSDecimalNumber(decimal: decimal)
             )
         ]
         return request
+    }
+
+    // MARK: - Mapping (pure)
+
+    private static let networkTable: [String: PKPaymentNetwork] = [
+        "amex": .amex, "chinaunionpay": .chinaUnionPay, "discover": .discover, "jcb": .JCB,
+        "mastercard": .masterCard, "visa": .visa, "maestro": .maestro, "electron": .electron,
+        "vpay": .vPay, "interac": .interac, "eftpos": .eftpos, "cartesbancaires": .cartesBancaires,
+        "privatelabel": .privateLabel, "quicpay": .quicPay, "idcredit": .idCredit, "suica": .suica,
+        "mada": .mada, "elo": .elo, "girocard": .girocard,
+    ]
+
+    /// Maps backend network names to PassKit networks (case-insensitive); unknown names and duplicates are dropped, order is kept.
+    static func networks(from names: [String]) -> [PKPaymentNetwork] {
+        var seen = Set<PKPaymentNetwork>()
+        var out: [PKPaymentNetwork] = []
+        for name in names {
+            let key = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if let network = networkTable[key], seen.insert(network).inserted { out.append(network) }
+        }
+        return out
+    }
+
+    /// Maps backend capability names to a PassKit capability set; unknown names are dropped.
+    static func capabilities(from names: [String]) -> PKMerchantCapability {
+        var out: PKMerchantCapability = []
+        for name in names {
+            switch name.trimmingCharacters(in: .whitespacesAndNewlines) {
+            case "supports3DS": out.insert(.threeDSecure)
+            case "supportsEMV": out.insert(.emv)
+            case "supportsCredit": out.insert(.credit)
+            case "supportsDebit": out.insert(.debit)
+            default: break
+            }
+        }
+        return out
+    }
+
+    /// Maps a returned `PKContact` to an address; nil when the contact has no non-blank field. Values are never logged.
+    static func address(from contact: PKContact?) -> AddressInput? {
+        guard let contact else { return nil }
+        let lines = (contact.postalAddress?.street ?? "")
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        let input = AddressInput(
+            country: contact.postalAddress?.isoCountryCode.uppercased(),
+            line1: lines.first,
+            line2: lines.count > 1 ? lines.dropFirst().joined(separator: ", ") : nil,
+            city: contact.postalAddress?.city,
+            state: contact.postalAddress?.state,
+            postalCode: contact.postalAddress?.postalCode,
+            firstName: contact.name?.givenName,
+            lastName: contact.name?.familyName,
+            phone: contact.phoneNumber?.stringValue)
+        return AddressRules.sanitize(input)
+    }
+
+    /// The contact's email, trimmed; nil when absent or blank.
+    static func email(from contact: PKContact?) -> String? {
+        guard let value = contact?.emailAddress?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty
+        else { return nil }
+        return value
     }
 
     // MARK: - Authorization run (iOS-specific delegate flow)
@@ -105,7 +197,7 @@ struct WalletAuthorizer: WalletAuthorizing {
     #if os(iOS)
     private static func runAuthorization(
         _ request: PKPaymentRequest,
-        confirm: @escaping @Sendable (Data) async -> CheckoutOutcome
+        confirm: @escaping @Sendable (WalletAuthorization) async -> CheckoutOutcome
     ) async throws -> CheckoutOutcome {
         try await withCheckedThrowingContinuation { continuation in
             Task { @MainActor in
@@ -152,7 +244,7 @@ struct WalletAuthorizer: WalletAuthorizing {
     @MainActor
     private final class AuthorizationDelegate: NSObject, PKPaymentAuthorizationControllerDelegate {
         private var continuation: CheckedContinuation<CheckoutOutcome, Error>?
-        private let confirm: @Sendable (Data) async -> CheckoutOutcome
+        private let confirm: @Sendable (WalletAuthorization) async -> CheckoutOutcome
         /// Holds the controller until the authorization flow ends, avoiding premature release.
         var retainController: PKPaymentAuthorizationController?
         /// Self-retention: PassKit holds the delegate weakly, so the delegate keeps itself alive
@@ -165,7 +257,7 @@ struct WalletAuthorizer: WalletAuthorizing {
 
         init(
             continuation: CheckedContinuation<CheckoutOutcome, Error>,
-            confirm: @escaping @Sendable (Data) async -> CheckoutOutcome
+            confirm: @escaping @Sendable (WalletAuthorization) async -> CheckoutOutcome
         ) {
             self.continuation = continuation
             self.confirm = confirm
@@ -197,10 +289,15 @@ struct WalletAuthorizer: WalletAuthorizing {
             didAuthorizePayment payment: PKPayment,
             handler completion: @escaping (PKPaymentAuthorizationResult) -> Void
         ) {
-            // Extract only the token data (Sendable); do not log any sensitive content (§5).
-            let tokenData = payment.token.paymentData
+            // Narrow the non-Sendable PKPayment to a Sendable authorization; log nothing (§5).
+            let authorization = WalletAuthorization(
+                token: payment.token.paymentData,
+                billing: WalletAuthorizer.address(from: payment.billingContact),
+                shipping: WalletAuthorizer.address(from: payment.shippingContact),
+                email: WalletAuthorizer.email(from: payment.shippingContact)
+                    ?? WalletAuthorizer.email(from: payment.billingContact))
             let confirm = confirm
-            let task = Task { await confirm(tokenData) }
+            let task = Task { await confirm(authorization) }
             inFlightConfirm = task
             Task { @MainActor in
                 let outcome = await task.value
@@ -248,7 +345,7 @@ struct WalletAuthorizer: WalletAuthorizing {
     /// A non-iOS platform (such as the macOS unit-test host) has no available authorization presentation path; the on-device flow is covered by Task 14.
     private static func runAuthorization(
         _ request: PKPaymentRequest,
-        confirm: @escaping @Sendable (Data) async -> CheckoutOutcome
+        confirm: @escaping @Sendable (WalletAuthorization) async -> CheckoutOutcome
     ) async throws -> CheckoutOutcome {
         throw CheckoutError(
             code: "WALLET_UNSUPPORTED_PLATFORM",

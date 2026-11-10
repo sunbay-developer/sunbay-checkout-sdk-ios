@@ -16,6 +16,11 @@ protocol WalletAuthorizing: Sendable {
     /// Whether the device is capable of making Apple Pay payments (device-dependent).
     func canMakePayments() -> Bool
 
+    /// The names of the required Apple Pay parameters that are missing or unusable (empty = usable).
+    ///
+    /// Names only, never values. Apple Pay must be hidden while this is non-empty.
+    func missingParameters(for params: ApplePayParams?) -> [String]
+
     /// Runs one Apple Pay authorization, confirming each authorized token with the backend
     /// **while the system sheet is still open**, and returns the final outcome once it closes.
     ///
@@ -29,8 +34,11 @@ protocol WalletAuthorizing: Sendable {
     /// - Parameters:
     ///   - amount: The amount of this payment.
     ///   - merchantId: The resolved Apple Pay merchant id (see `resolveMerchantId`).
-    ///   - confirm: Submits one token to the backend and returns its outcome. The token is used only
-    ///     here and is never logged (§5).
+    ///   - merchantName: The merchant name shown as the payment summary label ("Total" when blank).
+    ///   - params: The backend Apple Pay parameters (networks, capabilities, country).
+    ///   - contacts: Which billing / shipping contacts the sheet must request.
+    ///   - confirm: Submits one authorization (token and returned contacts) to the backend and returns its
+    ///     outcome. The authorization is used only here and is never logged (§5).
     /// - Returns: The outcome of the last confirm made in this authorization (if the system sheet
     ///   timed out while a confirm was in flight, that confirm's outcome is awaited first).
     /// - Throws: Only when the sheet closed **without any token** being authorized (user cancel →
@@ -39,7 +47,10 @@ protocol WalletAuthorizing: Sendable {
     func authorize(
         amount: Amount,
         merchantId: String,
-        confirm: @escaping @Sendable (Data) async -> CheckoutOutcome
+        merchantName: String,
+        params: ApplePayParams?,
+        contacts: WalletContactRequest,
+        confirm: @escaping @Sendable (WalletAuthorization) async -> CheckoutOutcome
     ) async throws -> CheckoutOutcome
 }
 

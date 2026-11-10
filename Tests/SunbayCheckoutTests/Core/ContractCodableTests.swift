@@ -39,6 +39,65 @@ final class ContractCodableTests: XCTestCase {
         XCTAssertEqual(session.methods.count, 2)
     }
 
+    func test_decodeSession_withoutCardEntries_hasNoCardMethodEntry() throws {
+        let json = """
+            {
+              "sessionId": "sess_hpp", "currency": "USD", "totalAmount": "1.00",
+              "expiresAt": "2026-11-09T10:00:00+08:00", "merchantName": "Acme",
+              "paymentMethods": [ { "method": "APPLE_PAY", "type": "E_WALLET" } ]
+            }
+            """
+        let session = try ContractDecoding.decodeSession(from: Data(json.utf8))
+        XCTAssertEqual(session.methodEntries.map(\.method), ["APPLE_PAY"])
+        XCTAssertFalse(session.methodEntries.contains { PaymentMethodModel.logicalKey($0) == "CARD" })
+        let visible = PaymentMethodModel.apply(PaymentMethodFilter(), to: session.methodEntries).entries
+        XCTAssertFalse(visible.contains { PaymentMethodModel.logicalKey($0) == "CARD" })
+        XCTAssertFalse(session.methods.contains(.card))
+    }
+
+    // MARK: - ewalletParam
+
+    private func walletSession(_ ewallet: String?) throws -> CheckoutSession {
+        let field = ewallet.map { #", "ewalletParam": \#($0)"# } ?? ""
+        let json = """
+            {
+              "sessionId": "sess_w", "currency": "USD", "totalAmount": "1.00",
+              "expiresAt": "2026-11-09T10:00:00+08:00", "merchantName": "Acme",
+              "paymentMethods": [
+                { "method": "VISA", "type": "CARD" },
+                { "method": "APPLE_PAY", "type": "E_WALLET"\(field) }
+              ]
+            }
+            """
+        return try ContractDecoding.decodeSession(from: Data(json.utf8))
+    }
+
+    private let expectedWalletParams = ApplePayParams(
+        countryCode: "US",
+        supportedNetworks: ["chinaUnionPay", "amex", "discover", "masterCard", "jcb", "visa"],
+        merchantCapabilities: ["supports3DS", "supportsCredit", "supportsDebit"])
+
+    func test_decodeSession_ewalletParamAsJSONString() throws {
+        let inner = #"{\"countryCode\":\"US\",\"supportedNetworks\":[\"chinaUnionPay\",\"amex\",\"discover\",\"masterCard\",\"jcb\",\"visa\"],\"merchantCapabilities\":[\"supports3DS\",\"supportsCredit\",\"supportsDebit\"]}"#
+        let session = try walletSession("\"\(inner)\"")
+        XCTAssertEqual(session.applePayParams, expectedWalletParams)
+        XCTAssertTrue(session.methods.contains(.applePay))
+    }
+
+    func test_decodeSession_ewalletParamAsObject() throws {
+        let session = try walletSession(
+            #"{"countryCode":"US","supportedNetworks":["chinaUnionPay","amex","discover","masterCard","jcb","visa"],"merchantCapabilities":["supports3DS","supportsCredit","supportsDebit"]}"#)
+        XCTAssertEqual(session.applePayParams, expectedWalletParams)
+    }
+
+    func test_decodeSession_ewalletParamMalformedOrAbsent_isNilAndSessionStillDecodes() throws {
+        for raw in [nil, "null", "\"not json\"", "[1,2]", "42", #""[\"visa\"]""#] as [String?] {
+            let session = try walletSession(raw)
+            XCTAssertNil(session.applePayParams)
+            XCTAssertTrue(session.methods.contains(.applePay))
+        }
+    }
+
     // MARK: - Real contract session
 
     private func sessionJSON(
@@ -213,6 +272,21 @@ final class ContractCodableTests: XCTestCase {
         let session = try ContractDecoding.decodeSession(
             from: sessionJSON(methods: #"[{"method":"MYSTERY","type":"APM"}]"#))
         XCTAssertTrue(session.methods.isEmpty)
+    }
+
+    func test_decodeSession_keepsEveryMethodEntryInBackendOrder() throws {
+        let json = """
+            {"sessionId":"s1","currency":"USD","totalAmount":"1.00","expiresAt":"2026-10-26T12:30:00Z",
+             "merchantName":"A","supportStoreCard":false,
+             "paymentMethods":[
+               {"method":"GOOGLE_PAY","type":"E_WALLET","name":"Google Pay","logoURL":"https://x/g.png"},
+               {"method":"VISA","type":"CARD","name":"Visa"},
+               {"method":"APPLE_PAY","type":"E_WALLET"}]}
+            """
+        let session = try ContractDecoding.decodeSession(from: Data(json.utf8))
+        XCTAssertEqual(session.methodEntries.map(\.method), ["GOOGLE_PAY", "VISA", "APPLE_PAY"])
+        XCTAssertEqual(session.methodEntries.first?.logoURL, "https://x/g.png")
+        XCTAssertEqual(session.methodEntries[1].name, "Visa")
     }
 
     func test_decodeSession_nullRsaPublicKey_isNil() throws {

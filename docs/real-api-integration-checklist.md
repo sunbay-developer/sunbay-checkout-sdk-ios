@@ -177,14 +177,49 @@ Open verification items:
       from apps. Options: HPP proxy (recommended), Google Places SDK for iOS with per-bundle keys, MapKit
       `MKLocalSearchCompleter`.
 
+- Product follow-up: partial "same as billing" (copy address fields, still collect shipping name/phone) was removed in the address-rules change; restore if product wants it.
+
 Integrator notes (phase 3):
 
-- Saved-card and wallet payments in the sheet send only host-provided addresses (the SDK address form exists
-  only on the new-card page). Hosts whose sessions require an address must pass `billingAddress` /
+- Saved-card payments send only usable host-provided addresses (the SDK address form exists only on the
+  new-card page). Wallet payments use the address returned by the wallet, else the usable host entry. Hosts
+  whose sessions require an address for saved-card payments must pass a complete `billingAddress` /
   `shippingAddress`.
 - Release-notes source-compatibility note: the `.automatic` default and the new `AddressCollectionMode.automatic`
   case break exhaustive `switch`es over the enum. AGENTS.md rule 3 says breaking changes bump major; the owner
   must decide the version when the first release is cut (no tags exist yet).
+
+### Wallet, address rules, payment-method filter and diagnostics
+
+Behavior corrections to unreleased phase 3 (include in the first release notes; nothing shipped before them):
+
+- Host address gating: a host address is used only when the session collects that kind and the address is
+  complete (billing: country, city, line1, postal code; shipping: those plus first name, last name and phone).
+  An incomplete entry is not used and reported as `ADDRESS_INCOMPLETE`.
+- Form over host: a shown form with a draft wins over the host entry (reported as `ADDRESS_ENTRY_IGNORED`);
+  `.automatic` hides the form for a kind that has a usable host entry. The earlier "host always wins" behavior
+  is gone.
+- Apple Pay now requests billing / shipping contacts per the rules in `docs/product-spec.md` §2.1 and §3.2, and
+  saved-card payments send usable host entries only.
+
+Cross-repo items:
+
+- [ ] Register `WALLET_PARAMS_INVALID` in the shared `WARNING_CODES` and in the JS `api.md` code table (the JS
+      SDK owns the table; the iOS code already emits it).
+- [ ] Apple Pay merchant id and certificate onboarding for the dev/test merchants (backend).
+
+Open verification items on a real device (Apple Pay cannot be exercised on the simulator or in `swift test`):
+
+- [ ] The Apple Pay sheet requests and returns the billing / shipping contacts as configured (postal address,
+      name, shipping phone).
+- [ ] The token format the backend accepts for `APPLE_PAY` (the SDK sends the PassKit payment data as is).
+- [ ] The backend accepts the `customerName` / `customerEmail` the SDK derives from the wallet contacts.
+
+Verified live on dev (2026-11-09) by `RealAPIWalletTests`: the `APPLE_PAY` entry's `ewalletParam` decodes with
+non-empty networks and capabilities and builds a request with country `US`; the session lists `CARD`-typed
+entries and `APPLE_PAY`, and `hide: ["CARD"]` removes every card entry while keeping Apple Pay. The new-card
+submit with a host billing address (`RealAPIWalletTests.testNewCardWithHostBillingAddressIsNotC01`) needs the
+sandbox test card in the environment and skips without it.
 
 Still built ahead of their API (phase 2+):
 

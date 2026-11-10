@@ -87,6 +87,7 @@
             appearance: Appearance = .default, cofEnabled: Bool = false,
             cardOnFileEnabled: Bool = false, saveCardByDefault: Bool = false,
             localeCode: String? = nil,
+            visibleEntries: [MethodEntry]? = nil,
             localize: @escaping (String) -> String = { $0 }
         ) -> CheckoutContentViewController {
             CheckoutContentViewController(
@@ -99,7 +100,8 @@
                 shippingMode: .simple,
                 addressService: MockAddressService(),
                 cardOnFileEnabled: cardOnFileEnabled,
-                saveCardByDefault: saveCardByDefault
+                saveCardByDefault: saveCardByDefault,
+                visibleEntries: visibleEntries
             )
         }
 
@@ -128,7 +130,7 @@
             vc.delegate = delegate
             vc.simulateTapPay()
 
-            guard case let .confirmNewCard(_, save, _, _)? = delegate.lastRequestedAction else {
+            guard case let .confirmNewCard(_, save, _, _, _, _)? = delegate.lastRequestedAction else {
                 return XCTFail("Expected .confirmNewCard, got \(String(describing: delegate.lastRequestedAction))")
             }
             XCTAssertFalse(save)
@@ -476,6 +478,78 @@
             XCTAssertTrue(vc.isBackInteractiveForTest)
         }
 
+        // MARK: - Wallet contacts and ewalletParam
+
+        func test_appleTap_requestsContactsWithFormFlags_andConfirmCarriesAuthorizationAndFlags() async throws {
+            let billing = AddressInput(country: "US", line1: "1 Main", city: "SF", postalCode: "94103")
+            let wallet = MockWalletAuthorizer(
+                canMake: true,
+                outcome: .authorization(
+                    WalletAuthorization(token: Data([7]), billing: billing, shipping: nil, email: "a@b.co")))
+            let flags = FlagRecorder()
+            let session = CheckoutSession(
+                id: "sess_w", amount: Amount(minorUnits: 100, currencyCode: "USD"), merchantName: "Acme",
+                methods: [.card, .applePay], expiresAt: Date().addingTimeInterval(600), collectBillingAddress: true)
+            let vc = CheckoutContentViewController(
+                session: session, savedCards: [], appearance: .resolve(.default), localize: { $0 },
+                billingMode: .simple, shippingMode: .off, addressService: MockAddressService(),
+                walletAuthorizer: wallet, walletMerchantId: "merchant.x",
+                walletContacts: { b, s in
+                    flags.record(b, s)
+                    return WalletContactRequest(billing: true, shipping: false)
+                })
+            let delegate = MockContentDelegate()
+            vc.delegate = delegate
+            vc.loadViewIfNeeded()
+
+            vc.tapExpressForTest()
+            let deadline = Date().addingTimeInterval(3)
+            while delegate.lastRequestedAction == nil, Date() < deadline {
+                try await Task.sleep(nanoseconds: 20_000_000)
+            }
+
+            XCTAssertEqual(wallet.lastContacts, WalletContactRequest(billing: true, shipping: false))
+            XCTAssertEqual(wallet.lastMerchantName, "Acme")
+            XCTAssertEqual(flags.last?.0, true)
+            XCTAssertEqual(flags.last?.1, false)
+            guard case let .confirmWallet(authorization, billingShown, shippingShown)? = delegate.lastRequestedAction
+            else { return XCTFail("Expected .confirmWallet") }
+            XCTAssertEqual(authorization.billing, billing)
+            XCTAssertEqual(authorization.email, "a@b.co")
+            XCTAssertTrue(billingShown)
+            XCTAssertFalse(shippingShown)
+            vc.applyOutcome(.failed(txnId: nil, error: CheckoutErrors.paymentFailed()))
+        }
+
+        func test_missingWalletParameters_hidesExpressRow_andReportsNamesOnce() {
+            let wallet = MockWalletAuthorizer(
+                canMake: true, outcome: .success(Data([1])), missing: ["merchantCapabilities"])
+            let reported = ReportRecorder()
+            let vc = CheckoutContentViewController(
+                session: makeSession(methods: [.card, .applePay]), savedCards: [],
+                appearance: .resolve(.default), localize: { $0 }, billingMode: .simple, shippingMode: .simple,
+                addressService: MockAddressService(), walletAuthorizer: wallet, walletMerchantId: "merchant.x",
+                onWalletParamsInvalid: { reported.add($0) })
+            vc.loadViewIfNeeded()
+
+            XCTAssertNil(vc.expressViewForTest)
+            XCTAssertEqual(reported.all, [["merchantCapabilities"]])
+        }
+
+        private final class FlagRecorder: @unchecked Sendable {
+            private let lock = NSLock()
+            private var items: [(Bool, Bool)] = []
+            func record(_ b: Bool, _ s: Bool) { lock.lock(); items.append((b, s)); lock.unlock() }
+            var last: (Bool, Bool)? { lock.lock(); defer { lock.unlock() }; return items.last }
+        }
+
+        private final class ReportRecorder: @unchecked Sendable {
+            private let lock = NSLock()
+            private var items: [[String]] = []
+            func add(_ names: [String]) { lock.lock(); items.append(names); lock.unlock() }
+            var all: [[String]] { lock.lock(); defer { lock.unlock() }; return items }
+        }
+
         // MARK: - Wallet feedback on a Pay-less home page
 
         func test_walletOnlyHome_payHiddenAtRest_visibleWhileProcessing_hiddenAfterFailure() {
@@ -507,6 +581,39 @@
             var appearance = Appearance.default
             appearance.expressPosition = position
             return appearance
+        }
+
+        // MARK: - Method filter (visible entries)
+
+        private let cardEntry = MethodEntry(method: "VISA", type: "CARD", name: "Visa", logoURL: nil)
+        private let appleEntry = MethodEntry(method: "APPLE_PAY", type: "E_WALLET", name: "Apple Pay", logoURL: nil)
+
+        func test_filter_hideApplePay_removesExpressRow() {
+            let vc = makeVC(
+                savedCards: [], methods: [.card, .applePay], visibleEntries: [cardEntry])
+            vc.loadViewIfNeeded()
+            XCTAssertEqual(vc.homeOrderForTest, ["newCardEntry"])
+        }
+
+        func test_filter_hideCard_removesNewCardRowAndSavedCards() {
+            let vc = makeVC(
+                savedCards: sampleSavedCards(), methods: [.card, .applePay], visibleEntries: [appleEntry])
+            vc.loadViewIfNeeded()
+            XCTAssertEqual(vc.homeOrderForTest, ["express"])
+        }
+
+        func test_noCardEntry_showsNoNewCardRow() {
+            let vc = makeVC(savedCards: [], methods: [.applePay])
+            vc.loadViewIfNeeded()
+            XCTAssertEqual(vc.homeOrderForTest, ["express"])
+        }
+
+        func test_filter_expressBottom_stillPlacesExpressBelow() {
+            let vc = makeVC(
+                savedCards: [], methods: [.card, .applePay], appearance: appearance(.bottom),
+                visibleEntries: [appleEntry, cardEntry])
+            vc.loadViewIfNeeded()
+            XCTAssertEqual(vc.homeOrderForTest, ["newCardEntry", "express"])
         }
 
         func test_expressPosition_orderOnHome() {
@@ -1090,6 +1197,8 @@
             shipping: Appearance.AddressCollectionMode = .automatic,
             collectBilling: Bool = false,
             collectShipping: Bool = false,
+            billingEntryUsable: Bool = false,
+            shippingEntryUsable: Bool = false,
             localeCode: String? = nil,
             service: any AddressMetadataService = NameLayoutAddressService()
         ) -> (CheckoutContentViewController, AddressDelegate) {
@@ -1101,7 +1210,8 @@
             let vc = CheckoutContentViewController(
                 session: session, savedCards: [], appearance: .resolve(.default), localize: { $0 },
                 localeCode: localeCode, billingMode: billing, shippingMode: shipping,
-                addressService: service)
+                addressService: service, billingEntryUsable: billingEntryUsable,
+                shippingEntryUsable: shippingEntryUsable)
             let delegate = AddressDelegate()
             vc.delegate = delegate
             vc.loadViewIfNeeded()
@@ -1135,27 +1245,13 @@
             }
         }
 
-        func test_noBillingForm_shippingShownDirectly_withoutSameAsBillingCheckbox() {
-            let (vc, _) = makeVC(collectBilling: false, collectShipping: true)
-            XCTAssertFalse(vc.isBillingFormVisibleForTest)
-            XCTAssertFalse(vc.hasSameAsBillingCheckboxForTest)
-            XCTAssertTrue(vc.isShippingFormVisibleForTest)
-        }
-
-        func test_bothForms_haveSameAsBillingCheckbox_defaultingOn() {
-            let (vc, _) = makeVC(collectBilling: true, collectShipping: true)
-            XCTAssertTrue(vc.hasSameAsBillingCheckboxForTest)
-            XCTAssertTrue(vc.isSameAsBillingOnForTest)
-            XCTAssertFalse(vc.isShippingFormVisibleForTest)
-        }
-
         func test_pay_noBillingForm_sendsShippingFormValues_andNilBilling() {
             let (vc, delegate) = makeVC(billing: .off, shipping: .simple)
             (vc.shippingAddressViewForTest as? SimpleAddressFormView)?
                 .fillForTest(country: "US", line1: "1 Main", postalCode: "94103", firstName: "Ada", lastName: "L")
             vc.fillCardForTest()
             vc.sendTouchOnPayButtonForTest()
-            guard case let .confirmNewCard(_, _, billing, shipping)? = delegate.action else {
+            guard case let .confirmNewCard(_, _, billing, shipping, _, _)? = delegate.action else {
                 return XCTFail("expected .confirmNewCard")
             }
             XCTAssertNil(billing)
@@ -1172,7 +1268,7 @@
             shipping?.setTextForTest(.postalCode, "94103")
             vc.fillCardForTest()
             vc.sendTouchOnPayButtonForTest()
-            guard case let .confirmNewCard(_, _, billing, shipping)? = delegate.action else {
+            guard case let .confirmNewCard(_, _, billing, shipping, _, _)? = delegate.action else {
                 return XCTFail("expected .confirmNewCard")
             }
             XCTAssertNil(billing)
@@ -1198,7 +1294,6 @@
         func test_automatic_shippingFlagShowsShippingSection() {
             let (vc, _) = makeVC(collectBilling: false, collectShipping: true)
             XCTAssertFalse(vc.isBillingFormVisibleForTest)
-            vc.setSameAsBillingForTest(false)
             XCTAssertTrue(vc.isShippingFormVisibleForTest)
         }
 
@@ -1209,7 +1304,6 @@
 
         func test_fullBillingHasNoNameFields_fullShippingHasNameFields() {
             let (vc, _) = makeVC(collectBilling: true, collectShipping: true)
-            vc.setSameAsBillingForTest(false)
             let billing = vc.billingAddressViewForTest as? DynamicAddressFormView
             let shipping = vc.shippingAddressViewForTest as? DynamicAddressFormView
             XCTAssertNotNil(billing)
@@ -1239,18 +1333,24 @@
             XCTAssertEqual(shipping?.addressInput.lastName, "Lovelace")
         }
 
-        func test_pay_sameAsBilling_sendsBillingValuesAsShipping() {
+        func test_bothForms_shippingFormWithNamePhoneVisible_andValuesReachSubmit() {
             let (vc, delegate) = makeVC(billing: .simple, shipping: .simple)
+            XCTAssertTrue(vc.isBillingFormVisibleForTest)
+            XCTAssertTrue(vc.isShippingFormVisibleForTest)
+            let shippingForm = vc.shippingAddressViewForTest as? SimpleAddressFormView
+            XCTAssertEqual(shippingForm?.hasNameFieldsForTest, true)
             (vc.billingAddressViewForTest as? SimpleAddressFormView)?
                 .fillForTest(country: "US", line1: "1 Main", postalCode: "94103")
+            shippingForm?.fillForTest(
+                country: "CA", line1: "2 Side", postalCode: "M5V", firstName: "Ada", lastName: "L", phone: "5551234")
             vc.fillCardForTest()
             vc.sendTouchOnPayButtonForTest()
-            let expected = AddressInput(country: "US", line1: "1 Main", postalCode: "94103")
-            guard case let .confirmNewCard(_, _, billing, shipping)? = delegate.action else {
+            guard case let .confirmNewCard(_, _, _, shipping, _, _)? = delegate.action else {
                 return XCTFail("expected .confirmNewCard")
             }
-            XCTAssertEqual(billing, expected)
-            XCTAssertEqual(shipping, expected)
+            XCTAssertEqual(shipping?.country, "CA")
+            XCTAssertEqual(shipping?.firstName, "Ada")
+            XCTAssertEqual(shipping?.phone, "5551234")
         }
 
         func test_pay_shippingSectionOff_sendsNilShipping() {
@@ -1259,7 +1359,7 @@
                 .fillForTest(country: "US", line1: "1 Main", postalCode: "94103")
             vc.fillCardForTest()
             vc.sendTouchOnPayButtonForTest()
-            guard case let .confirmNewCard(_, _, billing, shipping)? = delegate.action else {
+            guard case let .confirmNewCard(_, _, billing, shipping, _, _)? = delegate.action else {
                 return XCTFail("expected .confirmNewCard")
             }
             XCTAssertNotNil(billing)
@@ -1270,16 +1370,85 @@
             let (vc, delegate) = makeVC(billing: .simple, shipping: .simple)
             (vc.billingAddressViewForTest as? SimpleAddressFormView)?
                 .fillForTest(country: "US", line1: "1 Main", postalCode: "94103")
-            vc.setSameAsBillingForTest(false)
             (vc.shippingAddressViewForTest as? SimpleAddressFormView)?
                 .fillForTest(country: "CA", line1: "2 Side", postalCode: "M5V", firstName: "Ada", lastName: "L")
             vc.fillCardForTest()
             vc.sendTouchOnPayButtonForTest()
-            guard case let .confirmNewCard(_, _, _, shipping)? = delegate.action else {
+            guard case let .confirmNewCard(_, _, _, shipping, _, _)? = delegate.action else {
                 return XCTFail("expected .confirmNewCard")
             }
             XCTAssertEqual(shipping?.country, "CA")
             XCTAssertEqual(shipping?.firstName, "Ada")
+        }
+
+        func test_automatic_usableBillingEntry_hidesBillingForm() {
+            let (vc, _) = makeVC(collectBilling: true, billingEntryUsable: true)
+            XCTAssertNil(vc.billingAddressViewForTest)
+        }
+
+        func test_automatic_unusableBillingEntry_showsFullBillingForm() {
+            let (vc, _) = makeVC(collectBilling: true, billingEntryUsable: false)
+            XCTAssertTrue(vc.billingAddressViewForTest is DynamicAddressFormView)
+        }
+
+        func test_automatic_usableShippingEntry_hidesShippingForm() {
+            let (vc, _) = makeVC(collectShipping: true, shippingEntryUsable: true)
+            XCTAssertNil(vc.shippingAddressViewForTest)
+        }
+
+        func test_explicitSimple_withUsableEntry_showsFormAndReportsFormShown() {
+            let (vc, delegate) = makeVC(
+                billing: .simple, shipping: .off, collectBilling: true, billingEntryUsable: true)
+            XCTAssertTrue(vc.billingAddressViewForTest is SimpleAddressFormView)
+            vc.fillCardForTest()
+            vc.sendTouchOnPayButtonForTest()
+            guard case let .confirmNewCard(_, _, _, _, billingShown, shippingShown)? = delegate.action else {
+                return XCTFail("expected .confirmNewCard")
+            }
+            XCTAssertTrue(billingShown)
+            XCTAssertFalse(shippingShown)
+        }
+
+        func test_pay_noForms_reportsNoFormShown() {
+            let (vc, delegate) = makeVC(collectBilling: true, billingEntryUsable: true)
+            vc.fillCardForTest()
+            vc.sendTouchOnPayButtonForTest()
+            guard case let .confirmNewCard(_, _, _, _, billingShown, shippingShown)? = delegate.action else {
+                return XCTFail("expected .confirmNewCard")
+            }
+            XCTAssertFalse(billingShown)
+            XCTAssertFalse(shippingShown)
+        }
+
+        func test_simpleForms_phoneOnShippingOnly() {
+            let (vc, _) = makeVC(billing: .simple, shipping: .simple)
+            XCTAssertEqual((vc.billingAddressViewForTest as? SimpleAddressFormView)?.hasPhoneFieldForTest, false)
+            XCTAssertEqual((vc.shippingAddressViewForTest as? SimpleAddressFormView)?.hasPhoneFieldForTest, true)
+        }
+
+        func test_fullForms_phoneOnShippingOnly() {
+            let (vc, _) = makeVC(billing: .full, shipping: .full)
+            let billing = vc.billingAddressViewForTest as? DynamicAddressFormView
+            let shipping = vc.shippingAddressViewForTest as? DynamicAddressFormView
+            billing?.waitForLoadForTest()
+            shipping?.waitForLoadForTest()
+            XCTAssertEqual(billing?.hasPhoneFieldForTest, false)
+            XCTAssertEqual(shipping?.hasPhoneFieldForTest, true)
+        }
+
+        func test_simpleShipping_returnsPhone() {
+            let (vc, _) = makeVC(billing: .off, shipping: .simple)
+            let shipping = vc.shippingAddressViewForTest as? SimpleAddressFormView
+            shipping?.fillForTest(country: "US", line1: "1 Main", postalCode: "94103", phone: "5551234")
+            XCTAssertEqual(shipping?.addressInput.phone, "5551234")
+        }
+
+        func test_fullShipping_returnsPhone() {
+            let (vc, _) = makeVC(billing: .off, shipping: .full)
+            let shipping = vc.shippingAddressViewForTest as? DynamicAddressFormView
+            shipping?.waitForLoadForTest()
+            shipping?.setPhoneForTest("5551234")
+            XCTAssertEqual(shipping?.addressInput.phone, "5551234")
         }
     }
 #endif

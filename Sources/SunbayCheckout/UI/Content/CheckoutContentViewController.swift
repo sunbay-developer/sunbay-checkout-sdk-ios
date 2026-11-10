@@ -44,6 +44,10 @@
 
         private let session: CheckoutSession
         private let savedCards: [SavedCard]
+        /// Whether the (filtered) session offers a card; no card → no new-card row and no saved cards.
+        private let cardAvailable: Bool
+        /// Whether the host filter left an `APPLE_PAY` entry in place.
+        private let applePayVisible: Bool
         private let appearance: ResolvedAppearance
         private let localize: (String) -> String
         /// The host-configured locale (BCP-47), or nil to follow the system. Drives amount formatting
@@ -71,6 +75,11 @@
         private let walletAuthorizer: (any WalletAuthorizing)?
         /// The resolved Apple Pay merchant id (host configuration first); nil = not configured.
         private let walletMerchantId: String?
+        /// Resolves the contacts to request for a tap from the controller, given which SDK address forms are shown.
+        /// nil (no controller wired) requests none.
+        private let walletContacts: (@Sendable (Bool, Bool) async -> WalletContactRequest)?
+        /// Reports the names of unusable Apple Pay parameters (once per session via the diagnostics dedup).
+        private let onWalletParamsInvalid: (@Sendable ([String]) -> Void)?
         /// Set while the PassKit sheet is up, so a second tap cannot start a parallel authorization.
         private var isAuthorizingWallet = false
         /// Resumed by `applyOutcome` with the outcome of an in-sheet wallet confirm, so the Apple Pay
@@ -110,7 +119,6 @@
 
         private var billingAddressView: UIView?
         private var shippingAddressView: UIView?
-        private var shippingSameAsBillingSwitch: CheckboxControl?
         private var shippingContainer: UIStackView?
 
         // MARK: - Layout containers
@@ -177,6 +185,9 @@
         ///   - cardBinService: BIN recognition (internal; the empty default keeps local prefix matching).
         ///   - cardRulesService: Remote rules refresh (internal; the empty default keeps the cached /
         ///     bundled rules).
+        ///   - billingEntryUsable: Whether the host supplied a complete billing address the session collects;
+        ///     `.automatic` then shows no billing form.
+        ///   - shippingEntryUsable: Same for the shipping address.
         init(
             session: CheckoutSession,
             savedCards: [SavedCard],
@@ -189,24 +200,36 @@
             homeTitle: String? = nil,
             walletAuthorizer: (any WalletAuthorizing)? = nil,
             walletMerchantId: String? = nil,
+            walletContacts: (@Sendable (Bool, Bool) async -> WalletContactRequest)? = nil,
+            onWalletParamsInvalid: (@Sendable ([String]) -> Void)? = nil,
             cardOnFileEnabled: Bool = false,
             saveCardByDefault: Bool = false,
             cardBinService: any CardBinService = EmptyCardBinService(),
-            cardRulesService: any CardRulesService = EmptyCardRulesService()
+            cardRulesService: any CardRulesService = EmptyCardRulesService(),
+            billingEntryUsable: Bool = false,
+            shippingEntryUsable: Bool = false,
+            visibleEntries: [MethodEntry]? = nil
         ) {
+            let entries = visibleEntries ?? session.methodEntries
+            self.cardAvailable = entries.contains { PaymentMethodModel.logicalKey($0) == "CARD" }
+            self.applePayVisible = entries.contains { PaymentMethodModel.logicalKey($0) == "APPLE_PAY" }
             self.cardOnFileEnabled = cardOnFileEnabled
             self.saveCardByDefault = saveCardByDefault
             self.cardBinService = cardBinService
             self.cardRulesService = cardRulesService
             self.walletAuthorizer = walletAuthorizer
             self.walletMerchantId = walletMerchantId
+            self.walletContacts = walletContacts
+            self.onWalletParamsInvalid = onWalletParamsInvalid
             self.session = session
-            self.savedCards = savedCards
+            self.savedCards = cardAvailable ? savedCards : []
             self.appearance = appearance
             self.localize = localize
             self.localeCode = localeCode
-            self.billingMode = .resolveAddressMode(billingMode, collect: session.collectBillingAddress)
-            self.shippingMode = .resolveAddressMode(shippingMode, collect: session.collectShippingAddress)
+            self.billingMode = .resolveAddressMode(
+                billingMode, collect: session.collectBillingAddress, hasUsableEntry: billingEntryUsable)
+            self.shippingMode = .resolveAddressMode(
+                shippingMode, collect: session.collectShippingAddress, hasUsableEntry: shippingEntryUsable)
             self.addressService = addressService
             self.homeTitle = homeTitle
             super.init(nibName: nil, bundle: nil)
@@ -286,22 +309,12 @@
             /// Test readout: the billing address form is part of the new-card page.
             var isBillingFormVisibleForTest: Bool { billingAddressView.map { !$0.isHidden } ?? false }
 
-            /// Test readout: the shipping form is shown (section present and "same as billing" off).
+            /// Test readout: the shipping form is shown (section present).
             var isShippingFormVisibleForTest: Bool { shippingAddressView.map { !$0.isHidden } ?? false }
 
             /// The billing / shipping address form views (nil when the section is off).
             var billingAddressViewForTest: UIView? { billingAddressView }
             var shippingAddressViewForTest: UIView? { shippingAddressView }
-
-            /// Test readout: whether the "same as billing" checkbox exists (only with a billing form).
-            var hasSameAsBillingCheckboxForTest: Bool { shippingSameAsBillingSwitch != nil }
-            var isSameAsBillingOnForTest: Bool { shippingSameAsBillingSwitch?.isOn ?? false }
-
-            /// Sets the "same as billing" checkbox and applies its effect.
-            func setSameAsBillingForTest(_ on: Bool) {
-                shippingSameAsBillingSwitch?.isOn = on
-                handleSameAsBillingChanged()
-            }
 
             /// Test readout: the save-card checkbox state (false when the row is absent).
             var isSaveCardOnForTest: Bool { saveCardSwitch?.isOn ?? false }
@@ -567,19 +580,15 @@
             }
             let save = saveCardSwitch?.isOn ?? false
             let billing = formAddress(from: billingAddressView)
-            // "Same as billing" (or no shipping form) reuses the billing form values; otherwise the
-            // shipping form's own values. With no shipping section at all the form shipping is nil.
-            let shipping: AddressInput?
-            if shippingAddressView == nil {
-                shipping = nil
-            } else if let sameAsBilling = shippingSameAsBillingSwitch, sameAsBilling.isOn {
-                shipping = billing
-            } else {
-                shipping = formAddress(from: shippingAddressView)
-            }
+            // The shipping form's own values; nil when there is no shipping section.
+            let shipping = formAddress(from: shippingAddressView)
             guard beginProcessing() else { return }
             delegate?.content(
-                self, didRequest: .confirmNewCard(input, save: save, billing: billing, shipping: shipping))
+                self,
+                didRequest: .confirmNewCard(
+                    input, save: save, billing: billing, shipping: shipping,
+                    billingFormShown: billingAddressView != nil,
+                    shippingFormShown: shippingAddressView != nil))
         }
 
         /// The values currently entered in an address form (nil when the form is absent). PII: never logged.
@@ -600,7 +609,11 @@
         /// Confirm a wallet payment once a token has been obtained.
         private func handleConfirmWallet(token: Data) {
             guard beginProcessing() else { return }
-            delegate?.content(self, didRequest: .confirmWallet(token: token))
+            delegate?.content(
+                self,
+                didRequest: .confirmWallet(
+                    WalletAuthorization(token: token, billing: nil, shipping: nil, email: nil),
+                    billingFormShown: billingAddressView != nil, shippingFormShown: shippingAddressView != nil))
         }
 
         /// Moves to the processing phase: machine, CTA spinner, disabled inputs, delegate notices.
@@ -858,9 +871,11 @@
                 homeStack.addArrangedSubview(summary)
             }
 
-            let entry = makeNewCardEntryRow()
-            newCardEntryRow = entry
-            homeStack.addArrangedSubview(entry)
+            if cardAvailable {
+                let entry = makeNewCardEntryRow()
+                newCardEntryRow = entry
+                homeStack.addArrangedSubview(entry)
+            }
 
             if appearance.expressPosition == .bottom, let express {
                 homeStack.addArrangedSubview(express)
@@ -939,12 +954,16 @@
         /// home page's `homeStack` (first for `.top`, last for `.bottom`), so it never appears on the
         /// new-card subpage.
         private func makeExpressView() -> ExpressCheckoutView? {
-            guard appearance.expressPosition != .off, session.methods.contains(.applePay) else {
+            guard appearance.expressPosition != .off, applePayVisible, session.methods.contains(.applePay) else {
                 return nil
             }
             // Three-factor availability (design §7.4): backend allows ∩ device capable ∩ merchant id.
             if let walletAuthorizer {
-                guard walletAuthorizer.canMakePayments(), walletMerchantId != nil else { return nil }
+                let availability = ApplePayAvailability.evaluate(
+                    session: session, hiddenByFilter: !applePayVisible, authorizer: walletAuthorizer,
+                    merchantId: walletMerchantId)
+                if !availability.missing.isEmpty { onWalletParamsInvalid?(availability.missing) }
+                guard availability.available else { return nil }
             }
             let express = ExpressCheckoutView(
                 appearance: appearance,
@@ -1029,7 +1048,7 @@
         /// The Apple Pay row forwards a tap: run the PassKit authorization, then confirm the token.
         ///
         /// A pre-staged token (test hook) is confirmed directly. Otherwise the injected
-        /// `walletAuthorizer` presents the system sheet; a token → `.confirmWallet(token:)`
+        /// `walletAuthorizer` presents the system sheet; an authorization → `.confirmWallet`
         /// (authorization success ≠ payment success; the outcome comes back via `applyOutcome`).
         /// A user cancel leaves the sheet as-is; an authorization failure shows the inline error.
         /// The token flows only into `didRequest` and is never logged or stored (§5).
@@ -1046,14 +1065,25 @@
             isAuthorizingWallet = true
             notice.hide()
             let amount = session.amount
+            let merchantName = session.merchantName
+            let params = session.applePayParams
+            // The flags say whether the SDK shows a form for that kind right now; the same flags go to `confirmWallet`.
+            let billingFormShown = billingAddressView != nil
+            let shippingFormShown = shippingAddressView != nil
+            let walletContacts = walletContacts
             Task { @MainActor [weak self] in
                 do {
+                    let contacts = await walletContacts?(billingFormShown, shippingFormShown)
+                        ?? WalletContactRequest(billing: false, shipping: false)
                     // Each authorized token is confirmed while the Apple Pay sheet stays open; the
                     // outcome is applied to this content through the normal `applyOutcome` path.
-                    _ = try await walletAuthorizer.authorize(amount: amount, merchantId: merchantId) {
-                        [weak self] token in
+                    _ = try await walletAuthorizer.authorize(
+                        amount: amount, merchantId: merchantId, merchantName: merchantName,
+                        params: params, contacts: contacts
+                    ) { [weak self] authorization in
                         guard let self else { return .canceled }
-                        return await self.confirmWalletAwaitingOutcome(token: token)
+                        return await self.confirmWalletAwaitingOutcome(
+                            authorization, billingFormShown: billingFormShown, shippingFormShown: shippingFormShown)
                     }
                     self?.isAuthorizingWallet = false
                 } catch {
@@ -1084,7 +1114,9 @@
         ///
         /// When a confirm must not start (one already in flight, or locked while reconciling) nothing
         /// is submitted and a `.failed` outcome is returned so the system sheet shows a failure.
-        private func confirmWalletAwaitingOutcome(token: Data) async -> CheckoutOutcome {
+        private func confirmWalletAwaitingOutcome(
+            _ authorization: WalletAuthorization, billingFormShown: Bool, shippingFormShown: Bool
+        ) async -> CheckoutOutcome {
             guard delegate != nil, beginProcessing() else {
                 return .failed(
                     txnId: nil,
@@ -1098,7 +1130,10 @@
             }
             return await withCheckedContinuation { continuation in
                 walletOutcomeContinuation = continuation
-                delegate?.content(self, didRequest: .confirmWallet(token: token))
+                delegate?.content(
+                    self,
+                    didRequest: .confirmWallet(
+                        authorization, billingFormShown: billingFormShown, shippingFormShown: shippingFormShown))
             }
         }
 
@@ -1249,59 +1284,16 @@
             }
         }
 
-        /// Builds the shipping section: a header row (uppercase title on the left, a "same as billing"
-        /// checkbox + label on the right), and the shipping form. The checkbox exists only when a billing
-        /// form exists; it defaults on, so the shipping form then starts hidden. With no billing form
-        /// there is nothing to copy from, so the shipping form is visible from the start.
+        /// Builds the shipping section: a title and the shipping form. There is no "same as billing"
+        /// shortcut because the shipping form also collects name and phone, which billing does not.
         private func makeShippingSection() -> UIView? {
             guard let shipping = makeAddressView(mode: shippingMode, options: .shipping) else { return nil }
             shippingAddressView = shipping
-
-            // Without a billing form there is nothing to copy from: show the shipping form directly,
-            // with no "same as billing" checkbox, and Pay uses the shipping form's own values.
-            if billingAddressView == nil {
-                let title = makeSectionTitle("sunbay.address.shippingTitle")
-                let container = UIStackView(arrangedSubviews: [title, shipping])
-                container.axis = .vertical
-                container.spacing = 12
-                shippingContainer = container
-                return container
-            }
-
-            let title = makeSectionTitle("sunbay.address.shippingTitle")
-            title.setContentHuggingPriority(.defaultLow, for: .horizontal)
-
-            let checkbox = CheckboxControl(appearance: appearance)
-            checkbox.isOn = true
-            checkbox.addTarget(self, action: #selector(handleSameAsBillingChanged), for: .valueChanged)
-            shippingSameAsBillingSwitch = checkbox
-
-            let toggleLabel = UILabel()
-            toggleLabel.text = localize("sunbay.address.sameAsBilling")
-            toggleLabel.font = appearance.optionLabelFont
-            toggleLabel.textColor = appearance.optionLabelColor
-            toggleLabel.setContentHuggingPriority(.required, for: .horizontal)
-            checkbox.attachLabel(toggleLabel)
-
-            // Header row: title (left) ... checkbox + label (right), on one line.
-            let headerRow = UIStackView(arrangedSubviews: [title, checkbox, toggleLabel])
-            headerRow.axis = .horizontal
-            headerRow.alignment = .center
-            headerRow.spacing = 10
-
-            let container = UIStackView(arrangedSubviews: [headerRow, shipping])
+            let container = UIStackView(arrangedSubviews: [makeSectionTitle("sunbay.address.shippingTitle"), shipping])
             container.axis = .vertical
             container.spacing = 12
             shippingContainer = container
-
-            // Default: "same as billing" is on, so the shipping form is hidden initially.
-            shipping.isHidden = true
             return container
-        }
-
-        @objc private func handleSameAsBillingChanged() {
-            guard let sameAsBilling = shippingSameAsBillingSwitch?.isOn else { return }
-            shippingAddressView?.isHidden = sameAsBilling
         }
 
         // MARK: - Header / navigation

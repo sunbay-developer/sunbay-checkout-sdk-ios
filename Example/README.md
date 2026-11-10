@@ -138,12 +138,21 @@ maps into a `CheckoutConfiguration` (environment always `.dev`) or the dev-sessi
   the real HPP address API.
   - **Order requires billing address** / **Order requires shipping address** - send
     `collectBillingAddress` / `collectShippingAddress` to the dev server (independent of the pickers).
-  - **Pass a host billing address** - passes a fixed US test address (San Jose, CA) to
-    `PaymentSheet(billingAddress:)`. It is sent as is and wins over what the form collects.
+  - **Pass a host billing address** / **Pass a host shipping address** - pass a fixed, complete US test
+    address (San Jose, CA; the shipping one has names and a phone) to
+    `PaymentSheet(billingAddress:shippingAddress:)`. A host address is used only when the session collects
+    that kind and the address is complete; with Automatic the form for that kind is then hidden. A form that
+    is shown wins over the host address.
+- **Payment methods** - **Hide Apple Pay** / **Hide Card** build `CheckoutConfiguration.paymentMethodFilter`
+  (`PaymentMethodFilter(hide:)`). Hiding Card also hides saved cards; hiding both makes `present` fail with
+  `NO_PAYMENT_METHOD_AVAILABLE`.
 - **Amount** - USD only; minor units (default 105 = 1.05). Sent to the dev server as major units.
 - **Card on file** - the two switches above.
 
 Below the knobs:
+
+- **Diagnostics** (inside "Last outcome") - every event delivered through `SunbayCheckout.onDiagnostic`,
+  one line each: code, ignored names and reason only (never address values). "Clear" empties the list.
 
 - **PaymentSheet (L1 black-box)** - "Pay (sheet)" creates a session through the dev server, then
   constructs `PaymentSheet(checkout:sessionId:customerAccessSecret:checkoutClientSecret:)` and calls
@@ -161,12 +170,13 @@ hand-writes **no** Chinese string literals; the configured `CheckoutConfiguratio
 the SDK, whose bundled `.strings` provide the localized titles. This app is the UI localization
 verification surface.
 
-## In-sheet Apple Pay (known v-next wiring item)
+## Apple Pay in the sheet and standalone
 
-The Apple Pay **row inside the PaymentSheet** is currently a cancel-only placeholder in the SDK
-(wiring it to real wallet authorization would require changing SDK internals, out of scope here).
-**The working wallet path in this release is the standalone `ApplePayButton`**, which drives
-`confirmWallet` end-to-end.
+Both the Apple Pay row inside the PaymentSheet and the standalone `ApplePayButton` authorize through the
+same wallet path: the request is built from the session's `ewalletParam`, contacts are requested only when
+the session collects an address that the host did not supply, and the returned addresses are submitted with
+the payment. Use the "Hide Apple Pay" toggle to exercise `paymentMethodFilter`. Real-device behavior is
+tracked in `docs/real-api-integration-checklist.md`.
 
 ## Apple Pay on device
 

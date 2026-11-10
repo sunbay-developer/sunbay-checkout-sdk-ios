@@ -52,6 +52,9 @@ public struct CheckoutConfiguration: Sendable, Equatable {
     /// Card-on-file (saved card) options. Defaults to `CardOnFileOptions()`.
     public let cardOnFile: CardOnFileOptions
 
+    /// Hides and reorders payment methods; defaults to no filtering.
+    public let paymentMethodFilter: PaymentMethodFilter
+
     #if canImport(UIKit)
         /// Creates a configuration.
         ///
@@ -65,13 +68,15 @@ public struct CheckoutConfiguration: Sendable, Equatable {
         ///   - locale: Locale; defaults to nil.
         ///   - paymentSheetTitle: Custom home-page title; defaults to nil (uses the localized default).
         ///   - cardOnFile: Card-on-file options; defaults to `CardOnFileOptions()`.
+        ///   - paymentMethodFilter: Hides and reorders payment methods; defaults to no filtering.
         public init(
             environment: Environment = .production,
             applePayMerchantId: String? = nil,
             appearance: Appearance? = nil,
             locale: String? = nil,
             paymentSheetTitle: String? = nil,
-            cardOnFile: CardOnFileOptions = CardOnFileOptions()
+            cardOnFile: CardOnFileOptions = CardOnFileOptions(),
+            paymentMethodFilter: PaymentMethodFilter = PaymentMethodFilter()
         ) {
             self.environment = environment
             self.applePayMerchantId = applePayMerchantId
@@ -79,6 +84,7 @@ public struct CheckoutConfiguration: Sendable, Equatable {
             self.locale = locale
             self.paymentSheetTitle = paymentSheetTitle
             self.cardOnFile = cardOnFile
+            self.paymentMethodFilter = paymentMethodFilter
         }
     #else
         /// Creates a configuration.
@@ -92,18 +98,21 @@ public struct CheckoutConfiguration: Sendable, Equatable {
         ///   - locale: Locale; defaults to nil.
         ///   - paymentSheetTitle: Custom home-page title; defaults to nil (uses the localized default).
         ///   - cardOnFile: Card-on-file options; defaults to `CardOnFileOptions()`.
+        ///   - paymentMethodFilter: Hides and reorders payment methods; defaults to no filtering.
         public init(
             environment: Environment = .production,
             applePayMerchantId: String? = nil,
             locale: String? = nil,
             paymentSheetTitle: String? = nil,
-            cardOnFile: CardOnFileOptions = CardOnFileOptions()
+            cardOnFile: CardOnFileOptions = CardOnFileOptions(),
+            paymentMethodFilter: PaymentMethodFilter = PaymentMethodFilter()
         ) {
             self.environment = environment
             self.applePayMerchantId = applePayMerchantId
             self.locale = locale
             self.paymentSheetTitle = paymentSheetTitle
             self.cardOnFile = cardOnFile
+            self.paymentMethodFilter = paymentMethodFilter
         }
     #endif
 }

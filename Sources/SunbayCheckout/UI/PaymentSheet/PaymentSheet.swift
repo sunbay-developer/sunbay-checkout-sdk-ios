@@ -52,11 +52,15 @@
         /// internal: used only to pass user intent between the shell and the testable logic/tests, not exposed externally.
         enum UserAction: Sendable {
             /// Confirm a new card (optionally checked to save + consent).
-            case confirmNewCard(CardInput, save: Bool, billing: AddressInput? = nil, shipping: AddressInput? = nil)
+            ///
+            /// `billingFormShown` / `shippingFormShown` say whether the SDK showed a form for that kind.
+            case confirmNewCard(
+                CardInput, save: Bool, billing: AddressInput? = nil, shipping: AddressInput? = nil,
+                billingFormShown: Bool = false, shippingFormShown: Bool = false)
             /// Pay with a selected saved card (COF; the user selects a card then taps Pay).
             case confirmSavedCard(paymentMethodId: String)
             /// The Apple Pay wallet token has been obtained; confirm the wallet payment.
-            case confirmWallet(token: Data)
+            case confirmWallet(WalletAuthorization, billingFormShown: Bool = false, shippingFormShown: Bool = false)
             /// The user canceled.
             case cancel
         }
@@ -81,6 +85,12 @@
             let cardOnFileEnabled: Bool
             /// Whether the save-card checkbox starts ticked.
             let saveCardByDefault: Bool
+            /// Whether the host supplied a complete billing address the session collects.
+            var billingEntryUsable: Bool = false
+            /// Whether the host supplied a complete shipping address the session collects.
+            var shippingEntryUsable: Bool = false
+            /// The session's method entries after the host filter (what the UI may offer).
+            var visibleEntries: [MethodEntry] = []
         }
 
         // MARK: - Dependencies
@@ -126,6 +136,8 @@
         private let walletAuthorizer: any WalletAuthorizing
         /// The resolved Apple Pay merchant id (host configuration first); nil hides the Apple Pay row.
         private let walletMerchantId: String?
+        /// The host's hide / order filter for payment methods.
+        private let paymentMethodFilter: PaymentMethodFilter
         /// Screen metrics snapshot shared with the checkout's default payment service; recorded in `present`.
         private let screenMetrics: ScreenMetricsStore?
         // MARK: - Public observation
@@ -186,7 +198,8 @@
                     configured: checkout.configuration.applePayMerchantId,
                     sessionProvided: nil
                 ),
-                screenMetrics: checkout.screenMetrics
+                screenMetrics: checkout.screenMetrics,
+                paymentMethodFilter: checkout.configuration.paymentMethodFilter
             )
         }
 
@@ -227,8 +240,10 @@
             addressMetadataService: any AddressMetadataService = EmptyAddressMetadataService(),
             walletAuthorizer: any WalletAuthorizing = WalletAuthorizer(),
             walletMerchantId: String? = nil,
-            screenMetrics: ScreenMetricsStore? = nil
+            screenMetrics: ScreenMetricsStore? = nil,
+            paymentMethodFilter: PaymentMethodFilter = PaymentMethodFilter()
         ) {
+            self.paymentMethodFilter = paymentMethodFilter
             self.screenMetrics = screenMetrics
             self.walletAuthorizer = walletAuthorizer
             self.walletMerchantId = walletMerchantId
@@ -289,6 +304,12 @@
                 addressService: addressMetadataService,
                 walletAuthorizer: walletAuthorizer,
                 walletMerchantId: walletMerchantId,
+                walletContacts: { [controller] billing, shipping in
+                    await controller.walletContactRequest(billingFormShown: billing, shippingFormShown: shipping)
+                },
+                onWalletParamsInvalid: { [controller] missing in
+                    Task { await controller.reportWalletParamsInvalid(missing: missing) }
+                },
                 onStateChange: { [weak self] state in self?.onStateChange?(state) }
             )
 
@@ -416,8 +437,37 @@
                 return .startFailed(.unknown(sessionId: sessionId))
             }
 
+            // Host filter + provider availability, before any UI. Nothing available → terminal failure.
+            let filtered = PaymentMethodModel.apply(paymentMethodFilter, to: session.methodEntries)
+            await controller.reportFilterIgnored(filtered.ignored)
+            let expressOff = appearance.expressPosition == .off
+            var walletMissing: [String] = []
+            let available = PaymentProviderRegistry.available(entries: filtered.entries) { provider in
+                guard provider.key == "APPLE_PAY" else { return true }
+                guard !expressOff else { return false }
+                let availability = ApplePayAvailability.evaluate(
+                    session: session, hiddenByFilter: false, authorizer: walletAuthorizer,
+                    merchantId: walletMerchantId)
+                walletMissing = availability.missing
+                return availability.available
+            }
+            // The entry survived the filter (this closure only runs for visible entries), so unusable wallet
+            // parameters are reported once (deduplicated by the reporter), even when nothing else is available.
+            await controller.reportWalletParamsInvalid(missing: walletMissing)
+            guard !available.isEmpty else {
+                await controller.dismiss()
+                return .startFailed(.failed(
+                    txnId: nil,
+                    error: CheckoutError(
+                        code: "NO_PAYMENT_METHOD_AVAILABLE",
+                        message: "No payment method is available for this checkout.",
+                        category: .configuration, traceId: nil)))
+            }
+            let cardAvailable = available.contains { $0.key == "CARD" }
+
             // 2. Automatic COF inclusion decision (§2.2): has secret and the backend has COF on → list cards; otherwise do not.
-            let cardOnFileEnabled = await controller.isCardOnFileEnabled
+            // A hidden / absent CARD hides saved cards too and skips the list request.
+            let cardOnFileEnabled = await controller.isCardOnFileEnabled && cardAvailable
             let saveCardByDefault = await controller.cardOnFileSaveByDefault
             let savedCards: [SavedCard]
             if cardOnFileEnabled {
@@ -426,10 +476,25 @@
                 savedCards = []
             }
 
+            // Host address entries: report incomplete ones once, and tell the UI which are usable (so
+            // `.automatic` shows no form for them).
+            let billingEntryUsable = await controller.usableHostEntry(.billing) != nil
+            let shippingEntryUsable = await controller.usableHostEntry(.shipping) != nil
+            let billingFormShown = Appearance.AddressCollectionMode.resolveAddressMode(
+                appearance.billingAddressMode, collect: session.collectBillingAddress,
+                hasUsableEntry: billingEntryUsable) != .off
+            let shippingFormShown = Appearance.AddressCollectionMode.resolveAddressMode(
+                appearance.shippingAddressMode, collect: session.collectShippingAddress,
+                hasUsableEntry: shippingEntryUsable) != .off
+            await controller.evaluateHostEntries(
+                billingFormShown: billingFormShown, shippingFormShown: shippingFormShown)
+
             // 3. Wait for the user action.
             let action = await seam(CheckoutContext(
                     session: session, savedCards: savedCards,
-                    cardOnFileEnabled: cardOnFileEnabled, saveCardByDefault: saveCardByDefault))
+                    cardOnFileEnabled: cardOnFileEnabled, saveCardByDefault: saveCardByDefault,
+                    billingEntryUsable: billingEntryUsable, shippingEntryUsable: shippingEntryUsable,
+                    visibleEntries: filtered.entries))
 
             // 4. Drive the confirmation path.
             return await execute(action)
@@ -438,14 +503,16 @@
         /// Drives the `controller.confirm*` call (or cancel) for a user action.
         func execute(_ action: UserAction) async -> AttemptResult {
             switch action {
-            case let .confirmNewCard(input, save, billing, shipping):
+            case let .confirmNewCard(input, save, billing, shipping, billingFormShown, shippingFormShown):
                 // `save` maps to `storeCard` in the controller (sent only when the checkbox is on and COF is effective: session `supportStoreCard`, host `cardOnFile.isEnabled`, and a `customerAccessSecret`).
                 return .outcome(await controller.confirmNewCard(
-                    input, save: save, billingAddress: billing, shippingAddress: shipping))
+                    input, save: save, billingAddress: billing, shippingAddress: shipping,
+                    billingFormShown: billingFormShown, shippingFormShown: shippingFormShown))
             case let .confirmSavedCard(paymentMethodId):
                 return .outcome(await controller.confirmSavedCard(paymentMethodId: paymentMethodId))
-            case let .confirmWallet(token):
-                return .outcome(await controller.confirmWallet(token: token))
+            case let .confirmWallet(authorization, billingFormShown, shippingFormShown):
+                return .outcome(await controller.confirmWallet(
+                    authorization, billingFormShown: billingFormShown, shippingFormShown: shippingFormShown))
             case .cancel:
                 await controller.dismiss()
                 return .outcome(.canceled)
@@ -486,6 +553,8 @@
         private let addressService: any AddressMetadataService
         private let walletAuthorizer: any WalletAuthorizing
         private let walletMerchantId: String?
+        private let walletContacts: @Sendable (Bool, Bool) async -> WalletContactRequest
+        private let onWalletParamsInvalid: @Sendable ([String]) -> Void
         private let onStateChange: (CheckoutPresentationState) -> Void
 
         /// At most ONE user action that arrived while no one was suspended on `awaitEvent` (e.g. a Pay tap
@@ -516,6 +585,8 @@
             addressService: any AddressMetadataService,
             walletAuthorizer: any WalletAuthorizing,
             walletMerchantId: String?,
+            walletContacts: @escaping @Sendable (Bool, Bool) async -> WalletContactRequest,
+            onWalletParamsInvalid: @escaping @Sendable ([String]) -> Void,
             onStateChange: @escaping (CheckoutPresentationState) -> Void
         ) {
             self.presenter = presenter
@@ -526,6 +597,8 @@
             self.addressService = addressService
             self.walletAuthorizer = walletAuthorizer
             self.walletMerchantId = walletMerchantId
+            self.walletContacts = walletContacts
+            self.onWalletParamsInvalid = onWalletParamsInvalid
             self.onStateChange = onStateChange
         }
 
@@ -575,8 +648,13 @@
                 homeTitle: paymentSheetTitle,
                 walletAuthorizer: walletAuthorizer,
                 walletMerchantId: walletMerchantId,
+                walletContacts: walletContacts,
+                onWalletParamsInvalid: onWalletParamsInvalid,
                 cardOnFileEnabled: context.cardOnFileEnabled,
-                saveCardByDefault: context.saveCardByDefault
+                saveCardByDefault: context.saveCardByDefault,
+                billingEntryUsable: context.billingEntryUsable,
+                shippingEntryUsable: context.shippingEntryUsable,
+                visibleEntries: context.visibleEntries
             )
             let containerVC = PaymentSheetContainerViewController(
                 content: contentVC,

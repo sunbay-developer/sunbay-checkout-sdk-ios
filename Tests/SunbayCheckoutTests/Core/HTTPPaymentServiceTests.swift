@@ -141,6 +141,20 @@ final class HTTPPaymentServiceTests: XCTestCase {
                        ["country": "CA", "address": "2 Side St"])
     }
 
+    func testSubmitEncodesCustomerNameAndEmailOnlyWhenSet() async throws {
+        stub([result("S"), result("S")])
+        let service = await makeService()
+        _ = try await service.submit(SubmitRequest(
+            sessionId: "s1", paymentMethod: "APPLE_PAY", attemptId: UUID(), walletToken: Data([1]),
+            sessionType: "sdk", customerName: "Ada Lovelace", customerEmail: "ada@example.com"))
+        XCTAssertEqual(bodies[0]["customerName"] as? String, "Ada Lovelace")
+        XCTAssertEqual(bodies[0]["customerEmail"] as? String, "ada@example.com")
+        _ = try await service.submit(SubmitRequest(
+            sessionId: "s1", paymentMethod: "CARD", attemptId: UUID(), cardEncryptedData: "C", sessionType: "sdk"))
+        XCTAssertNil(bodies[1]["customerName"])
+        XCTAssertNil(bodies[1]["customerEmail"])
+    }
+
     func testSubmitOmitsEmptyAddresses() async throws {
         stub([result("S")])
         let service = await makeService()

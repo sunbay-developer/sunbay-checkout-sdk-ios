@@ -21,12 +21,12 @@
 "sunbay.card.scan.light" = "Light";
 "sunbay.address.billingTitle" = "Billing address";
 "sunbay.address.shippingTitle" = "Shipping address";
-"sunbay.address.sameAsBilling" = "Same as billing";
 "sunbay.address.firstName" = "First name";
 "sunbay.address.lastName" = "Last name";
 "sunbay.address.country" = "Country";
 "sunbay.address.line1" = "Address";
 "sunbay.address.postalCode" = "Postal code";
+"sunbay.address.phone" = "Phone number";
 "sunbay.address.line1.placeholder" = "123 Market St";
 "sunbay.address.postalCode.placeholder" = "94103";
 "sunbay.address.loadError" = "Couldn't load address options.";
