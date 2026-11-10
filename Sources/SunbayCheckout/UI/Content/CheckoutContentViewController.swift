@@ -177,6 +177,9 @@
         ///   - cardBinService: BIN recognition (internal; the empty default keeps local prefix matching).
         ///   - cardRulesService: Remote rules refresh (internal; the empty default keeps the cached /
         ///     bundled rules).
+        ///   - billingEntryUsable: Whether the host supplied a complete billing address the session collects;
+        ///     `.automatic` then shows no billing form.
+        ///   - shippingEntryUsable: Same for the shipping address.
         init(
             session: CheckoutSession,
             savedCards: [SavedCard],
@@ -192,7 +195,9 @@
             cardOnFileEnabled: Bool = false,
             saveCardByDefault: Bool = false,
             cardBinService: any CardBinService = EmptyCardBinService(),
-            cardRulesService: any CardRulesService = EmptyCardRulesService()
+            cardRulesService: any CardRulesService = EmptyCardRulesService(),
+            billingEntryUsable: Bool = false,
+            shippingEntryUsable: Bool = false
         ) {
             self.cardOnFileEnabled = cardOnFileEnabled
             self.saveCardByDefault = saveCardByDefault
@@ -205,8 +210,10 @@
             self.appearance = appearance
             self.localize = localize
             self.localeCode = localeCode
-            self.billingMode = .resolveAddressMode(billingMode, collect: session.collectBillingAddress)
-            self.shippingMode = .resolveAddressMode(shippingMode, collect: session.collectShippingAddress)
+            self.billingMode = .resolveAddressMode(
+                billingMode, collect: session.collectBillingAddress, hasUsableEntry: billingEntryUsable)
+            self.shippingMode = .resolveAddressMode(
+                shippingMode, collect: session.collectShippingAddress, hasUsableEntry: shippingEntryUsable)
             self.addressService = addressService
             self.homeTitle = homeTitle
             super.init(nibName: nil, bundle: nil)
@@ -579,7 +586,11 @@
             }
             guard beginProcessing() else { return }
             delegate?.content(
-                self, didRequest: .confirmNewCard(input, save: save, billing: billing, shipping: shipping))
+                self,
+                didRequest: .confirmNewCard(
+                    input, save: save, billing: billing, shipping: shipping,
+                    billingFormShown: billingAddressView != nil,
+                    shippingFormShown: shippingAddressView != nil))
         }
 
         /// The values currently entered in an address form (nil when the form is absent). PII: never logged.

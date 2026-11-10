@@ -21,6 +21,7 @@
         private let countryField: FloatingLabelMenuField
         private let line1Field: FloatingLabelTextField
         private let postalField: FloatingLabelTextField
+        private let phoneField: FloatingLabelTextField
 
         private var selectedCountryCode: String?
         private let countries: [(code: String, name: String)]
@@ -45,6 +46,7 @@
                 appearance: appearance, title: localize("sunbay.address.country"))
             self.line1Field = FloatingLabelTextField(appearance: appearance)
             self.postalField = FloatingLabelTextField(appearance: appearance)
+            self.phoneField = FloatingLabelTextField(appearance: appearance)
             super.init(frame: .zero)
             configureSubviews(localize: localize)
         }
@@ -55,14 +57,15 @@
         }
 
         /// The user-entered address; fills `country` / `line1` / `postalCode`, plus `firstName` /
-        /// `lastName` when names are collected.
+        /// `lastName` when names are collected and `phone` when the phone is collected.
         var addressInput: AddressInput {
             AddressInput(
                 country: selectedCountryCode,
                 line1: nonEmpty(line1Field.text),
                 postalCode: nonEmpty(postalField.text),
                 firstName: options.collectName ? nonEmpty(firstNameField.text) : nil,
-                lastName: options.collectName ? nonEmpty(lastNameField.text) : nil
+                lastName: options.collectName ? nonEmpty(lastNameField.text) : nil,
+                phone: options.collectPhone ? nonEmpty(phoneField.text) : nil
             )
         }
 
@@ -92,7 +95,8 @@
             postalField.floatedPlaceholder = localize("sunbay.address.postalCode.placeholder")
             firstNameField.title = localize("sunbay.address.firstName")
             lastNameField.title = localize("sunbay.address.lastName")
-            for field in [firstNameField, lastNameField, line1Field, postalField] {
+            phoneField.title = localize("sunbay.address.phone")
+            for field in [firstNameField, lastNameField, line1Field, postalField, phoneField] {
                 field.font = FloatingLabelMetrics.fieldFont(from: appearance.cardFieldFont)
                 field.textColor = appearance.text
                 field.autocorrectionType = .no
@@ -105,6 +109,9 @@
             lastNameField.textContentType = .familyName
             postalField.keyboardType = .numbersAndPunctuation
             KeyboardDismissal.installDoneAccessory(on: postalField)
+            phoneField.keyboardType = .phonePad
+            phoneField.textContentType = .telephoneNumber
+            KeyboardDismissal.installDoneAccessory(on: phoneField)
 
             // Each control is its own bordered box; text fields highlight their border on focus.
             let countryContainer = FieldContainerView(appearance: appearance, control: countryField)
@@ -121,6 +128,10 @@
                 nameRow.spacing = 8
                 nameRow.distribution = .fillEqually
                 rows.insert(nameRow, at: 0)
+            }
+
+            if options.collectPhone {
+                rows.append(FieldContainerView(appearance: appearance, control: phoneField))
             }
 
             let stack = UIStackView(arrangedSubviews: rows)
@@ -152,15 +163,20 @@
         /// Whether the first / last name row is rendered.
         var hasNameFieldsForTest: Bool { options.collectName }
 
+        /// Whether the phone field is rendered.
+        var hasPhoneFieldForTest: Bool { options.collectPhone }
+
         /// Fills the controls directly (bypassing the country menu and keystrokes).
         func fillForTest(
-            country: String, line1: String, postalCode: String, firstName: String? = nil, lastName: String? = nil
+            country: String, line1: String, postalCode: String, firstName: String? = nil, lastName: String? = nil,
+            phone: String? = nil
         ) {
             selectedCountryCode = country
             line1Field.text = line1
             postalField.text = postalCode
             firstNameField.text = firstName
             lastNameField.text = lastName
+            phoneField.text = phone
         }
     }
 #endif

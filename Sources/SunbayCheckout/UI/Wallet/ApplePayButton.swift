@@ -101,9 +101,16 @@
         /// Client secret issued by the host backend with the session (optional); memory only, never logged.
         /// Kept across failed / unknown attempts so a second tap still carries it; cleared on success / dismiss / expiry.
         private let checkoutClientSecret: String?
-        /// Host-provided addresses (PII; memory only, never logged); passed to the controller at start.
-        private let billingAddress: AddressInput?
-        private let shippingAddress: AddressInput?
+        /// Host-provided billing address (PII; memory only, never logged). Passed to the controller at start;
+        /// later changes are pushed to the controller so the next tap uses the latest value.
+        public var billingAddress: AddressInput? {
+            didSet { pushHostAddresses() }
+        }
+
+        /// Host-provided shipping address (PII; memory only, never logged); same rules as `billingAddress`.
+        public var shippingAddress: AddressInput? {
+            didSet { pushHostAddresses() }
+        }
 
         // MARK: - Public initialization (assembles the real dependencies)
 
@@ -242,6 +249,16 @@
                 backendAllowed = false
             }
             recomputeAvailability()
+        }
+
+        /// Pushes the current host addresses to the controller (reads the latest values when it runs).
+        private func pushHostAddresses() {
+            let controller = controller
+            Task { [weak self] in
+                guard let self else { return }
+                let (billing, shipping) = await MainActor.run { (self.billingAddress, self.shippingAddress) }
+                await controller.updateHostAddresses(billing: billing, shipping: shipping)
+            }
         }
 
         /// Recomputes `isAvailable` as the three-factor intersection (its `didSet` is responsible for the main-thread callback when it changes).

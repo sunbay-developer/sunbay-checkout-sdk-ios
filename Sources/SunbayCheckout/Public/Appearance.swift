@@ -109,14 +109,18 @@
             /// Not collected: the section is not shown at all.
             case off
 
-            /// Resolves a configured mode against the session's collect flag.
+            /// Resolves a configured mode against the session's collect flag and the host's address entry.
             ///
             /// - Parameters:
             ///   - mode: The configured mode.
             ///   - collect: The session's `collectBillingAddress` / `collectShippingAddress` flag.
-            /// - Returns: `.full` or `.off` for `.automatic`; any explicit mode unchanged.
-            static func resolveAddressMode(_ mode: AddressCollectionMode, collect: Bool) -> AddressCollectionMode {
-                mode == .automatic ? (collect ? .full : .off) : mode
+            ///   - hasUsableEntry: Whether the host supplied a complete entry for this address kind.
+            /// - Returns: `.full` for `.automatic` when the session collects the address and the host has no
+            ///   usable entry, else `.off`; any explicit mode unchanged.
+            static func resolveAddressMode(
+                _ mode: AddressCollectionMode, collect: Bool, hasUsableEntry: Bool
+            ) -> AddressCollectionMode {
+                mode == .automatic ? (collect && !hasUsableEntry ? .full : .off) : mode
             }
         }
 

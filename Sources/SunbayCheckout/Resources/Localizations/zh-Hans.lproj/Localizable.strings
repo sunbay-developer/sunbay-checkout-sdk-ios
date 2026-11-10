@@ -26,6 +26,7 @@
 "sunbay.address.lastName" = "姓";
 "sunbay.address.country" = "国家或地区";
 "sunbay.address.line1" = "地址";
+"sunbay.address.phone" = "手机号码";
 "sunbay.address.postalCode" = "邮政编码";
 "sunbay.address.line1.placeholder" = "示例：中山路 123 号";
 "sunbay.address.postalCode.placeholder" = "518000";

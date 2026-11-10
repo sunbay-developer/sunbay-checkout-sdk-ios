@@ -54,6 +54,8 @@
         private var textFields: [AddressFieldType: UITextField] = [:]
         private var countryButton: FloatingLabelMenuField?
         private var stateButton: FloatingLabelMenuField?
+        /// The phone field (shipping only), rebuilt below the layout rows on each render.
+        private var phoneField: UITextField?
 
         // Test seam: a continuation completed when the in-flight load finishes (success or failure).
         private var loadFinishedForTest: (() -> Void)?
@@ -195,6 +197,7 @@
             textFields.removeAll()
             countryButton = nil
             stateButton = nil
+            phoneField = nil
 
             contentStack.addArrangedSubview(makeCountryRow())
 
@@ -207,7 +210,23 @@
                 }
             }
 
+            if options.collectPhone {
+                contentStack.addArrangedSubview(makePhoneRow())
+            }
+
             applyStoredValues()
+        }
+
+        private func makePhoneRow() -> UIView {
+            let textField = FloatingLabelTextField(appearance: appearance)
+            textField.title = localize("sunbay.address.phone")
+            textField.autocorrectionType = .no
+            textField.keyboardType = .phonePad
+            textField.textContentType = .telephoneNumber
+            textField.translatesAutoresizingMaskIntoConstraints = false
+            KeyboardDismissal.installDoneAccessory(on: textField)
+            phoneField = textField
+            return FieldContainerView(appearance: appearance, control: textField)
         }
 
         private func makeCountryRow() -> UIView {
@@ -291,6 +310,10 @@
                 default: break
                 }
             }
+            if let phoneField {
+                let value = (phoneField.text ?? "").trimmingCharacters(in: .whitespaces)
+                model.phone = value.isEmpty ? nil : value
+            }
             // country / state are captured eagerly in their menu actions.
         }
 
@@ -303,6 +326,7 @@
             textFields[.district]?.text = model.district
             textFields[.firstName]?.text = model.firstName
             textFields[.lastName]?.text = model.lastName
+            phoneField?.text = model.phone
         }
 
         // MARK: - Container / skeleton / error
@@ -379,6 +403,14 @@
 
         /// The text-field types currently rendered (names appear only when the options collect them).
         var renderedFieldTypesForTest: Set<AddressFieldType> { Set(textFields.keys) }
+
+        /// Whether the phone field is currently rendered.
+        var hasPhoneFieldForTest: Bool { phoneField != nil }
+
+        /// Sets the phone field's value directly (bypassing keystrokes) for tests.
+        func setPhoneForTest(_ value: String) {
+            phoneField?.text = value
+        }
 
         /// Sets a rendered text field's value directly (bypassing keystrokes) for tests.
         func setTextForTest(_ type: AddressFieldType, _ value: String) {

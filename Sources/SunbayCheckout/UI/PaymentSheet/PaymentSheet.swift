@@ -52,7 +52,11 @@
         /// internal: used only to pass user intent between the shell and the testable logic/tests, not exposed externally.
         enum UserAction: Sendable {
             /// Confirm a new card (optionally checked to save + consent).
-            case confirmNewCard(CardInput, save: Bool, billing: AddressInput? = nil, shipping: AddressInput? = nil)
+            ///
+            /// `billingFormShown` / `shippingFormShown` say whether the SDK showed a form for that kind.
+            case confirmNewCard(
+                CardInput, save: Bool, billing: AddressInput? = nil, shipping: AddressInput? = nil,
+                billingFormShown: Bool = false, shippingFormShown: Bool = false)
             /// Pay with a selected saved card (COF; the user selects a card then taps Pay).
             case confirmSavedCard(paymentMethodId: String)
             /// The Apple Pay wallet token has been obtained; confirm the wallet payment.
@@ -81,6 +85,10 @@
             let cardOnFileEnabled: Bool
             /// Whether the save-card checkbox starts ticked.
             let saveCardByDefault: Bool
+            /// Whether the host supplied a complete billing address the session collects.
+            var billingEntryUsable: Bool = false
+            /// Whether the host supplied a complete shipping address the session collects.
+            var shippingEntryUsable: Bool = false
         }
 
         // MARK: - Dependencies
@@ -426,10 +434,19 @@
                 savedCards = []
             }
 
+            // Host address entries: report incomplete ones once, and tell the UI which are usable (so
+            // `.automatic` shows no form for them).
+            await controller.evaluateHostEntries(
+                billingFormShown: appearance.billingAddressMode != .off,
+                shippingFormShown: appearance.shippingAddressMode != .off)
+            let billingEntryUsable = await controller.usableHostEntry(.billing) != nil
+            let shippingEntryUsable = await controller.usableHostEntry(.shipping) != nil
+
             // 3. Wait for the user action.
             let action = await seam(CheckoutContext(
                     session: session, savedCards: savedCards,
-                    cardOnFileEnabled: cardOnFileEnabled, saveCardByDefault: saveCardByDefault))
+                    cardOnFileEnabled: cardOnFileEnabled, saveCardByDefault: saveCardByDefault,
+                    billingEntryUsable: billingEntryUsable, shippingEntryUsable: shippingEntryUsable))
 
             // 4. Drive the confirmation path.
             return await execute(action)
@@ -438,11 +455,11 @@
         /// Drives the `controller.confirm*` call (or cancel) for a user action.
         func execute(_ action: UserAction) async -> AttemptResult {
             switch action {
-            case let .confirmNewCard(input, save, billing, shipping):
+            case let .confirmNewCard(input, save, billing, shipping, billingFormShown, shippingFormShown):
                 // `save` maps to `storeCard` in the controller (sent only when the checkbox is on and COF is effective: session `supportStoreCard`, host `cardOnFile.isEnabled`, and a `customerAccessSecret`).
                 return .outcome(await controller.confirmNewCard(
                     input, save: save, billingAddress: billing, shippingAddress: shipping,
-                    billingFormShown: billing != nil, shippingFormShown: shipping != nil))
+                    billingFormShown: billingFormShown, shippingFormShown: shippingFormShown))
             case let .confirmSavedCard(paymentMethodId):
                 return .outcome(await controller.confirmSavedCard(paymentMethodId: paymentMethodId))
             case let .confirmWallet(token):
@@ -578,7 +595,9 @@
                 walletAuthorizer: walletAuthorizer,
                 walletMerchantId: walletMerchantId,
                 cardOnFileEnabled: context.cardOnFileEnabled,
-                saveCardByDefault: context.saveCardByDefault
+                saveCardByDefault: context.saveCardByDefault,
+                billingEntryUsable: context.billingEntryUsable,
+                shippingEntryUsable: context.shippingEntryUsable
             )
             let containerVC = PaymentSheetContainerViewController(
                 content: contentVC,

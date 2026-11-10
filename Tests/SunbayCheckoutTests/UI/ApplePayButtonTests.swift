@@ -199,6 +199,45 @@
         /// In an xctest process without a host app, `UIApplication.shared` is nil and `sendActions`
         /// does not dispatch; this reads the target/action the control registered itself and calls it
         /// directly, equivalent to a tap.
+        // MARK: - Host addresses
+
+        /// Setting / clearing the public address properties reaches the controller's host entries.
+        @MainActor
+        func test_hostAddressSetters_reachController() async throws {
+            let sessionId = "sess_addr_button"
+            let session = CheckoutSession(
+                id: sessionId, amount: Amount(minorUnits: 999, currencyCode: "USD"), merchantName: "Acme",
+                methods: [.applePay, .card], expiresAt: Date().addingTimeInterval(600),
+                rsaPublicKey: nil, cofEnabled: false, collectBillingAddress: true)
+            let payment = MockPaymentService()
+            payment.stubSession(session)
+            let controller = CheckoutController(
+                paymentService: payment, cofService: MockCofService(), credentials: CredentialStore(),
+                actionHandler: StubActionHandler(result: .pending))
+            let button = ApplePayButton(
+                controller: controller,
+                walletAuthorizer: MockWalletAuthorizer(canMake: true, outcome: .success(Data([1]))),
+                sessionId: sessionId, configuredMerchantId: "merchant.test")
+            let complete = AddressInput(country: "US", line1: "1 Main", city: "SF", postalCode: "94103")
+
+            button.billingAddress = complete
+            try await waitForBillingEntry(controller, equals: complete)
+
+            button.billingAddress = nil
+            try await waitForBillingEntry(controller, equals: nil)
+        }
+
+        private func waitForBillingEntry(
+            _ controller: CheckoutController, equals expected: AddressInput?
+        ) async throws {
+            let deadline = Date().addingTimeInterval(5)
+            while await controller.usableHostEntry(.billing) != expected, Date() < deadline {
+                try await Task.sleep(nanoseconds: 20_000_000)
+            }
+            let actual = await controller.usableHostEntry(.billing)
+            XCTAssertEqual(actual, expected)
+        }
+
         private func fireTouchUpInside(on control: UIControl) {
             for target in control.allTargets {
                 let actions = control.actions(forTarget: target, forControlEvent: .touchUpInside) ?? []

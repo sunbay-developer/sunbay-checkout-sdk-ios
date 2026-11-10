@@ -19,4 +19,10 @@ final class LocalizationKeyCoverageTests: XCTestCase {
             XCTAssertNotEqual(resolve(key, "zh-Hans"), key, "missing zh-Hans: \(key)")
         }
     }
+
+    func test_addressPhoneKeyPresentInEnAndZhHans() {
+        XCTAssertTrue(SunbayUIStringKeys.all.contains("sunbay.address.phone"))
+        XCTAssertNotEqual(resolve("sunbay.address.phone", "en"), "sunbay.address.phone")
+        XCTAssertNotEqual(resolve("sunbay.address.phone", "zh-Hans"), "sunbay.address.phone")
+    }
 }

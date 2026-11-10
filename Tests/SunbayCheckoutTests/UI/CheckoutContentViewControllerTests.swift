@@ -128,7 +128,7 @@
             vc.delegate = delegate
             vc.simulateTapPay()
 
-            guard case let .confirmNewCard(_, save, _, _)? = delegate.lastRequestedAction else {
+            guard case let .confirmNewCard(_, save, _, _, _, _)? = delegate.lastRequestedAction else {
                 return XCTFail("Expected .confirmNewCard, got \(String(describing: delegate.lastRequestedAction))")
             }
             XCTAssertFalse(save)
@@ -1090,6 +1090,8 @@
             shipping: Appearance.AddressCollectionMode = .automatic,
             collectBilling: Bool = false,
             collectShipping: Bool = false,
+            billingEntryUsable: Bool = false,
+            shippingEntryUsable: Bool = false,
             localeCode: String? = nil,
             service: any AddressMetadataService = NameLayoutAddressService()
         ) -> (CheckoutContentViewController, AddressDelegate) {
@@ -1101,7 +1103,8 @@
             let vc = CheckoutContentViewController(
                 session: session, savedCards: [], appearance: .resolve(.default), localize: { $0 },
                 localeCode: localeCode, billingMode: billing, shippingMode: shipping,
-                addressService: service)
+                addressService: service, billingEntryUsable: billingEntryUsable,
+                shippingEntryUsable: shippingEntryUsable)
             let delegate = AddressDelegate()
             vc.delegate = delegate
             vc.loadViewIfNeeded()
@@ -1155,7 +1158,7 @@
                 .fillForTest(country: "US", line1: "1 Main", postalCode: "94103", firstName: "Ada", lastName: "L")
             vc.fillCardForTest()
             vc.sendTouchOnPayButtonForTest()
-            guard case let .confirmNewCard(_, _, billing, shipping)? = delegate.action else {
+            guard case let .confirmNewCard(_, _, billing, shipping, _, _)? = delegate.action else {
                 return XCTFail("expected .confirmNewCard")
             }
             XCTAssertNil(billing)
@@ -1172,7 +1175,7 @@
             shipping?.setTextForTest(.postalCode, "94103")
             vc.fillCardForTest()
             vc.sendTouchOnPayButtonForTest()
-            guard case let .confirmNewCard(_, _, billing, shipping)? = delegate.action else {
+            guard case let .confirmNewCard(_, _, billing, shipping, _, _)? = delegate.action else {
                 return XCTFail("expected .confirmNewCard")
             }
             XCTAssertNil(billing)
@@ -1246,7 +1249,7 @@
             vc.fillCardForTest()
             vc.sendTouchOnPayButtonForTest()
             let expected = AddressInput(country: "US", line1: "1 Main", postalCode: "94103")
-            guard case let .confirmNewCard(_, _, billing, shipping)? = delegate.action else {
+            guard case let .confirmNewCard(_, _, billing, shipping, _, _)? = delegate.action else {
                 return XCTFail("expected .confirmNewCard")
             }
             XCTAssertEqual(billing, expected)
@@ -1259,7 +1262,7 @@
                 .fillForTest(country: "US", line1: "1 Main", postalCode: "94103")
             vc.fillCardForTest()
             vc.sendTouchOnPayButtonForTest()
-            guard case let .confirmNewCard(_, _, billing, shipping)? = delegate.action else {
+            guard case let .confirmNewCard(_, _, billing, shipping, _, _)? = delegate.action else {
                 return XCTFail("expected .confirmNewCard")
             }
             XCTAssertNotNil(billing)
@@ -1275,11 +1278,89 @@
                 .fillForTest(country: "CA", line1: "2 Side", postalCode: "M5V", firstName: "Ada", lastName: "L")
             vc.fillCardForTest()
             vc.sendTouchOnPayButtonForTest()
-            guard case let .confirmNewCard(_, _, _, shipping)? = delegate.action else {
+            guard case let .confirmNewCard(_, _, _, shipping, _, _)? = delegate.action else {
                 return XCTFail("expected .confirmNewCard")
             }
             XCTAssertEqual(shipping?.country, "CA")
             XCTAssertEqual(shipping?.firstName, "Ada")
+        }
+
+        func test_automatic_usableBillingEntry_hidesBillingForm() {
+            let (vc, _) = makeVC(collectBilling: true, billingEntryUsable: true)
+            XCTAssertNil(vc.billingAddressViewForTest)
+        }
+
+        func test_automatic_unusableBillingEntry_showsFullBillingForm() {
+            let (vc, _) = makeVC(collectBilling: true, billingEntryUsable: false)
+            XCTAssertTrue(vc.billingAddressViewForTest is DynamicAddressFormView)
+        }
+
+        func test_automatic_usableShippingEntry_hidesShippingForm() {
+            let (vc, _) = makeVC(collectShipping: true, shippingEntryUsable: true)
+            XCTAssertNil(vc.shippingAddressViewForTest)
+        }
+
+        func test_explicitSimple_withUsableEntry_showsFormAndReportsFormShown() {
+            let (vc, delegate) = makeVC(
+                billing: .simple, shipping: .off, collectBilling: true, billingEntryUsable: true)
+            XCTAssertTrue(vc.billingAddressViewForTest is SimpleAddressFormView)
+            vc.fillCardForTest()
+            vc.sendTouchOnPayButtonForTest()
+            guard case let .confirmNewCard(_, _, _, _, billingShown, shippingShown)? = delegate.action else {
+                return XCTFail("expected .confirmNewCard")
+            }
+            XCTAssertTrue(billingShown)
+            XCTAssertFalse(shippingShown)
+        }
+
+        func test_pay_noForms_reportsNoFormShown() {
+            let (vc, delegate) = makeVC(collectBilling: true, billingEntryUsable: true)
+            vc.fillCardForTest()
+            vc.sendTouchOnPayButtonForTest()
+            guard case let .confirmNewCard(_, _, _, _, billingShown, shippingShown)? = delegate.action else {
+                return XCTFail("expected .confirmNewCard")
+            }
+            XCTAssertFalse(billingShown)
+            XCTAssertFalse(shippingShown)
+        }
+
+        func test_billingOff_shippingShown_hasNoSameAsBillingCheckbox_evenWithBillingEntry() {
+            let (vc, _) = makeVC(
+                collectBilling: true, collectShipping: true, billingEntryUsable: true)
+            XCTAssertNil(vc.billingAddressViewForTest)
+            XCTAssertNotNil(vc.shippingAddressViewForTest)
+            XCTAssertFalse(vc.hasSameAsBillingCheckboxForTest)
+        }
+
+        func test_simpleForms_phoneOnShippingOnly() {
+            let (vc, _) = makeVC(billing: .simple, shipping: .simple)
+            XCTAssertEqual((vc.billingAddressViewForTest as? SimpleAddressFormView)?.hasPhoneFieldForTest, false)
+            XCTAssertEqual((vc.shippingAddressViewForTest as? SimpleAddressFormView)?.hasPhoneFieldForTest, true)
+        }
+
+        func test_fullForms_phoneOnShippingOnly() {
+            let (vc, _) = makeVC(billing: .full, shipping: .full)
+            let billing = vc.billingAddressViewForTest as? DynamicAddressFormView
+            let shipping = vc.shippingAddressViewForTest as? DynamicAddressFormView
+            billing?.waitForLoadForTest()
+            shipping?.waitForLoadForTest()
+            XCTAssertEqual(billing?.hasPhoneFieldForTest, false)
+            XCTAssertEqual(shipping?.hasPhoneFieldForTest, true)
+        }
+
+        func test_simpleShipping_returnsPhone() {
+            let (vc, _) = makeVC(billing: .off, shipping: .simple)
+            let shipping = vc.shippingAddressViewForTest as? SimpleAddressFormView
+            shipping?.fillForTest(country: "US", line1: "1 Main", postalCode: "94103", phone: "5551234")
+            XCTAssertEqual(shipping?.addressInput.phone, "5551234")
+        }
+
+        func test_fullShipping_returnsPhone() {
+            let (vc, _) = makeVC(billing: .off, shipping: .full)
+            let shipping = vc.shippingAddressViewForTest as? DynamicAddressFormView
+            shipping?.waitForLoadForTest()
+            shipping?.setPhoneForTest("5551234")
+            XCTAssertEqual(shipping?.addressInput.phone, "5551234")
         }
     }
 #endif
