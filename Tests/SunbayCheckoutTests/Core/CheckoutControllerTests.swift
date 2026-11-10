@@ -579,6 +579,50 @@ final class CheckoutControllerTests: XCTestCase {
         XCTAssertEqual(warnings.first?.ignored, ["shippingAddress"])
     }
 
+    func test_address_evaluateHostEntries_reportsOnlyIncomplete() async throws {
+        // incomplete + collect: exactly one ADDRESS_INCOMPLETE, even when called twice with forms shown
+        var rig = try await addressRig(collectBilling: true, billing: addr("1 Main St"))
+        await rig.controller.evaluateHostEntries(billingFormShown: true, shippingFormShown: true)
+        await rig.controller.evaluateHostEntries(billingFormShown: true, shippingFormShown: true)
+        var warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.map(\.code), [.addressIncomplete])
+
+        // complete, absent and collect-false entries: nothing (no ADDRESS_ENTRY_IGNORED for usable entries)
+        rig = try await addressRig(
+            collectBilling: true, collectShipping: false, billing: fullBilling(), shipping: addr("x"))
+        await rig.controller.evaluateHostEntries(billingFormShown: true, shippingFormShown: true)
+        warnings = await rig.warningsFlushed()
+        XCTAssertTrue(warnings.isEmpty)
+    }
+
+    func test_address_usableHostEntry() async throws {
+        let rig = try await addressRig(
+            collectBilling: true, collectShipping: false, billing: fullBilling(), shipping: fullShipping())
+        let billing = await rig.controller.usableHostEntry(.billing)
+        let shipping = await rig.controller.usableHostEntry(.shipping)
+        XCTAssertEqual(billing, fullBilling())
+        XCTAssertNil(shipping)  // collect false
+        let incomplete = try await addressRig(collectBilling: true, billing: addr("x"))
+        let none = await incomplete.controller.usableHostEntry(.billing)
+        XCTAssertNil(none)
+    }
+
+    func test_address_updateHostAddresses_replacesEntriesAndRedeliversWarning() async throws {
+        let rig = try await addressRig(collectBilling: true, billing: addr("1 Main St"))
+        await rig.controller.evaluateHostEntries(billingFormShown: false, shippingFormShown: false)
+        var warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.map(\.code), [.addressIncomplete])
+
+        await rig.controller.updateHostAddresses(billing: addr("2 Other St"), shipping: nil)
+        await rig.controller.evaluateHostEntries(billingFormShown: false, shippingFormShown: false)
+        warnings = await rig.warningsFlushed()  // cumulative: the second delivery proves dedup was reset
+        XCTAssertEqual(warnings.map(\.code), [.addressIncomplete, .addressIncomplete])
+
+        await rig.controller.updateHostAddresses(billing: fullBilling(), shipping: nil)
+        let usable = await rig.controller.usableHostEntry(.billing)
+        XCTAssertEqual(usable, fullBilling())
+    }
+
     func test_address_walletContactRequest_table() async throws {
         // collect false: never requested, even with a form shown
         var rig = try await addressRig(collectBilling: false, collectShipping: false)

@@ -377,12 +377,13 @@ actor CheckoutController {
         return entry
     }
 
-    /// Reports `ADDRESS_INCOMPLETE` for collected-but-incomplete entries and `ADDRESS_ENTRY_IGNORED` for usable
-    /// entries that an SDK form (shown for that kind) will override.
+    /// Reports `ADDRESS_INCOMPLETE` for entries the session collects but that are incomplete.
+    ///
+    /// It never reports `ADDRESS_ENTRY_IGNORED`: that warning is emitted only by the confirm paths when an entry is
+    /// actually overridden (a form draft, or a wallet-supplied address / shown form), because this method cannot see
+    /// form drafts. The `*FormShown` parameters are kept for API stability and are intentionally unused here.
     func evaluateHostEntries(billingFormShown: Bool, shippingFormShown: Bool) {
         reportIncompleteEntries()
-        if billingFormShown, usableHostEntry(.billing) != nil { reportIgnored(.billing) }
-        if shippingFormShown, usableHostEntry(.shipping) != nil { reportIgnored(.shipping) }
     }
 
     /// The Apple Pay contacts to request: per kind, `collect && (no usable host entry || a form is shown)`.
