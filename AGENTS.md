@@ -109,4 +109,3 @@ The tree also now includes:
   precise files — **never `git add .`**.
 - Files that may contain secrets (`.env*`, credentials, token-bearing npmrc)
   **must not be committed**.
-- Push the working branch by default; do not push directly to `main`.
