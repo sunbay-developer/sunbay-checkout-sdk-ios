@@ -14,7 +14,7 @@ node --test "test/*.test.mjs"
 
 ## Endpoints
 
-- `POST /api/create-session` body `{amount?, items?, currency?, collectBillingAddress?, collectShippingAddress?}` (amount in major units) returns `{sessionId, checkoutClientSecret, customerAccessSecret|null}`.
+- `POST /api/create-session` body `{amount?, items?, currency?, collectBillingAddress?, collectShippingAddress?, supportStoreCard? (default true)}` (amount in major units) returns `{sessionId, checkoutClientSecret, customerAccessSecret|null}`.
 - `GET /healthz` returns `{ok, hasCredentials, warning}`.
 
 Binds `HOST` (default 127.0.0.1) and `PORT` (default 8095).

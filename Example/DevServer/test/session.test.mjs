@@ -25,3 +25,9 @@ test('explicit items win over amount', () => {
     assert.equal(p.amount.orderAmount, 1000);
     assert.deepEqual(p.productList, items);
 });
+
+test('supportStoreCard defaults to true and can be turned off per request', () => {
+    const cfg = { appId: 'a', merchantId: 'm', currency: 'USD', customerId: 'c' };
+    assert.equal(buildCreateSessionPayload({}, cfg, 1).supportStoreCard, true);
+    assert.equal(buildCreateSessionPayload({ supportStoreCard: false }, cfg, 1).supportStoreCard, false);
+});

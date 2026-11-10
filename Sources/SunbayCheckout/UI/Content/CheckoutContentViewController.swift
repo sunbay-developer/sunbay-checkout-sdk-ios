@@ -48,6 +48,9 @@
         private let cardAvailable: Bool
         /// Whether the host filter left an `APPLE_PAY` entry in place.
         private let applePayVisible: Bool
+        /// Whether the home page offers anything besides the express (wallet) row. Drives the
+        /// "Or pay using" divider; extend it when the card area gains other payment methods.
+        private var hasNonExpressMethods: Bool { cardAvailable }
         private let appearance: ResolvedAppearance
         private let localize: (String) -> String
         /// The host-configured locale (BCP-47), or nil to follow the system. Drives amount formatting
@@ -188,6 +191,8 @@
         ///   - billingEntryUsable: Whether the host supplied a complete billing address the session collects;
         ///     `.automatic` then shows no billing form.
         ///   - shippingEntryUsable: Same for the shipping address.
+        ///   - billingStyle: Form style when `billingMode` is `.automatic` and resolves to shown.
+        ///   - shippingStyle: Same for the shipping address.
         init(
             session: CheckoutSession,
             savedCards: [SavedCard],
@@ -208,6 +213,8 @@
             cardRulesService: any CardRulesService = EmptyCardRulesService(),
             billingEntryUsable: Bool = false,
             shippingEntryUsable: Bool = false,
+            billingStyle: Appearance.AddressFormStyle = .simple,
+            shippingStyle: Appearance.AddressFormStyle = .simple,
             visibleEntries: [MethodEntry]? = nil
         ) {
             let entries = visibleEntries ?? session.methodEntries
@@ -227,9 +234,11 @@
             self.localize = localize
             self.localeCode = localeCode
             self.billingMode = .resolveAddressMode(
-                billingMode, collect: session.collectBillingAddress, hasUsableEntry: billingEntryUsable)
+                billingMode, collect: session.collectBillingAddress, hasUsableEntry: billingEntryUsable,
+                style: billingStyle)
             self.shippingMode = .resolveAddressMode(
-                shippingMode, collect: session.collectShippingAddress, hasUsableEntry: shippingEntryUsable)
+                shippingMode, collect: session.collectShippingAddress, hasUsableEntry: shippingEntryUsable,
+                style: shippingStyle)
             self.addressService = addressService
             self.homeTitle = homeTitle
             super.init(nibName: nil, bundle: nil)
@@ -968,7 +977,10 @@
             let express = ExpressCheckoutView(
                 appearance: appearance,
                 // `.bottom`: the row follows the "New card" entry, so the divider sits above the button.
-                dividerPlacement: appearance.expressPosition == .bottom ? .above : .below)
+                dividerPlacement: appearance.expressPosition == .bottom ? .above : .below,
+                // The "Or pay using" divider only makes sense when other methods share the page. Today
+                // that is the card area; add future non-wallet methods to `hasNonExpressMethods`.
+                showsDivider: hasNonExpressMethods)
             express.setOrPayUsingText(localize("sunbay.sheet.orPayUsing"))
             express.onApplePayTapped = { [weak self] in
                 self?.handleApplePayTapped()

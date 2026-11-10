@@ -71,6 +71,8 @@
         let density: Appearance.Density
         /// Placement of the express-checkout (wallet) row.
         let expressPosition: Appearance.ExpressPosition
+        /// Wording on the Apple Pay button.
+        let applePayButtonType: ApplePayButtonType
         /// Bottom-sheet sizing policy (min height, max fraction, mode).
         let sheetSizing: Appearance.SheetSizing
         /// Whether in-sheet page switches animate.
@@ -153,6 +155,7 @@
                 shadow: appearance.shadow,
                 density: appearance.density,
                 expressPosition: appearance.expressPosition,
+                applePayButtonType: appearance.applePayButtonType,
                 sheetSizing: appearance.sheetSizing,
                 pageTransitionsEnabled: appearance.pageTransitionsEnabled,
                 primaryButtonBackground: primaryButtonBackground,

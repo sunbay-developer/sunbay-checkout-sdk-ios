@@ -97,6 +97,8 @@
 
         /// The requested color style; retained so `.automatic` can refresh on trait changes.
         private let style: ApplePayButtonStyle
+        /// The button wording.
+        private let type: ApplePayButtonType
 
         #if canImport(PassKit)
             /// The official PassKit button rendered as a pinned subview (owns its own appearance).
@@ -130,6 +132,7 @@
         ///   - checkout: The SDK public entry point (holding the host configuration).
         ///   - sessionId: The session identifier to check out.
         ///   - style: Button color style; defaults to `.automatic`.
+        ///   - type: Button wording ("Buy with Apple Pay", ...); defaults to `.plain` (logo only).
         ///   - checkoutClientSecret: Client secret issued by the host backend together with the session (optional); kept in memory only, never logged.
         ///   - billingAddress: A billing address the host already knows (optional); sent with the wallet payment.
         ///   - shippingAddress: A shipping address the host already knows (optional).
@@ -142,6 +145,7 @@
             checkout: SunbayCheckout,
             sessionId: String,
             style: ApplePayButtonStyle = .automatic,
+            type: ApplePayButtonType = .plain,
             checkoutClientSecret: String? = nil,
             billingAddress: AddressInput? = nil,
             shippingAddress: AddressInput? = nil
@@ -160,6 +164,7 @@
                 configuredMerchantId: checkout.configuration.applePayMerchantId,
                 amount: nil,
                 style: style,
+                type: type,
                 checkoutClientSecret: checkoutClientSecret,
                 billingAddress: billingAddress,
                 shippingAddress: shippingAddress,
@@ -179,6 +184,7 @@
         ///   - configuredMerchantId: The host-configured merchant id (may be nil).
         ///   - amount: The amount for this payment; defaults to nil, overwritten with the session amount after the session loads.
         ///   - style: Color style.
+        ///   - type: Button wording.
         init(
             controller: CheckoutController,
             walletAuthorizer: any WalletAuthorizing,
@@ -186,6 +192,7 @@
             configuredMerchantId: String?,
             amount: Amount? = nil,
             style: ApplePayButtonStyle = .automatic,
+            type: ApplePayButtonType = .plain,
             checkoutClientSecret: String? = nil,
             billingAddress: AddressInput? = nil,
             shippingAddress: AddressInput? = nil,
@@ -209,6 +216,7 @@
             self.deviceCapable = walletAuthorizer.canMakePayments()
             self.isAvailable = false // Not available before "backend allows" is known.
             self.style = style
+            self.type = type
 
             super.init(frame: .zero)
 
@@ -225,7 +233,7 @@
 
         @available(*, unavailable)
         required init?(coder: NSCoder) {
-            fatalError("init(coder:) is not supported; use init(checkout:sessionId:style:)")
+            fatalError("init(coder:) is not supported; use init(checkout:sessionId:style:type:)")
         }
 
         // MARK: - Availability computation
@@ -381,7 +389,7 @@
                     for: style,
                     trait: traitCollection.userInterfaceStyle
                 )
-                let button = PKPaymentButton(paymentButtonType: .plain, paymentButtonStyle: pkStyle)
+                let button = PKPaymentButton(paymentButtonType: type.pkType, paymentButtonStyle: pkStyle)
                 button.translatesAutoresizingMaskIntoConstraints = false
                 // Forward the PassKit button tap to the same tap path used by the control itself.
                 button.addTarget(self, action: #selector(handleTap), for: .touchUpInside)

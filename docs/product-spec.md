@@ -183,14 +183,18 @@ public struct Appearance: Sendable, Equatable {
     public var colorScheme: ColorScheme = .automatic // drives overrideUserInterfaceStyle (light/dark/follow-system)
     public var density: Density = .comfortable
     public var expressPosition: ExpressPosition = .top
+    public var applePayButtonType: ApplePayButtonType = .plain   // wording on the Apple Pay button (PassKit renders and localizes it)
     public var billingAddressMode: AddressCollectionMode = .automatic
     public var shippingAddressMode: AddressCollectionMode = .automatic
+    public var billingAddressStyle: AddressFormStyle = .simple   // form look under .automatic
+    public var shippingAddressStyle: AddressFormStyle = .simple
     public var pageTransitionsEnabled: Bool = true // forward/back slide between in-sheet pages
 
     public enum ColorScheme: Sendable { case light, dark, automatic }
     public enum Density: Sendable { case comfortable, compact }
     public enum ExpressPosition: Sendable { case top, bottom, off }
     public enum AddressCollectionMode: Sendable { case automatic, simple, full, off }
+    public enum AddressFormStyle: Sendable { case simple, full }
 
     public struct Colors: Sendable, Equatable {       // primary/background/componentBackground/text/
         public init() {}                              // textSecondary/border/danger/success,全部 UIColor?,
@@ -266,9 +270,10 @@ UI 层拆成两层,单向依赖 `Container → Content → Theme`:
 由 `Appearance.billingAddressMode` / `shippingAddressMode` 决定(SDK 配置决定「怎么收」,后端只决定
 「是否收」):
 
-- `.automatic` (default for both modes): follows the checkout session. For a kind, it shows a full form iff the
-  session collects that kind (`collectBillingAddress` / `collectShippingAddress`) and there is no usable host
-  entry for it; otherwise the form is hidden (a usable host entry hides the form).
+- `.automatic` (default for both modes): follows the checkout session for **visibility** only. For a kind, the form
+  is shown iff the session collects that kind (`collectBillingAddress` / `collectShippingAddress`) and there is no
+  usable host entry for it; otherwise it is hidden. **How** it looks is a separate dimension:
+  `Appearance.billingAddressStyle` / `shippingAddressStyle` (`.simple` default, or `.full`) apply under `.automatic`.
 - `.simple`: three fields only (country / line1 / postal code), no network.
 - `.full`: backend-layout-driven address form. Data comes from `AddressMetadataService`
   (Core/AddressMetadata, no UIKit); the default `SunbayCheckout(configuration:)` wires the real HPP adapter

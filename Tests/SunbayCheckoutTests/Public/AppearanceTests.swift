@@ -10,11 +10,17 @@
             let appearance = Appearance()
             XCTAssertEqual(appearance.billingAddressMode, .automatic)
             XCTAssertEqual(appearance.shippingAddressMode, .automatic)
+            XCTAssertEqual(appearance.billingAddressStyle, .simple)
+            XCTAssertEqual(appearance.shippingAddressStyle, .simple)
         }
 
         func test_resolveAddressMode_automaticFollowsSessionFlagAndEntry() {
             typealias Mode = Appearance.AddressCollectionMode
-            XCTAssertEqual(Mode.resolveAddressMode(.automatic, collect: true, hasUsableEntry: false), .full)
+            XCTAssertEqual(Mode.resolveAddressMode(.automatic, collect: true, hasUsableEntry: false), .simple)
+            XCTAssertEqual(
+                Mode.resolveAddressMode(.automatic, collect: true, hasUsableEntry: false, style: .full), .full)
+            XCTAssertEqual(
+                Mode.resolveAddressMode(.automatic, collect: false, hasUsableEntry: false, style: .full), .off)
             XCTAssertEqual(Mode.resolveAddressMode(.automatic, collect: false, hasUsableEntry: false), .off)
             XCTAssertEqual(Mode.resolveAddressMode(.automatic, collect: true, hasUsableEntry: true), .off)
             XCTAssertEqual(Mode.resolveAddressMode(.automatic, collect: false, hasUsableEntry: true), .off)
