@@ -27,17 +27,16 @@ Goals
   them; a complete host-provided address replaces the request for that kind.
 - Address resolution for card and wallet is identical to the JS SDK (same definitions of "complete", same precedence,
   same warning codes), plus one iOS rule: with `.automatic`, a usable host address means the SDK form is not shown.
+- Apple Pay reads `ewalletParam` the way the web client does (decision: native shares the web format, no per-`sessionType`
+  variant, see `docs/backend-native-wallet-params.md`): `countryCode` (default `US`, backend value wins),
+  `supportedNetworks`, `merchantCapabilities`.
 - An internal provider registry (key, kind express/normal, static availability) and a public `PaymentMethodFilter`
   (`hide`, `order`) with the same identifier model as JS (`CARD`, `APPLE_PAY`, raw methods such as `AMEX`).
 - One diagnostic channel on the main entry (`SunbayCheckout.onDiagnostic`) for warnings and non-terminal errors.
 
 Non-goals
-- Reading `ewalletParam` (networks, capabilities, country) in the Apple Pay request, and any host override of wallet
-  payment parameters (the latter is decided: never; network and capability support come from the session). Reading is
-  paused pending a decision. The comparison in `docs/backend-native-wallet-params.md` shows native and web can share the
-  same `ewalletParam`, with only a case-insensitive network-name lookup on the client; the user had asked for native-specific
-  values from the backend per `sessionType`. Until that is decided the Apple Pay request keeps today's hard-coded country,
-  networks and capability.
+- Any host override of wallet payment parameters (country, networks, capabilities, merchant id): never. Network and
+  capability support come from the session's `ewalletParam`; hosts may only adjust addresses and display options.
 - Google Pay on iOS, Google Places address autocomplete, postal-code to state lookup, the embedded component (L2).
 - Mirroring terminal payment failures on the diagnostic channel, and putting warnings on `CheckoutOutcome` (both decided:
   no).
@@ -117,16 +116,26 @@ Form options (internal): `AddressFormOptions` gains `collectPhone`; billing `(na
 - `WalletAuthorizing.authorize` takes a contact request (`billing: Bool`, `shipping: Bool`) and the merchant name; the
   `confirm` callback receives a value with the token `Data`, the optional billing and shipping addresses and the optional
   email instead of bare `Data`. The summary item label becomes the merchant name (fallback "Total").
-- Country, networks and capabilities stay hard-coded (see non-goals). A follow-up reads them from `ewalletParam` once the
-  decision above is made; this design does not.
+- The Apple Pay request is built from the session and `ewalletParam` (decision: shared with web):
+  - `countryCode`: the backend value if present, else `US` (same as the web client).
+  - `supportedNetworks`: each backend name is matched case-insensitively to a PassKit network (`chinaUnionPay` to
+    `ChinaUnionPay`, `amex` to `AmEx`, and so on; verified against the PassKit constants). Unknown names are dropped.
+  - `merchantCapabilities`: `supports3DS`, `supportsEMV`, `supportsCredit`, `supportsDebit` map to the option set;
+    unknown strings are dropped.
+  - No other key is read, validated, merged or overridable. If, after the lookup, there is no supported network or no
+    capability, Apple Pay is unavailable (not shown) and `WALLET_PARAMS_INVALID` is reported with the missing field
+    names only. This mirrors the hosted page, which hides a wallet whose required arrays are empty.
+  - `ewalletParam` arrives as a JSON string on the wire (dev) or possibly as an object; the decoder accepts both and treats
+    anything unparsable as missing. Parsed values are carried on the session as an internal type.
+  - The `PKPaymentRequest` is built in the UI-layer PassKit file; Core only holds the parsed strings.
 - The controller's wallet confirm merges addresses per 5.1 and passes them on.
 
 ### 5.3 Provider registry and payment-method filter
 
 - Session model: keep the ordered list of backend methods and an ordered `cardBrands` list (all `type = CARD` entries:
   method, name, logo URL); `methods: Set<PaymentMethodKind>` stays for compatibility.
-- Internal registry: `CARD` (normal, always available) and `APPLE_PAY` (express, available when the device can pay and a
-  merchant id exists). The home page renders groups from the registry; `expressPosition` still places the express group
+- Internal registry: `CARD` (normal, always available) and `APPLE_PAY` (express, available when the device can pay, a
+  merchant id exists and `ewalletParam` yields at least one network and one capability). The home page renders groups from the registry; `expressPosition` still places the express group
   above or below the normal group, and `.off` hides it.
 - Public: `PaymentMethodID` (string-backed, `ExpressibleByStringLiteral`, constants `.card` = `"CARD"`, `.applePay` =
   `"APPLE_PAY"`), `PaymentMethodFilter(hide:order:)`, `CheckoutConfiguration.paymentMethodFilter` (default empty).
@@ -169,7 +178,9 @@ public struct CheckoutWarning: Sendable, Equatable {
 public var onDiagnostic: ((CheckoutDiagnostic) -> Void)?   // delivered on the main thread
 ```
 - Codes are the iOS subset of the cross-platform `WARNING_CODES`: `PAYMENT_METHOD_FILTER_IGNORED`, `ADDRESS_INCOMPLETE`,
-  `ADDRESS_ENTRY_IGNORED`. `EXPRESS_OPTION_IGNORED` does not apply (options are enums). `WALLET_PARAMS_INVALID` is not added.
+  `ADDRESS_ENTRY_IGNORED`. `EXPRESS_OPTION_IGNORED` does not apply (options are enums). iOS adds `WALLET_PARAMS_INVALID`
+  (`ignored` lists the missing field names, never values); it must also be registered in the shared `WARNING_CODES` list
+  and the code table in the JS `api.md` (the JS side only logs this today). (My call; the shared list is owned by JS.)
 - Non-terminal errors that become `.error`: saved-card list failure (degraded), address-metadata load failure, session load
   failure for the standalone Apple Pay button. They carry code, category and trace id only.
 - A Core `DiagnosticsReporter` owns deduplication (same code and identifier once) and a buffer (cap 50) that is replayed
@@ -188,7 +199,8 @@ Internal changes: `WalletAuthorizing`, `SubmitRequest` (public struct, new optio
 
 ### 5.6 Verification
 
-- Host tests (pure): completeness, usable-entry rule, form visibility, card and wallet resolution tables, contact conversion,
+- Host tests (pure): `ewalletParam` parsing (string and object forms, unknown names dropped, empty result invalid,
+  `countryCode` default and override), completeness, usable-entry rule, form visibility, card and wallet resolution tables, contact conversion,
   filter matching/ordering/ignored/idempotence, reporter dedup/buffer/replay, wire body for new fields.
 - Simulator tests: `.automatic` with and without a usable host entry, explicit modes with an entry (warning), Apple Pay row
   hidden by the filter, group order, empty-result failure.
@@ -197,9 +209,9 @@ Internal changes: `WalletAuthorizing`, `SubmitRequest` (public struct, new optio
 
 ## 6. Open items
 
-1. Backend (separate document `docs/backend-native-wallet-params.md`): `countryCode` in `ewalletParam`, Google Pay
-   `environment` per environment, Apple Pay merchant id and certificate onboarding, token format confirmation. Decision
-   pending on whether native shares the web `ewalletParam` as is.
+1. Backend (separate document `docs/backend-native-wallet-params.md`, no field changes required): Apple Pay merchant id and
+   certificate onboarding for native integrators, and token format confirmation for both wallets. `countryCode` is
+   optional in `ewalletParam` and can be added later for non-US merchants.
 2. Cross-platform: Android needs the same address rules and warning codes; the JS `WARNING_CODES` registry is the shared list.
 
 ## 7. Left to the builder
