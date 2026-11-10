@@ -49,6 +49,13 @@ final class DiagnosticsReporter: @unchecked Sendable {
         seen = seen.filter { !$0.contains(identifier) }
     }
 
+    /// Forgets errors reported without a session id (for example address-metadata failures), so a new
+    /// start / dismiss lets the next such error through again.
+    func resetUnscopedErrors() {
+        lock.lock(); defer { lock.unlock() }
+        seen = seen.filter { !$0.hasSuffix(":-") }
+    }
+
     private func emit(_ event: CheckoutDiagnostic, key: String) {
         lock.lock()
         guard seen.insert(key).inserted else {

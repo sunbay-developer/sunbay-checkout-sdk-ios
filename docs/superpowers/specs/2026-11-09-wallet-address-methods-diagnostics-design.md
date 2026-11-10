@@ -79,9 +79,9 @@ Form visibility (replaces phase-3 `resolveAddressMode`)
 - `.simple` / `.full`: shown, regardless of session flag or host entry. `.off`: not shown.
 
 Card (new-card submit), per kind
-1. Form shown: the form value is used; a host entry that is present is ignored and `ADDRESS_ENTRY_IGNORED` is reported.
+1. Form shown: the form value is used; a host entry that is present (whether or not the session collects the kind) is ignored and `ADDRESS_ENTRY_IGNORED` is reported when a draft wins.
 2. Form not shown: the usable host entry if any; otherwise none.
-"Same as billing" keeps its phase-3 meaning and exists only when a billing form is shown.
+The "Same as billing" checkbox was removed; there is no such control.
 
 Saved-card and wallet submits never have an SDK form; they use the usable host entry (and, for wallets, the contacts below).
 
@@ -92,7 +92,7 @@ Apple Pay, per kind
   when a form is shown the host entry is ignored for the wallet and `ADDRESS_ENTRY_IGNORED` is reported. Required fields as
   on HPP: billing `post` and `name`; shipping `post`, `name`, `phone`.
 - The content view controller knows the resolved form visibility per kind and passes it to a pure Core function
-  `walletContactRequest(collect:hostEntry:formShown:)` at tap time. The standalone `ApplePayButton` has no form
+  `walletContactRequest(billingFormShown:shippingFormShown:)` at tap time. The standalone `ApplePayButton` has no form
   (`formShown` is always false).
 - Returned contacts are converted to `AddressInput` (pure function in the PassKit file, testable on the host):
   `isoCountryCode` uppercased to `country`, `state`, `city`, `postalCode`, street lines (first line `line1`, remaining

@@ -641,6 +641,59 @@ final class CheckoutControllerTests: XCTestCase {
         XCTAssertEqual(usable, fullBilling())
     }
 
+    func test_address_card_draftBeatsEntryReportsIgnoredEvenWhenKindNotCollected() async throws {
+        let rig = try await addressRig(collectBilling: false, billing: fullBilling("Entry"))
+        let draft = AddressInput(country: "US", line1: "Draft")
+        _ = await rig.controller.confirmNewCard(
+            newCardInput(), save: false, billingAddress: draft, billingFormShown: true)
+        XCTAssertEqual(rig.payment.lastSubmitRequest?.billingAddress, addr("Draft"))
+        let warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.map(\.code), [.addressEntryIgnored])
+    }
+
+    func test_address_wallet_contactWinsButShownFormStillReportsIgnoredOnce() async throws {
+        let rig = try await addressRig(collectBilling: true, billing: fullBilling("Entry"))
+        let auth = WalletAuthorization(
+            token: Data([1]), billing: fullBilling("Wallet"), shipping: nil, email: nil)
+        _ = await rig.controller.confirmWallet(auth, billingFormShown: true)
+        XCTAssertEqual(rig.payment.lastSubmitRequest?.billingAddress, fullBilling("Wallet"))
+        let warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.map(\.code), [.addressEntryIgnored])
+        XCTAssertEqual(warnings.first?.ignored, ["billingAddress"])
+    }
+
+    func test_address_updateHostAddresses_reportsIncompleteImmediately() async throws {
+        let rig = try await addressRig(collectBilling: true)
+        await rig.controller.updateHostAddresses(billing: addr("1 Main St"), shipping: nil)
+        let warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.map(\.code), [.addressIncomplete])
+    }
+
+    func test_addressMetadataError_isDeliveredAgainAfterStart() async throws {
+        let rig = try await addressRig(collectBilling: false)
+        let errors = ErrorCounter()
+        let reporter = DiagnosticsReporter()
+        reporter.handler = { if case .error = $0 { errors.bump() } }
+        let controller = makeController(payment: rig.payment, reporter: reporter)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+        let err = CheckoutError(code: "ADDRESS_METADATA_FAILED", message: "m", category: .network, traceId: nil)
+        reporter.error(err, sessionId: nil)
+        reporter.error(err, sessionId: nil)
+        await MainActor.run {}
+        XCTAssertEqual(errors.count, 1)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+        reporter.error(err, sessionId: nil)
+        await MainActor.run {}
+        XCTAssertEqual(errors.count, 2)
+    }
+
+    private final class ErrorCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var n = 0
+        func bump() { lock.lock(); n += 1; lock.unlock() }
+        var count: Int { lock.lock(); defer { lock.unlock() }; return n }
+    }
+
     func test_address_walletContactRequest_table() async throws {
         // collect false: never requested, even with a form shown
         var rig = try await addressRig(collectBilling: false, collectShipping: false)

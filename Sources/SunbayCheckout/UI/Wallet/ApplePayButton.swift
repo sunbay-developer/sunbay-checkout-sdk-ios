@@ -244,6 +244,8 @@
                     billingAddress: billingAddress,
                     shippingAddress: shippingAddress
                 )
+                // The session is now known, so incomplete host entries can be reported right away.
+                await controller.evaluateHostEntries(billingFormShown: false, shippingFormShown: false)
                 let filtered = PaymentMethodModel.apply(paymentMethodFilter, to: session.methodEntries)
                 await controller.reportFilterIgnored(filtered.ignored)
                 let hiddenByFilter = !filtered.entries.contains { PaymentMethodModel.logicalKey($0) == "APPLE_PAY" }

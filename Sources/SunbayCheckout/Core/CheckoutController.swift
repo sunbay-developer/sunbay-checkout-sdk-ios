@@ -190,6 +190,7 @@ actor CheckoutController {
         hostBilling = AddressRules.sanitize(billingAddress)
         hostShipping = AddressRules.sanitize(shippingAddress)
         resetAddressWarnings()
+        reporter?.resetUnscopedErrors()
         reporter?.resetWarnings(containing: CheckoutWarning.Code.walletParamsInvalid.rawValue)
         if let secret = customerAccessSecret {
             await credentials.hold(customerAccessSecret: secret)
@@ -388,6 +389,7 @@ actor CheckoutController {
         hostBilling = AddressRules.sanitize(billing)
         hostShipping = AddressRules.sanitize(shipping)
         resetAddressWarnings()
+        reportIncompleteEntries()
     }
 
     /// The host entry for `kind` when it may be submitted: the session collects that kind and the entry is complete.
@@ -427,6 +429,7 @@ actor CheckoutController {
         hostBilling = nil
         hostShipping = nil
         resetAddressWarnings()
+        reporter?.resetUnscopedErrors()
         reporter?.resetWarnings(containing: CheckoutWarning.Code.walletParamsInvalid.rawValue)
         await credentials.clear()
     }
@@ -451,7 +454,7 @@ actor CheckoutController {
         let value = AddressRules.sanitize(form)
         let entry = usableHostEntry(kind)
         if AddressRules.hasDraftContent(value) {
-            if entry != nil { reportIgnored(kind) }
+            if hostEntry(kind) != nil { reportIgnored(kind) }
             return value
         }
         return entry ?? (formShown ? value : nil)
@@ -459,13 +462,11 @@ actor CheckoutController {
 
     /// Wallet: the returned contact wins; else the usable entry when no form exists for the kind.
     private func resolveWalletAddress(_ kind: AddressKind, contact: AddressInput?, formShown: Bool) -> AddressInput? {
+        // The warning is about the entry's presence: a shown form means the entry is ignored for the wallet.
+        if formShown, hostEntry(kind) != nil { reportIgnored(kind) }
         if let contact = AddressRules.sanitize(contact) { return contact }
-        guard let entry = usableHostEntry(kind) else { return nil }
-        if formShown {
-            reportIgnored(kind)
-            return nil
-        }
-        return entry
+        guard !formShown else { return nil }
+        return usableHostEntry(kind)
     }
 
     private func reportIncompleteEntries() {

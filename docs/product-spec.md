@@ -285,14 +285,15 @@ never logged, never returned in callbacks and never part of a diagnostic. The ru
   `firstName`, `lastName` and `phone`.
 - **Usable host entry** for a kind: the session collects that kind and the sanitized entry is complete. If the
   session collects the kind and the entry is present but incomplete, it is not used and `ADDRESS_INCOMPLETE` is
-  reported. If the session does not collect the kind, the entry is not used and nothing is reported.
+  reported. If the session does not collect the kind, the entry is not used and `ADDRESS_INCOMPLETE` is not reported
+  (but see `ADDRESS_ENTRY_IGNORED` below, which depends on the entry's presence only).
 - **Draft.** A sanitized form value with at least one non-blank field other than `country` (the country
   pre-fill alone does not count).
-- **New card, per kind.** A draft wins; if a host entry was also present, `ADDRESS_ENTRY_IGNORED` is reported.
+- **New card, per kind.** A draft wins; if a host entry was also present (even when the session does not collect the kind), `ADDRESS_ENTRY_IGNORED` is reported.
   Otherwise the usable host entry is used.
 - **Wallet (Apple Pay), per kind.** The address returned by the Apple Pay sheet; else (no form shown for that
-  kind) the usable host entry. If a form is shown for the kind, the host entry is ignored for the wallet and
-  `ADDRESS_ENTRY_IGNORED` is reported.
+  kind) the usable host entry. If a form is shown for the kind and a host entry is present, the entry is ignored for
+  the wallet and `ADDRESS_ENTRY_IGNORED` is reported once, even when the wallet-returned contact wins.
 - **Saved card.** Usable host entries only.
 - The SDK never blocks a submit because an address is missing; the backend decides.
 
