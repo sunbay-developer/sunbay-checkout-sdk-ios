@@ -361,6 +361,16 @@ actor CheckoutController {
         return await submitAndResolve(request)
     }
 
+    /// Reports `WALLET_PARAMS_INVALID` for the current session (deduplicated by the reporter). `missing` holds parameter
+    /// names only, never values.
+    func reportWalletParamsInvalid(missing: [String]) {
+        guard !missing.isEmpty else { return }
+        reporter?.warning(
+            .walletParamsInvalid, ignored: missing,
+            reason: "Apple Pay is unavailable because the session's wallet parameters are missing or unusable.",
+            sessionId: session?.id)
+    }
+
     // MARK: - Host address entries
 
     /// Replaces the host address entries (for example when a standalone Apple Pay button's properties change).

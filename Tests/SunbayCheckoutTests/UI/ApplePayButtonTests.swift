@@ -231,6 +231,81 @@
             XCTAssertEqual(actual, expected)
         }
 
+        // MARK: - Contacts, addresses and ewalletParam
+
+        private func collectingSession(id: String) -> CheckoutSession {
+            CheckoutSession(
+                id: id, amount: Amount(minorUnits: 999, currencyCode: "USD"), merchantName: "Acme",
+                methods: [.applePay, .card], expiresAt: Date().addingTimeInterval(600),
+                rsaPublicKey: nil, cofEnabled: false,
+                collectBillingAddress: true, collectShippingAddress: true)
+        }
+
+        func test_tap_requestsContactsFromController_andSubmitsReturnedAddressesAndEmail() {
+            let sessionId = "sess_apple_contacts"
+            let session = collectingSession(id: sessionId)
+            let payment = MockPaymentService()
+            payment.stubSession(session)
+            payment.stubSubmit([PaymentSnapshot(sessionId: sessionId, status: .succeeded, txnId: "txn_ok")])
+            let controller = CheckoutController(
+                paymentService: payment, cofService: MockCofService(), credentials: CredentialStore(),
+                actionHandler: StubActionHandler(result: .pending))
+            let billing = AddressInput(country: "US", line1: "1 Main", city: "SF", postalCode: "94103")
+            let shipping = AddressInput(
+                country: "US", line1: "2 Side", city: "LA", postalCode: "90001",
+                firstName: "Ada", lastName: "Lovelace", phone: "+14155550100")
+            let wallet = MockWalletAuthorizer(
+                canMake: true,
+                outcome: .authorization(
+                    WalletAuthorization(token: Data([9]), billing: billing, shipping: shipping, email: "a@b.co")))
+            let button = ApplePayButton(
+                controller: controller, walletAuthorizer: wallet, sessionId: sessionId,
+                configuredMerchantId: "merchant.com.acme")
+            let available = expectation(description: "available")
+            let result = expectation(description: "result")
+            button.onAvailabilityChange = { if $0 { available.fulfill() } }
+            button.onResult = { _ in result.fulfill() }
+            wait(for: [available], timeout: 2.0)
+
+            fireTouchUpInside(on: button)
+            wait(for: [result], timeout: 2.0)
+
+            XCTAssertEqual(wallet.lastContacts, WalletContactRequest(billing: true, shipping: true))
+            XCTAssertEqual(wallet.lastMerchantName, "Acme")
+            XCTAssertEqual(payment.lastSubmitRequest?.billingAddress, billing)
+            XCTAssertEqual(payment.lastSubmitRequest?.shippingAddress, shipping)
+            XCTAssertEqual(payment.lastSubmitRequest?.customerEmail, "a@b.co")
+        }
+
+        func test_missingWalletParameters_buttonUnavailable_andOneWarningWithNamesOnly() {
+            let sessionId = "sess_apple_invalid"
+            let session = availableSession(id: sessionId)
+            let payment = MockPaymentService()
+            payment.stubSession(session)
+            let reporter = DiagnosticsReporter()
+            let delivered = expectation(description: "warning")
+            nonisolated(unsafe) var warnings: [CheckoutWarning] = []
+            reporter.handler = { event in
+                if case .warning(let w) = event { warnings.append(w); delivered.fulfill() }
+            }
+            let controller = CheckoutController(
+                paymentService: payment, cofService: MockCofService(), credentials: CredentialStore(),
+                actionHandler: StubActionHandler(result: .pending), reporter: reporter)
+            let wallet = MockWalletAuthorizer(
+                canMake: true, outcome: .success(Data([1])), missing: ["supportedNetworks"])
+            let button = ApplePayButton(
+                controller: controller, walletAuthorizer: wallet, sessionId: sessionId,
+                configuredMerchantId: "merchant.com.acme")
+
+            wait(for: [delivered], timeout: 2.0)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+
+            XCTAssertFalse(button.isAvailable)
+            XCTAssertEqual(warnings.count, 1)
+            XCTAssertEqual(warnings.first?.code, .walletParamsInvalid)
+            XCTAssertEqual(warnings.first?.ignored, ["supportedNetworks"])
+        }
+
         // MARK: - Manually trigger control events (no host app environment)
 
         /// Triggers `.touchUpInside` directly based on the control's target-action registry.
@@ -255,26 +330,51 @@
     final class MockWalletAuthorizer: WalletAuthorizing, @unchecked Sendable {
         enum Outcome {
             case success(Data)
+            case authorization(WalletAuthorization)
             case failure(Error)
         }
 
         private let canMake: Bool
         private let outcome: Outcome
+        private let missing: [String]
+        private let lock = NSLock()
+        private var _lastContacts: WalletContactRequest?
+        private var _lastMerchantName: String?
 
-        init(canMake: Bool, outcome: Outcome) {
+        init(canMake: Bool, outcome: Outcome, missing: [String] = []) {
             self.canMake = canMake
             self.outcome = outcome
+            self.missing = missing
+        }
+
+        /// The contacts passed to the most recent `authorize` call.
+        var lastContacts: WalletContactRequest? { lock.lock(); defer { lock.unlock() }; return _lastContacts }
+        var lastMerchantName: String? { lock.lock(); defer { lock.unlock() }; return _lastMerchantName }
+
+        private func record(contacts: WalletContactRequest, merchantName: String) {
+            lock.lock()
+            _lastContacts = contacts
+            _lastMerchantName = merchantName
+            lock.unlock()
         }
 
         func canMakePayments() -> Bool { canMake }
 
+        func missingParameters(for params: ApplePayParams?) -> [String] { missing }
+
         func authorize(
             amount: Amount,
             merchantId: String,
-            confirm: @escaping @Sendable (Data) async -> CheckoutOutcome
+            merchantName: String,
+            params: ApplePayParams?,
+            contacts: WalletContactRequest,
+            confirm: @escaping @Sendable (WalletAuthorization) async -> CheckoutOutcome
         ) async throws -> CheckoutOutcome {
+            record(contacts: contacts, merchantName: merchantName)
             switch outcome {
-            case .success(let data): return await confirm(data)
+            case .success(let data):
+                return await confirm(WalletAuthorization(token: data, billing: nil, shipping: nil, email: nil))
+            case .authorization(let authorization): return await confirm(authorization)
             case .failure(let error): throw error
             }
         }

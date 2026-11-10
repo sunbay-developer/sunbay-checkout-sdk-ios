@@ -476,6 +476,78 @@
             XCTAssertTrue(vc.isBackInteractiveForTest)
         }
 
+        // MARK: - Wallet contacts and ewalletParam
+
+        func test_appleTap_requestsContactsWithFormFlags_andConfirmCarriesAuthorizationAndFlags() async throws {
+            let billing = AddressInput(country: "US", line1: "1 Main", city: "SF", postalCode: "94103")
+            let wallet = MockWalletAuthorizer(
+                canMake: true,
+                outcome: .authorization(
+                    WalletAuthorization(token: Data([7]), billing: billing, shipping: nil, email: "a@b.co")))
+            let flags = FlagRecorder()
+            let session = CheckoutSession(
+                id: "sess_w", amount: Amount(minorUnits: 100, currencyCode: "USD"), merchantName: "Acme",
+                methods: [.card, .applePay], expiresAt: Date().addingTimeInterval(600), collectBillingAddress: true)
+            let vc = CheckoutContentViewController(
+                session: session, savedCards: [], appearance: .resolve(.default), localize: { $0 },
+                billingMode: .simple, shippingMode: .off, addressService: MockAddressService(),
+                walletAuthorizer: wallet, walletMerchantId: "merchant.x",
+                walletContacts: { b, s in
+                    flags.record(b, s)
+                    return WalletContactRequest(billing: true, shipping: false)
+                })
+            let delegate = MockContentDelegate()
+            vc.delegate = delegate
+            vc.loadViewIfNeeded()
+
+            vc.tapExpressForTest()
+            let deadline = Date().addingTimeInterval(3)
+            while delegate.lastRequestedAction == nil, Date() < deadline {
+                try await Task.sleep(nanoseconds: 20_000_000)
+            }
+
+            XCTAssertEqual(wallet.lastContacts, WalletContactRequest(billing: true, shipping: false))
+            XCTAssertEqual(wallet.lastMerchantName, "Acme")
+            XCTAssertEqual(flags.last?.0, true)
+            XCTAssertEqual(flags.last?.1, false)
+            guard case let .confirmWallet(authorization, billingShown, shippingShown)? = delegate.lastRequestedAction
+            else { return XCTFail("Expected .confirmWallet") }
+            XCTAssertEqual(authorization.billing, billing)
+            XCTAssertEqual(authorization.email, "a@b.co")
+            XCTAssertTrue(billingShown)
+            XCTAssertFalse(shippingShown)
+            vc.applyOutcome(.failed(txnId: nil, error: CheckoutErrors.paymentFailed()))
+        }
+
+        func test_missingWalletParameters_hidesExpressRow_andReportsNamesOnce() {
+            let wallet = MockWalletAuthorizer(
+                canMake: true, outcome: .success(Data([1])), missing: ["merchantCapabilities"])
+            let reported = ReportRecorder()
+            let vc = CheckoutContentViewController(
+                session: makeSession(methods: [.card, .applePay]), savedCards: [],
+                appearance: .resolve(.default), localize: { $0 }, billingMode: .simple, shippingMode: .simple,
+                addressService: MockAddressService(), walletAuthorizer: wallet, walletMerchantId: "merchant.x",
+                onWalletParamsInvalid: { reported.add($0) })
+            vc.loadViewIfNeeded()
+
+            XCTAssertNil(vc.expressViewForTest)
+            XCTAssertEqual(reported.all, [["merchantCapabilities"]])
+        }
+
+        private final class FlagRecorder: @unchecked Sendable {
+            private let lock = NSLock()
+            private var items: [(Bool, Bool)] = []
+            func record(_ b: Bool, _ s: Bool) { lock.lock(); items.append((b, s)); lock.unlock() }
+            var last: (Bool, Bool)? { lock.lock(); defer { lock.unlock() }; return items.last }
+        }
+
+        private final class ReportRecorder: @unchecked Sendable {
+            private let lock = NSLock()
+            private var items: [[String]] = []
+            func add(_ names: [String]) { lock.lock(); items.append(names); lock.unlock() }
+            var all: [[String]] { lock.lock(); defer { lock.unlock() }; return items }
+        }
+
         // MARK: - Wallet feedback on a Pay-less home page
 
         func test_walletOnlyHome_payHiddenAtRest_visibleWhileProcessing_hiddenAfterFailure() {

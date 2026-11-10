@@ -71,6 +71,11 @@
         private let walletAuthorizer: (any WalletAuthorizing)?
         /// The resolved Apple Pay merchant id (host configuration first); nil = not configured.
         private let walletMerchantId: String?
+        /// Resolves the contacts to request for a tap from the controller, given which SDK address forms are shown.
+        /// nil (no controller wired) requests none.
+        private let walletContacts: (@Sendable (Bool, Bool) async -> WalletContactRequest)?
+        /// Reports the names of unusable Apple Pay parameters (once per session via the diagnostics dedup).
+        private let onWalletParamsInvalid: (@Sendable ([String]) -> Void)?
         /// Set while the PassKit sheet is up, so a second tap cannot start a parallel authorization.
         private var isAuthorizingWallet = false
         /// Resumed by `applyOutcome` with the outcome of an in-sheet wallet confirm, so the Apple Pay
@@ -191,6 +196,8 @@
             homeTitle: String? = nil,
             walletAuthorizer: (any WalletAuthorizing)? = nil,
             walletMerchantId: String? = nil,
+            walletContacts: (@Sendable (Bool, Bool) async -> WalletContactRequest)? = nil,
+            onWalletParamsInvalid: (@Sendable ([String]) -> Void)? = nil,
             cardOnFileEnabled: Bool = false,
             saveCardByDefault: Bool = false,
             cardBinService: any CardBinService = EmptyCardBinService(),
@@ -204,6 +211,8 @@
             self.cardRulesService = cardRulesService
             self.walletAuthorizer = walletAuthorizer
             self.walletMerchantId = walletMerchantId
+            self.walletContacts = walletContacts
+            self.onWalletParamsInvalid = onWalletParamsInvalid
             self.session = session
             self.savedCards = savedCards
             self.appearance = appearance
@@ -592,7 +601,11 @@
         /// Confirm a wallet payment once a token has been obtained.
         private func handleConfirmWallet(token: Data) {
             guard beginProcessing() else { return }
-            delegate?.content(self, didRequest: .confirmWallet(token: token))
+            delegate?.content(
+                self,
+                didRequest: .confirmWallet(
+                    WalletAuthorization(token: token, billing: nil, shipping: nil, email: nil),
+                    billingFormShown: billingAddressView != nil, shippingFormShown: shippingAddressView != nil))
         }
 
         /// Moves to the processing phase: machine, CTA spinner, disabled inputs, delegate notices.
@@ -936,7 +949,11 @@
             }
             // Three-factor availability (design §7.4): backend allows ∩ device capable ∩ merchant id.
             if let walletAuthorizer {
-                guard walletAuthorizer.canMakePayments(), walletMerchantId != nil else { return nil }
+                let availability = ApplePayAvailability.evaluate(
+                    session: session, hiddenByFilter: false, authorizer: walletAuthorizer,
+                    merchantId: walletMerchantId)
+                if !availability.missing.isEmpty { onWalletParamsInvalid?(availability.missing) }
+                guard availability.available else { return nil }
             }
             let express = ExpressCheckoutView(
                 appearance: appearance,
@@ -1021,7 +1038,7 @@
         /// The Apple Pay row forwards a tap: run the PassKit authorization, then confirm the token.
         ///
         /// A pre-staged token (test hook) is confirmed directly. Otherwise the injected
-        /// `walletAuthorizer` presents the system sheet; a token → `.confirmWallet(token:)`
+        /// `walletAuthorizer` presents the system sheet; an authorization → `.confirmWallet`
         /// (authorization success ≠ payment success; the outcome comes back via `applyOutcome`).
         /// A user cancel leaves the sheet as-is; an authorization failure shows the inline error.
         /// The token flows only into `didRequest` and is never logged or stored (§5).
@@ -1038,14 +1055,25 @@
             isAuthorizingWallet = true
             notice.hide()
             let amount = session.amount
+            let merchantName = session.merchantName
+            let params = session.applePayParams
+            // The flags say whether the SDK shows a form for that kind right now; the same flags go to `confirmWallet`.
+            let billingFormShown = billingAddressView != nil
+            let shippingFormShown = shippingAddressView != nil
+            let walletContacts = walletContacts
             Task { @MainActor [weak self] in
                 do {
+                    let contacts = await walletContacts?(billingFormShown, shippingFormShown)
+                        ?? WalletContactRequest(billing: false, shipping: false)
                     // Each authorized token is confirmed while the Apple Pay sheet stays open; the
                     // outcome is applied to this content through the normal `applyOutcome` path.
-                    _ = try await walletAuthorizer.authorize(amount: amount, merchantId: merchantId) {
-                        [weak self] token in
+                    _ = try await walletAuthorizer.authorize(
+                        amount: amount, merchantId: merchantId, merchantName: merchantName,
+                        params: params, contacts: contacts
+                    ) { [weak self] authorization in
                         guard let self else { return .canceled }
-                        return await self.confirmWalletAwaitingOutcome(token: token)
+                        return await self.confirmWalletAwaitingOutcome(
+                            authorization, billingFormShown: billingFormShown, shippingFormShown: shippingFormShown)
                     }
                     self?.isAuthorizingWallet = false
                 } catch {
@@ -1076,7 +1104,9 @@
         ///
         /// When a confirm must not start (one already in flight, or locked while reconciling) nothing
         /// is submitted and a `.failed` outcome is returned so the system sheet shows a failure.
-        private func confirmWalletAwaitingOutcome(token: Data) async -> CheckoutOutcome {
+        private func confirmWalletAwaitingOutcome(
+            _ authorization: WalletAuthorization, billingFormShown: Bool, shippingFormShown: Bool
+        ) async -> CheckoutOutcome {
             guard delegate != nil, beginProcessing() else {
                 return .failed(
                     txnId: nil,
@@ -1090,7 +1120,10 @@
             }
             return await withCheckedContinuation { continuation in
                 walletOutcomeContinuation = continuation
-                delegate?.content(self, didRequest: .confirmWallet(token: token))
+                delegate?.content(
+                    self,
+                    didRequest: .confirmWallet(
+                        authorization, billingFormShown: billingFormShown, shippingFormShown: shippingFormShown))
             }
         }
 

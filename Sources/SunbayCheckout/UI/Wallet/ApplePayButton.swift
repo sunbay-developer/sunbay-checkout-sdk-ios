@@ -29,7 +29,7 @@
     ///
     /// ## Result (onResult)
     /// Tap → `WalletAuthorizing.authorize(...)` presents the Apple Pay sheet; each authorized token is
-    /// confirmed via `controller.confirmWallet(token:)` while the sheet is still open, the sheet shows
+    /// confirmed via `controller.confirmWallet(_:)` while the sheet is still open, the sheet shows
     /// the backend-derived status, and once it closes the final `CheckoutOutcome` fires `onResult` on
     /// the main thread. Wallet authorization success ≠
     /// transaction success (§3.2): the real conclusion comes from `confirmWallet`'s outcome. The user
@@ -82,6 +82,9 @@
         private let reporter: DiagnosticsReporter?
         /// The amount for this payment; overwritten with the session amount once the session finishes loading (may be a nil placeholder at construction).
         private var amount: Amount?
+        /// Merchant name and Apple Pay parameters of the loaded session (used to build the sheet request).
+        private var merchantName = ""
+        private var applePayParams: ApplePayParams?
         /// The resolved Apple Pay merchant id (host configuration takes precedence); nil means not configured → not available.
         private let resolvedMerchantId: String?
 
@@ -236,8 +239,16 @@
                     billingAddress: billingAddress,
                     shippingAddress: shippingAddress
                 )
-                backendAllowed = session.methods.contains(.applePay)
+                let availability = ApplePayAvailability.evaluate(
+                    session: session, hiddenByFilter: false, authorizer: walletAuthorizer,
+                    merchantId: resolvedMerchantId)
+                if !availability.missing.isEmpty {
+                    await controller.reportWalletParamsInvalid(missing: availability.missing)
+                }
+                backendAllowed = session.methods.contains(.applePay) && availability.missing.isEmpty
                 amount = session.amount
+                merchantName = session.merchantName
+                applePayParams = session.applePayParams
             } catch {
                 let reported = (error as? CheckoutError)
                     ?? CheckoutError(
@@ -273,18 +284,26 @@
             guard isAvailable, let merchantId = resolvedMerchantId, let amount else { return }
             let authorizer = walletAuthorizer
             let controller = controller
+            let merchantName = merchantName
+            let params = applePayParams
             Task { [weak self] in
                 let outcome: CheckoutOutcome
                 do {
+                    // A standalone button has no SDK address forms: both flags are false.
+                    let contacts = await controller.walletContactRequest(
+                        billingFormShown: false, shippingFormShown: false)
                     // The token is confirmed while the Apple Pay sheet is still open; the sheet shows
                     // success/failure only after the backend outcome is known. The token flows only
                     // into confirmWallet, never into onResult/logs (§5).
                     outcome = try await authorizer.authorize(
                         amount: amount,
-                        merchantId: merchantId
-                    ) { token in
+                        merchantId: merchantId,
+                        merchantName: merchantName,
+                        params: params,
+                        contacts: contacts
+                    ) { authorization in
                         await controller.confirmWallet(
-                            WalletAuthorization(token: token, billing: nil, shipping: nil, email: nil))
+                            authorization, billingFormShown: false, shippingFormShown: false)
                     }
                 } catch {
                     // Authorization ended without a token. Distinguish a user cancel (→ `.canceled`,

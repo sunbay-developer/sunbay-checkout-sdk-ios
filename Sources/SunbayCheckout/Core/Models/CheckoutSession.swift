@@ -32,6 +32,8 @@ public struct CheckoutSession: Sendable, Equatable {
     public let collectBillingAddress: Bool
     /// Whether the merchant asks the SDK to collect a shipping address (session flag; absent → false).
     public let collectShippingAddress: Bool
+    /// Apple Pay request parameters from the `APPLE_PAY` entry's `ewalletParam`; nil when absent or unreadable.
+    var applePayParams: ApplePayParams? = nil
 
     /// Creates a checkout session (constructed and returned by the host's `PaymentService.loadSession`).
     ///

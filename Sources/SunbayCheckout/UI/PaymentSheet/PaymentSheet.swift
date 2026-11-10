@@ -60,7 +60,7 @@
             /// Pay with a selected saved card (COF; the user selects a card then taps Pay).
             case confirmSavedCard(paymentMethodId: String)
             /// The Apple Pay wallet token has been obtained; confirm the wallet payment.
-            case confirmWallet(token: Data)
+            case confirmWallet(WalletAuthorization, billingFormShown: Bool = false, shippingFormShown: Bool = false)
             /// The user canceled.
             case cancel
         }
@@ -297,6 +297,12 @@
                 addressService: addressMetadataService,
                 walletAuthorizer: walletAuthorizer,
                 walletMerchantId: walletMerchantId,
+                walletContacts: { [controller] billing, shipping in
+                    await controller.walletContactRequest(billingFormShown: billing, shippingFormShown: shipping)
+                },
+                onWalletParamsInvalid: { [controller] missing in
+                    Task { await controller.reportWalletParamsInvalid(missing: missing) }
+                },
                 onStateChange: { [weak self] state in self?.onStateChange?(state) }
             )
 
@@ -467,9 +473,9 @@
                     billingFormShown: billingFormShown, shippingFormShown: shippingFormShown))
             case let .confirmSavedCard(paymentMethodId):
                 return .outcome(await controller.confirmSavedCard(paymentMethodId: paymentMethodId))
-            case let .confirmWallet(token):
+            case let .confirmWallet(authorization, billingFormShown, shippingFormShown):
                 return .outcome(await controller.confirmWallet(
-                    WalletAuthorization(token: token, billing: nil, shipping: nil, email: nil)))
+                    authorization, billingFormShown: billingFormShown, shippingFormShown: shippingFormShown))
             case .cancel:
                 await controller.dismiss()
                 return .outcome(.canceled)
@@ -510,6 +516,8 @@
         private let addressService: any AddressMetadataService
         private let walletAuthorizer: any WalletAuthorizing
         private let walletMerchantId: String?
+        private let walletContacts: @Sendable (Bool, Bool) async -> WalletContactRequest
+        private let onWalletParamsInvalid: @Sendable ([String]) -> Void
         private let onStateChange: (CheckoutPresentationState) -> Void
 
         /// At most ONE user action that arrived while no one was suspended on `awaitEvent` (e.g. a Pay tap
@@ -540,6 +548,8 @@
             addressService: any AddressMetadataService,
             walletAuthorizer: any WalletAuthorizing,
             walletMerchantId: String?,
+            walletContacts: @escaping @Sendable (Bool, Bool) async -> WalletContactRequest,
+            onWalletParamsInvalid: @escaping @Sendable ([String]) -> Void,
             onStateChange: @escaping (CheckoutPresentationState) -> Void
         ) {
             self.presenter = presenter
@@ -550,6 +560,8 @@
             self.addressService = addressService
             self.walletAuthorizer = walletAuthorizer
             self.walletMerchantId = walletMerchantId
+            self.walletContacts = walletContacts
+            self.onWalletParamsInvalid = onWalletParamsInvalid
             self.onStateChange = onStateChange
         }
 
@@ -599,6 +611,8 @@
                 homeTitle: paymentSheetTitle,
                 walletAuthorizer: walletAuthorizer,
                 walletMerchantId: walletMerchantId,
+                walletContacts: walletContacts,
+                onWalletParamsInvalid: onWalletParamsInvalid,
                 cardOnFileEnabled: context.cardOnFileEnabled,
                 saveCardByDefault: context.saveCardByDefault,
                 billingEntryUsable: context.billingEntryUsable,

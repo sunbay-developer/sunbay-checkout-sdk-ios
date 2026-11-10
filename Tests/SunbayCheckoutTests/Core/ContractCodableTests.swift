@@ -39,6 +39,49 @@ final class ContractCodableTests: XCTestCase {
         XCTAssertEqual(session.methods.count, 2)
     }
 
+    // MARK: - ewalletParam
+
+    private func walletSession(_ ewallet: String?) throws -> CheckoutSession {
+        let field = ewallet.map { #", "ewalletParam": \#($0)"# } ?? ""
+        let json = """
+            {
+              "sessionId": "sess_w", "currency": "USD", "totalAmount": "1.00",
+              "expiresAt": "2026-11-09T10:00:00+08:00", "merchantName": "Acme",
+              "paymentMethods": [
+                { "method": "VISA", "type": "CARD" },
+                { "method": "APPLE_PAY", "type": "E_WALLET"\(field) }
+              ]
+            }
+            """
+        return try ContractDecoding.decodeSession(from: Data(json.utf8))
+    }
+
+    private let expectedWalletParams = ApplePayParams(
+        countryCode: "US",
+        supportedNetworks: ["chinaUnionPay", "amex", "discover", "masterCard", "jcb", "visa"],
+        merchantCapabilities: ["supports3DS", "supportsCredit", "supportsDebit"])
+
+    func test_decodeSession_ewalletParamAsJSONString() throws {
+        let inner = #"{\"countryCode\":\"US\",\"supportedNetworks\":[\"chinaUnionPay\",\"amex\",\"discover\",\"masterCard\",\"jcb\",\"visa\"],\"merchantCapabilities\":[\"supports3DS\",\"supportsCredit\",\"supportsDebit\"]}"#
+        let session = try walletSession("\"\(inner)\"")
+        XCTAssertEqual(session.applePayParams, expectedWalletParams)
+        XCTAssertTrue(session.methods.contains(.applePay))
+    }
+
+    func test_decodeSession_ewalletParamAsObject() throws {
+        let session = try walletSession(
+            #"{"countryCode":"US","supportedNetworks":["chinaUnionPay","amex","discover","masterCard","jcb","visa"],"merchantCapabilities":["supports3DS","supportsCredit","supportsDebit"]}"#)
+        XCTAssertEqual(session.applePayParams, expectedWalletParams)
+    }
+
+    func test_decodeSession_ewalletParamMalformedOrAbsent_isNilAndSessionStillDecodes() throws {
+        for raw in [nil, "null", "\"not json\"", "[1,2]", "42", #""[\"visa\"]""#] as [String?] {
+            let session = try walletSession(raw)
+            XCTAssertNil(session.applePayParams)
+            XCTAssertTrue(session.methods.contains(.applePay))
+        }
+    }
+
     // MARK: - Real contract session
 
     private func sessionJSON(
