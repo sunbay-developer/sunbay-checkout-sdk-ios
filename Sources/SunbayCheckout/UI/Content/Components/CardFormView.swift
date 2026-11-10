@@ -39,7 +39,8 @@
         private let expiryField: FloatingLabelTextField
         private let cvvField: FloatingLabelTextField
 
-        private let brandIconView = UIImageView()
+        private let brandIconsView: CardBrandIconsView
+        private let cvvIconView = UIImageView()
         private let errorLabel = UILabel()
 
         private let group = UIView()
@@ -72,17 +73,23 @@
         ///   - localize: The localization closure for placeholders and the field error label.
         ///   - ruleSet: The card-brand rules (grouping, auto-advance, security-code length). Defaults to
         ///     the cached remote rules, else the bundled ones.
+        ///   - brandItems: The session's card brands (logos), shown in the number field like the HPP page.
+        ///   - logoLoader: Loads the brand logos; defaults to an in-memory loader (replaceable in tests).
         init(
             appearance: ResolvedAppearance, localize: @escaping (String) -> String,
-            ruleSet: CardRuleSet = CardRulesProvider.activeRuleSet()
+            ruleSet: CardRuleSet = CardRulesProvider.activeRuleSet(),
+            brandItems: [CardBrandItem] = [], logoLoader: CardBrandLogoLoader? = nil
         ) {
             self.ruleSet = ruleSet
             self.appearance = appearance
+            self.brandIconsView = CardBrandIconsView(appearance: appearance, loader: logoLoader)
             self.panField = FloatingLabelTextField(appearance: appearance)
             self.expiryField = FloatingLabelTextField(appearance: appearance)
             self.cvvField = FloatingLabelTextField(appearance: appearance)
             super.init(frame: .zero)
             configureSubviews(localize: localize)
+            brandIconsView.configure(items: brandItems)
+            refreshBrandIcons()
         }
 
         @available(*, unavailable)
@@ -135,6 +142,14 @@
             guard scheme != backendScheme else { return }
             backendScheme = scheme
             reapplyRules()
+            refreshBrandIcons()
+        }
+
+        /// Shows the brand icons for the current number: the carousel while empty, else the matched brand.
+        private func refreshBrandIcons() {
+            brandIconsView.update(
+                isEmpty: !(panField.text ?? "").contains(where: \.isASCIIDigit),
+                scheme: backendScheme ?? localScheme)
         }
 
         /// Re-groups the number field and refreshes the security-code hints after the rules changed.
@@ -191,6 +206,7 @@
             panField.text = PANFormatter.format(card.pan, rules: rules)
             onPANDigitsChanged?(card.pan)
             applyRulesToSecurityCode()
+            refreshBrandIcons()
             if let month = card.expiryMonth, let year = card.expiryYear {
                 expiryField.text = Self.formatExpiry(month + year)
             }
@@ -202,6 +218,24 @@
         #if DEBUG
             /// Test readout: whether a field error (red group + message) is currently shown.
             var hasFieldErrorForTest: Bool { hasFieldError && !errorLabel.isHidden }
+        #endif
+
+        #if DEBUG
+            /// Test readouts for the brand icons and the CVV icon.
+            var brandSchemesForTest: [String] { brandIconsView.visibleSchemesForTest }
+            var brandLogosResolvedForTest: Int { brandIconsView.resolvedCountForTest }
+            var hasCVVIconForTest: Bool { cvvIconView.image != nil && cvvIconView.superview === group }
+
+            /// Test seam: types `text` at the end of the number field through the real delegate path
+            /// (an empty string clears the field).
+            func typePANForTest(_ text: String) {
+                let current = panField.text ?? ""
+                let range =
+                    text.isEmpty
+                    ? NSRange(location: 0, length: (current as NSString).length)
+                    : NSRange(location: (current as NSString).length, length: 0)
+                _ = textField(panField, shouldChangeCharactersIn: range, replacementString: text)
+            }
         #endif
 
         #if DEBUG
@@ -250,11 +284,12 @@
             expiryField.floatedPlaceholder = localize("sunbay.card.expiry.placeholder")
             cvvField.floatedPlaceholder = localize("sunbay.card.cvc.placeholder")
 
-            brandIconView.image = UIImage(systemName: "creditcard")
-            brandIconView.tintColor = appearance.textSecondary
-            brandIconView.contentMode = .scaleAspectFit
-            brandIconView.setContentHuggingPriority(.required, for: .horizontal)
-            brandIconView.translatesAutoresizingMaskIntoConstraints = false
+            cvvIconView.image = UIImage(named: "cvv-icon", in: .module, compatibleWith: nil)
+            cvvIconView.contentMode = .scaleAspectFit
+            cvvIconView.isUserInteractionEnabled = false
+            cvvIconView.isAccessibilityElement = false
+            cvvIconView.translatesAutoresizingMaskIntoConstraints = false
+            brandIconsView.translatesAutoresizingMaskIntoConstraints = false
 
             group.backgroundColor = appearance.componentBackground
             group.layer.cornerRadius = appearance.cornerRadius
@@ -269,9 +304,10 @@
             group.addSubview(columnDivider)
 
             group.addSubview(panField)
-            group.addSubview(brandIconView)
+            group.addSubview(brandIconsView)
             group.addSubview(expiryField)
             group.addSubview(cvvField)
+            group.addSubview(cvvIconView)
 
             errorLabel.font = UIFont.preferredFont(forTextStyle: .caption1)
             errorLabel.textColor = appearance.danger
@@ -293,12 +329,10 @@
                 panField.topAnchor.constraint(equalTo: group.topAnchor),
                 panField.leadingAnchor.constraint(equalTo: group.leadingAnchor, constant: 12),
                 panField.heightAnchor.constraint(equalToConstant: rowHeight),
-                panField.trailingAnchor.constraint(equalTo: brandIconView.leadingAnchor, constant: -8),
+                panField.trailingAnchor.constraint(equalTo: brandIconsView.leadingAnchor, constant: -8),
 
-                brandIconView.centerYAnchor.constraint(equalTo: panField.centerYAnchor),
-                brandIconView.trailingAnchor.constraint(equalTo: group.trailingAnchor, constant: -12),
-                brandIconView.widthAnchor.constraint(equalToConstant: 24),
-                brandIconView.heightAnchor.constraint(equalToConstant: 18),
+                brandIconsView.centerYAnchor.constraint(equalTo: panField.centerYAnchor),
+                brandIconsView.trailingAnchor.constraint(equalTo: group.trailingAnchor, constant: -12),
 
                 // Horizontal divider between the two rows.
                 rowDivider.topAnchor.constraint(equalTo: panField.bottomAnchor),
@@ -320,9 +354,14 @@
 
                 cvvField.topAnchor.constraint(equalTo: rowDivider.bottomAnchor),
                 cvvField.leadingAnchor.constraint(equalTo: columnDivider.trailingAnchor, constant: 8),
-                cvvField.trailingAnchor.constraint(equalTo: group.trailingAnchor, constant: -12),
+                cvvField.trailingAnchor.constraint(equalTo: cvvIconView.leadingAnchor, constant: -8),
                 cvvField.bottomAnchor.constraint(equalTo: group.bottomAnchor),
                 cvvField.heightAnchor.constraint(equalToConstant: rowHeight),
+
+                cvvIconView.centerYAnchor.constraint(equalTo: cvvField.centerYAnchor),
+                cvvIconView.trailingAnchor.constraint(equalTo: group.trailingAnchor, constant: -12),
+                cvvIconView.widthAnchor.constraint(equalToConstant: 34),
+                cvvIconView.heightAnchor.constraint(equalToConstant: 20),
 
                 // Error label below the group.
                 errorLabel.topAnchor.constraint(equalTo: group.bottomAnchor, constant: 6),
@@ -404,6 +443,7 @@
                 textField.text = edit.text
                 Self.setCaret(in: textField, offset: edit.caret)
                 applyRulesToSecurityCode()
+                refreshBrandIcons()
                 sendEditingChanged(textField)
                 onPANDigitsChanged?(edit.text.filter(\.isASCIIDigit))
                 // Move on to the expiry field when the number reaches its brand's length, but only when

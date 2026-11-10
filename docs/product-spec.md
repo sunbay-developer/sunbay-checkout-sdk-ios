@@ -628,7 +628,7 @@ Session {
                     // including productList[].amount and productList[].num (also strings)
   expiresAt,        // "yyyy-MM-dd HH:mm:ss" in UTC
   collectBillingAddress, collectShippingAddress,
-  paymentMethods: [{ method, type, name, logoUrl }],
+  paymentMethods: [{ method, type, name, logoUrl }],  // CARD logos feed the card-number field icons
   merchantName, merchantLogoUrl,
   rsaPublicKey,     // Base64, per session; used to encrypt card data
   supportStoreCard? // absent => true; false forces saved cards off

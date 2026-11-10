@@ -46,6 +46,8 @@
         private let savedCards: [SavedCard]
         /// Whether the (filtered) session offers a card; no card → no new-card row and no saved cards.
         private let cardAvailable: Bool
+        /// The card brands (with session logos) shown in the card-number field.
+        private let cardBrandItems: [CardBrandItem]
         /// Whether the host filter left an `APPLE_PAY` entry in place.
         private let applePayVisible: Bool
         /// Whether the home page offers anything besides the express (wallet) row. Drives the
@@ -94,7 +96,8 @@
         private lazy var header = SheetHeaderView(appearance: appearance, localize: localize)
         /// The card-brand rules in effect for this screen (cached remote > bundled), fixed at creation.
         private let cardRuleSet = CardRulesProvider.activeRuleSet()
-        private lazy var cardForm = CardFormView(appearance: appearance, localize: localize, ruleSet: cardRuleSet)
+        private lazy var cardForm = CardFormView(
+            appearance: appearance, localize: localize, ruleSet: cardRuleSet, brandItems: cardBrandItems)
         private let cardBinService: any CardBinService
         private let cardRulesService: any CardRulesService
         /// Resolves the scheme from the BIN; created lazily so it exists only on the new-card flow.
@@ -219,6 +222,7 @@
         ) {
             let entries = visibleEntries ?? session.methodEntries
             self.cardAvailable = entries.contains { PaymentMethodModel.logicalKey($0) == "CARD" }
+            self.cardBrandItems = CardBrandItem.items(from: entries)
             self.applePayVisible = entries.contains { PaymentMethodModel.logicalKey($0) == "APPLE_PAY" }
             self.cardOnFileEnabled = cardOnFileEnabled
             self.saveCardByDefault = saveCardByDefault

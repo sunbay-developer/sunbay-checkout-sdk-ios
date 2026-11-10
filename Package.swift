@@ -32,7 +32,7 @@ let package = Package(
         .target(
             name: "SunbayCheckout",
             path: "Sources/SunbayCheckout",
-            resources: [.process("Resources/Localizations"), .process("Resources/CardRules"), .copy("Resources/PrivacyInfo.xcprivacy")]
+            resources: [.process("Resources/Localizations"), .process("Resources/CardRules"), .process("Resources/Images"), .copy("Resources/PrivacyInfo.xcprivacy")]
         ),
         // TEST/EXAMPLE SCAFFOLDING ONLY: scriptable service doubles + demo fixtures
         // (ScriptablePaymentService, ScriptableCofService, DemoSessionFactory). Depends only on

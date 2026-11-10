@@ -229,3 +229,14 @@ Still built ahead of their API (phase 2+):
 - Address metadata and address submit are now real (see "Address (phase 3)" above). Open there: postal code
   to state, and Google autocomplete.
 - Card rules and BIN: section 1.
+
+## Card brand icons from the session (built ahead of real data)
+
+The card-number field shows the session's `paymentMethods[].logoUrl` icons (2 fixed + a rotating slot while
+empty, the matched brand while typing; design: `docs/superpowers/specs/2026-11-10-card-brand-icons-design.md`).
+
+- [ ] Verify against the live dev session that every `CARD` entry returns an `https` `logoUrl` and that the
+      logo host is reachable from a real device (entries without a usable logo are skipped; with none the
+      field falls back to the system card glyph).
+- [ ] Verify `method` values (`VISA`, `MASTERCARD`, `AMEX`, `DISCOVER`, `JCB`, `DINERSCLUB`, `UNIONPAY`)
+      match the rule-set scheme keys case-insensitively, so the matched icon shows while typing.
