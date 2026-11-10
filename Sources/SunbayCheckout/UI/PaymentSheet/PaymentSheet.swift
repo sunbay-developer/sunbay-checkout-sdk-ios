@@ -480,11 +480,11 @@
             // `.automatic` shows no form for them).
             let billingEntryUsable = await controller.usableHostEntry(.billing) != nil
             let shippingEntryUsable = await controller.usableHostEntry(.shipping) != nil
-            let billingFormShown = Appearance.AddressCollectionMode.resolveAddressMode(
-                appearance.billingAddressMode, collect: session.collectBillingAddress,
+            let billingFormShown = AddressCollectionMode.resolveAddressMode(
+                .from(enabled: appearance.billingAddressEnabled), collect: session.collectBillingAddress,
                 hasUsableEntry: billingEntryUsable, style: appearance.billingAddressStyle) != .off
-            let shippingFormShown = Appearance.AddressCollectionMode.resolveAddressMode(
-                appearance.shippingAddressMode, collect: session.collectShippingAddress,
+            let shippingFormShown = AddressCollectionMode.resolveAddressMode(
+                .from(enabled: appearance.shippingAddressEnabled), collect: session.collectShippingAddress,
                 hasUsableEntry: shippingEntryUsable, style: appearance.shippingAddressStyle) != .off
             await controller.evaluateHostEntries(
                 billingFormShown: billingFormShown, shippingFormShown: shippingFormShown)
@@ -642,8 +642,8 @@
                 appearance: resolved,
                 localize: localize,
                 localeCode: localeCode,
-                billingMode: appearance.billingAddressMode,
-                shippingMode: appearance.shippingAddressMode,
+                billingMode: .from(enabled: appearance.billingAddressEnabled),
+                shippingMode: .from(enabled: appearance.shippingAddressEnabled),
                 addressService: addressService,
                 homeTitle: paymentSheetTitle,
                 walletAuthorizer: walletAuthorizer,

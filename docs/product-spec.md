@@ -184,16 +184,15 @@ public struct Appearance: Sendable, Equatable {
     public var density: Density = .comfortable
     public var expressPosition: ExpressPosition = .top
     public var applePayButtonType: ApplePayButtonType = .plain   // wording on the Apple Pay button (PassKit renders and localizes it)
-    public var billingAddressMode: AddressCollectionMode = .automatic
-    public var shippingAddressMode: AddressCollectionMode = .automatic
-    public var billingAddressStyle: AddressFormStyle = .simple   // form look under .automatic
+    public var billingAddressEnabled: Bool = true    // visibility follows the session's collectBillingAddress; false = never show the form
+    public var shippingAddressEnabled: Bool = true   // same, for collectShippingAddress
+    public var billingAddressStyle: AddressFormStyle = .simple   // form look when shown
     public var shippingAddressStyle: AddressFormStyle = .simple
     public var pageTransitionsEnabled: Bool = true // forward/back slide between in-sheet pages
 
     public enum ColorScheme: Sendable { case light, dark, automatic }
     public enum Density: Sendable { case comfortable, compact }
     public enum ExpressPosition: Sendable { case top, bottom, off }
-    public enum AddressCollectionMode: Sendable { case automatic, simple, full, off }
     public enum AddressFormStyle: Sendable { case simple, full }
 
     public struct Colors: Sendable, Equatable {       // primary/background/componentBackground/text/
@@ -265,22 +264,21 @@ UI 层拆成两层,单向依赖 `Container → Content → Theme`:
   只通过 `CheckoutContentDelegate` 回报,不依赖容器。这正是 **L2 内嵌零返工**的接缝:将来加一个
   内嵌容器复用同一 Content 即可。
 
-#### 地址收集模式(address collection modes)
+#### Address collection (visibility and style)
 
-由 `Appearance.billingAddressMode` / `shippingAddressMode` 决定(SDK 配置决定「怎么收」,后端只决定
-「是否收」):
+Two independent dimensions; the backend decides **whether** to collect, the host can only switch a form **off**:
 
-- `.automatic` (default for both modes): follows the checkout session for **visibility** only. For a kind, the form
-  is shown iff the session collects that kind (`collectBillingAddress` / `collectShippingAddress`) and there is no
-  usable host entry for it; otherwise it is hidden. **How** it looks is a separate dimension:
-  `Appearance.billingAddressStyle` / `shippingAddressStyle` (`.simple` default, or `.full`) apply under `.automatic`.
-- `.simple`: three fields only (country / line1 / postal code), no network.
-- `.full`: backend-layout-driven address form. Data comes from `AddressMetadataService`
-  (Core/AddressMetadata, no UIKit); the default `SunbayCheckout(configuration:)` wires the real HPP adapter
-  (`HTTPAddressMetadataService`: `GET /api/address/country` and `GET /api/address/country/{code}`).
-  Shipping asks for first/last name, billing does not (like HPP).
-- `.off`: not collected; the section is not shown.
-- `.simple`, `.full` and `.off` are explicit host choices and ignore the session flag.
+- **Visibility** follows the checkout session. A form for a kind is shown iff the session collects that kind
+  (`collectBillingAddress` / `collectShippingAddress`), the host has not disabled it
+  (`Appearance.billingAddressEnabled` / `shippingAddressEnabled`, default `true`), and there is no usable host entry
+  for it. The host cannot force a form on when the session does not ask for one. When disabled, the SDK shows
+  nothing and uses the host-provided address, if any.
+- **Style** is `Appearance.billingAddressStyle` / `shippingAddressStyle`:
+  - `.simple` (default): three fields only (country / line1 / postal code), no network.
+  - `.full`: backend-layout-driven address form. Data comes from `AddressMetadataService`
+    (Core/AddressMetadata, no UIKit); the default `SunbayCheckout(configuration:)` wires the real HPP adapter
+    (`HTTPAddressMetadataService`: `GET /api/address/country` and `GET /api/address/country/{code}`).
+    Shipping asks for first/last name, billing does not (like HPP).
 
 Host-provided addresses: `PaymentSheet(... billingAddress:shippingAddress:)` and
 `ApplePayButton(... billingAddress:shippingAddress:)` take an optional `AddressInput` each. Addresses are PII:

@@ -337,24 +337,14 @@ import SunbayCheckoutTestSupport
 
         private var addressSection: some View {
             Section {
-                Picker("Billing address", selection: $settings.billingAddressMode) {
-                    ForEach(DemoSettings.DemoAddressMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
-                    }
-                }
-                .pickerStyle(.menu)
-                Toggle("Billing full form (Automatic)", isOn: fullFormBinding(\.billingAddressStyle))
-                Picker("Shipping address", selection: $settings.shippingAddressMode) {
-                    ForEach(DemoSettings.DemoAddressMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
-                    }
-                }
-                .pickerStyle(.menu)
-                Toggle("Shipping full form (Automatic)", isOn: fullFormBinding(\.shippingAddressStyle))
+                Toggle("Disable billing address", isOn: $settings.disableBillingAddress)
+                Toggle("Billing full form", isOn: fullFormBinding(\.billingAddressStyle))
+                Toggle("Disable shipping address", isOn: $settings.disableShippingAddress)
+                Toggle("Shipping full form", isOn: fullFormBinding(\.shippingAddressStyle))
                 Toggle("Pass a host billing address", isOn: $settings.passHostBillingAddress)
                 Toggle("Pass a host shipping address", isOn: $settings.passHostShippingAddress)
             } header: {
-                SectionHelp("Address collection", "Automatic follows the session flag set by the \"Order requires\" toggles on the Pay tab for visibility (on: shown, off: hidden); Simple, Full and Off ignore it. The \"full form\" switch picks the form style used under Automatic (off: simple, on: full). The \"Pass a host ...\" toggles supply a fixed, complete US test address. A host address is used only when the session collects that kind and the address is complete; Automatic then hides the form for it. A form that is shown wins over the host address.")
+                SectionHelp("Address collection", "Whether a form is shown follows the session flag set by the \"Order requires\" toggles on the Pay tab; \"Disable ...\" can only switch it off. The \"full form\" switch picks the form style (off: simple, on: full). The \"Pass a host ...\" toggles supply a fixed, complete US test address. A complete host address hides the form for that kind. A form that is shown wins over the host address.")
             }
         }
 
@@ -375,7 +365,7 @@ import SunbayCheckoutTestSupport
 
         private var cofSection: some View {
             Section {
-                Toggle("Card on file enabled", isOn: $settings.cardOnFileEnabled)
+                Toggle("Disable card on file", isOn: $settings.disableCardOnFile)
                 Toggle("Pre-tick save card", isOn: $settings.preTickSaveCard)
             } header: {
                 SectionHelp("Saved cards", "The host switch can only disable saved cards; the session must also allow them. \"Pre-tick save card\" only sets the checkbox's initial state.")
@@ -608,7 +598,7 @@ import SunbayCheckoutTestSupport
                 applePayMerchantId: Self.merchantId,
                 appearance: makeAppearance(),
                 locale: settings.locale.bcp47,
-                cardOnFile: CardOnFileOptions(isEnabled: settings.cardOnFileEnabled,
+                cardOnFile: CardOnFileOptions(isEnabled: !settings.disableCardOnFile,
                                               saveByDefault: settings.preTickSaveCard),
                 paymentMethodFilter: methodFilter
             )
@@ -713,8 +703,8 @@ import SunbayCheckoutTestSupport
             appearance.pageTransitionsEnabled = settings.pageTransitions
 
             appearance.applePayButtonType = settings.applePayText.sdk
-            appearance.billingAddressMode = addressMode(settings.billingAddressMode)
-            appearance.shippingAddressMode = addressMode(settings.shippingAddressMode)
+            appearance.billingAddressEnabled = !settings.disableBillingAddress
+            appearance.shippingAddressEnabled = !settings.disableShippingAddress
             appearance.billingAddressStyle = settings.billingAddressStyle == .full ? .full : .simple
             appearance.shippingAddressStyle = settings.shippingAddressStyle == .full ? .full : .simple
             return appearance
@@ -723,16 +713,6 @@ import SunbayCheckoutTestSupport
         /// A color from a hardcoded valid hex literal (the fallback is unreachable).
         private func hex(_ value: String) -> UIColor {
             UIColor(sunbayHex: value) ?? .systemOrange
-        }
-
-        /// Maps a demo address-mode knob to the SDK's `Appearance.AddressCollectionMode`.
-        private func addressMode(_ mode: DemoSettings.DemoAddressMode) -> Appearance.AddressCollectionMode {
-            switch mode {
-            case .automatic: return .automatic
-            case .simple: return .simple
-            case .full: return .full
-            case .off: return .off
-            }
         }
 
         /// A switch bound to "style is full" for one of the address-style settings.

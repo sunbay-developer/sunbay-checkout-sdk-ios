@@ -514,61 +514,6 @@
             XCTAssertEqual(payment.lastSubmitRequest?.shippingAddress, ship)
         }
 
-        /// A real draft typed into an SDK form overrides a usable host entry: exactly one
-        /// `ADDRESS_ENTRY_IGNORED` reaches the diagnostics sink, and the form value is submitted.
-        @MainActor
-        func test_present_formDraftOverridesUsableEntry_reportsEntryIgnoredOnce() async throws {
-            let sessionId = "sess_ignored"
-            let key = try PaymentSheetTests.makeRSAPublicKeyBase64(bits: 2048)
-            let session = CheckoutSession(
-                id: sessionId, amount: Amount(minorUnits: 999, currencyCode: "USD"), merchantName: "Acme",
-                methods: [.card], expiresAt: Date().addingTimeInterval(600), rsaPublicKey: key, cofEnabled: false,
-                collectBillingAddress: true)
-            let payment = MockPaymentService()
-            payment.stubSession(session)
-            payment.stubSubmit([PaymentSnapshot(sessionId: sessionId, status: .succeeded, txnId: "txn_ok")])
-            let warnings = DiagnosticCodes()
-            let reporter = DiagnosticsReporter()
-            reporter.handler = { warnings.add($0) }
-            let controller = CheckoutController(
-                paymentService: payment, cofService: MockCofService(), credentials: CredentialStore(),
-                actionHandler: StubActionHandler(result: .pending), reporter: reporter)
-            var appearance = Appearance.default
-            appearance.billingAddressMode = .simple
-            let host = AddressInput(country: "US", line1: "1 Main", city: "SF", postalCode: "94103")
-            let sheet = PaymentSheet(
-                controller: controller, sessionId: sessionId, billingAddress: host,
-                localize: { $0 }, appearance: appearance)
-
-            let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
-            let root = UIViewController()
-            window.rootViewController = root
-            window.makeKeyAndVisible()
-            defer { window.isHidden = true; window.rootViewController = nil }
-            let task = Task { @MainActor in await sheet.present(from: root) }
-
-            let deadline = Date().addingTimeInterval(5)
-            while !(root.presentedViewController is PaymentSheetContainerViewController), Date() < deadline {
-                try await Task.sleep(nanoseconds: 20_000_000)
-            }
-            let container = try XCTUnwrap(root.presentedViewController as? PaymentSheetContainerViewController)
-            container.loadViewIfNeeded()
-            let content = try XCTUnwrap(container.children.first as? CheckoutContentViewController)
-            content.loadViewIfNeeded()
-            content.openNewCardForTest()
-
-            let form = try XCTUnwrap(content.billingAddressViewForTest as? SimpleAddressFormView)
-            form.fillForTest(country: "CA", line1: "9 Draft St", postalCode: "M5V")
-            content.fillCardForTest()
-            content.simulateTapPay()
-
-            try await waitUntil("submit") { payment.lastSubmitRequest != nil }
-            await MainActor.run {}
-            XCTAssertEqual(payment.lastSubmitRequest?.billingAddress?.line1, "9 Draft St")
-            XCTAssertEqual(warnings.codes.filter { $0 == "ADDRESS_ENTRY_IGNORED" }.count, 1)
-            task.cancel()
-        }
-
         private final class DiagnosticCodes: @unchecked Sendable {
             private let lock = NSLock()
             private var items: [String] = []

@@ -213,33 +213,7 @@ struct DemoSettings: Codable, Equatable {
         }
     }
 
-    // MARK: Address collection mode
-
-    /// Billing/shipping address-collection knob. Maps to `Appearance.AddressCollectionMode`.
-    ///
-    /// `.automatic` follows the session's `collectXAddress` flag for visibility (shown in the form style
-    /// chosen by the "full form" switch). `.simple` / `.full` / `.off` are explicit host choices that
-    /// ignore the flag. The session flags themselves are driven by the "Order requires ..." toggles.
-    enum DemoAddressMode: String, Codable, CaseIterable, Identifiable {
-        case automatic
-        case simple
-        case full
-        case off
-
-        var id: String { rawValue }
-
-        /// A short display label.
-        var label: String {
-            switch self {
-            case .automatic: return "Automatic (follow session)"
-            case .simple: return "Simple (country / line1 / ZIP)"
-            case .full: return "Full (backend layout)"
-            case .off: return "Off (not collected)"
-            }
-        }
-    }
-
-    /// Form style for an Automatic address mode. Maps to `Appearance.AddressFormStyle`.
+    /// Address form style. Maps to `Appearance.AddressFormStyle`.
     enum DemoAddressStyle: String, Codable, CaseIterable, Identifiable {
         case simple
         case full
@@ -264,8 +238,8 @@ struct DemoSettings: Codable, Equatable {
     var locale: DemoLocale
     /// The order amount in minor units of USD (for example cents). Sent to the dev server as major units.
     var amountMinorUnits: Int64
-    /// Host-side card-on-file switch (maps to `CardOnFileOptions.isEnabled`). Default on.
-    var cardOnFileEnabled: Bool = true
+    /// Disable card on file (maps to `!CardOnFileOptions.isEnabled`). Off by default: follow the session.
+    var disableCardOnFile: Bool = false
     /// Pre-tick the "save card" checkbox (maps to `CardOnFileOptions.saveByDefault`). Default off.
     var preTickSaveCard: Bool = false
     /// The appearance preset (maps to an `Appearance` at Pay time).
@@ -278,13 +252,13 @@ struct DemoSettings: Codable, Equatable {
     var pageTransitions: Bool = true
     /// The color-scheme override (maps to `Appearance.colorScheme`).
     var colorScheme: DemoColorScheme
-    /// The billing address collection mode (maps to `Appearance.billingAddressMode`).
-    var billingAddressMode: DemoAddressMode = .automatic
-    /// The shipping address collection mode (maps to `Appearance.shippingAddressMode`).
-    var shippingAddressMode: DemoAddressMode = .automatic
-    /// The billing form style used when the billing mode is Automatic (maps to `Appearance.billingAddressStyle`).
+    /// Disable the billing form (maps to `!Appearance.billingAddressEnabled`). Off by default: follow the session.
+    var disableBillingAddress: Bool = false
+    /// Disable the shipping form (maps to `!Appearance.shippingAddressEnabled`). Off by default: follow the session.
+    var disableShippingAddress: Bool = false
+    /// The billing form style (maps to `Appearance.billingAddressStyle`).
     var billingAddressStyle: DemoAddressStyle = .simple
-    /// The shipping form style used when the shipping mode is Automatic (maps to `Appearance.shippingAddressStyle`).
+    /// The shipping form style (maps to `Appearance.shippingAddressStyle`).
     var shippingAddressStyle: DemoAddressStyle = .simple
     /// Ask the dev server to create sessions with `collectBillingAddress` on.
     var orderRequiresBillingAddress: Bool = true

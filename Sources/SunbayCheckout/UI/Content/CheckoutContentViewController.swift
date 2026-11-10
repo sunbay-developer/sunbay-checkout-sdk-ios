@@ -57,8 +57,8 @@
         /// (`payTitle`) and error-message localization (`localizedFailure`) so both honor
         /// `CheckoutConfiguration.locale`, exactly like the UI copy does via `localize`.
         private let localeCode: String?
-        private let billingMode: Appearance.AddressCollectionMode
-        private let shippingMode: Appearance.AddressCollectionMode
+        private let billingMode: AddressCollectionMode
+        private let shippingMode: AddressCollectionMode
         private let addressService: any AddressMetadataService
 
         // MARK: - State
@@ -199,8 +199,8 @@
             appearance: ResolvedAppearance,
             localize: @escaping (String) -> String,
             localeCode: String? = nil,
-            billingMode: Appearance.AddressCollectionMode,
-            shippingMode: Appearance.AddressCollectionMode,
+            billingMode: AddressCollectionMode,
+            shippingMode: AddressCollectionMode,
             addressService: any AddressMetadataService,
             homeTitle: String? = nil,
             walletAuthorizer: (any WalletAuthorizing)? = nil,
@@ -1282,7 +1282,7 @@
         }
 
         /// Builds a billing/shipping address view for a collection mode, or nil if there is none.
-        private func makeAddressView(mode: Appearance.AddressCollectionMode, options: AddressFormOptions) -> UIView? {
+        private func makeAddressView(mode: AddressCollectionMode, options: AddressFormOptions) -> UIView? {
             switch mode {
             case .simple:
                 return SimpleAddressFormView(appearance: appearance, localize: localize, options: options)

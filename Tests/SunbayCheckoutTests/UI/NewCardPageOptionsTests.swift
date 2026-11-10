@@ -19,7 +19,7 @@
         }
 
         private func makeNewCardVC(
-            billing: Appearance.AddressCollectionMode, shipping: Appearance.AddressCollectionMode,
+            billing: AddressCollectionMode, shipping: AddressCollectionMode,
             cofEnabled: Bool = false, localize: @escaping (String) -> String = { $0 }
         ) -> CheckoutContentViewController {
             let session = CheckoutSession(

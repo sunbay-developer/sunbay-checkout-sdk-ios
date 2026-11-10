@@ -73,8 +73,10 @@ let config = CheckoutConfiguration(appearance: appearance)
 - **Dark / light.** Built-in defaults are dynamic colors that adapt to the trait collection;
   `colorScheme` drives `overrideUserInterfaceStyle` so merchants can follow the system or lock to
   `.light` / `.dark`.
-- **Address collection.** `appearance.billingAddressMode` / `shippingAddressMode` choose `.simple`
-  (country / line1 / postal code) or `.full` (backend-layout driven).
+- **Address collection.** Whether an address form is shown follows the checkout session; the host can only
+  turn one off with `appearance.billingAddressEnabled = false` / `shippingAddressEnabled = false`.
+  `billingAddressStyle` / `shippingAddressStyle` choose `.simple` (country / line1 / postal code) or `.full`
+  (backend-layout driven).
 
 ## Distribution
 

@@ -185,9 +185,10 @@ Integrator notes (phase 3):
   new-card page). Wallet payments use the address returned by the wallet, else the usable host entry. Hosts
   whose sessions require an address for saved-card payments must pass a complete `billingAddress` /
   `shippingAddress`.
-- Release-notes source-compatibility note: the `.automatic` default and the new `AddressCollectionMode.automatic`
-  case break exhaustive `switch`es over the enum. AGENTS.md rule 3 says breaking changes bump major; the owner
-  must decide the version when the first release is cut (no tags exist yet).
+- Address API simplification: visibility follows the session's `collect…Address` flag; the host can only
+  disable a form via `Appearance.billingAddressEnabled` / `shippingAddressEnabled` (default `true`), and
+  `…AddressStyle` (`.simple` / `.full`) only changes the look. The public `AddressCollectionMode` enum and
+  `…AddressMode` properties were removed before the first release (no tags exist yet).
 
 ### Wallet, address rules, payment-method filter and diagnostics
 

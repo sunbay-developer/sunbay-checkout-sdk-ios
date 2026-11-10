@@ -40,20 +40,17 @@
         public var expressPosition: ExpressPosition = .top
         /// The wording on the Apple Pay button in the express row (default `.plain`, the logo only).
         public var applePayButtonType: ApplePayButtonType = .plain
-        /// Billing address collection mode. Defaults to `.automatic` (follows the session's
-        /// `collectBillingAddress` flag). The default was `.simple` in earlier versions; hosts that
-        /// switch exhaustively over ``AddressCollectionMode`` must handle the `.automatic` case.
-        public var billingAddressMode: AddressCollectionMode = .automatic
-        /// Shipping address collection mode. Defaults to `.automatic` (follows the session's
-        /// `collectShippingAddress` flag). The default was `.simple` in earlier versions; hosts that
-        /// switch exhaustively over ``AddressCollectionMode`` must handle the `.automatic` case.
-        public var shippingAddressMode: AddressCollectionMode = .automatic
-        /// Form style for the billing address when ``billingAddressMode`` is `.automatic`. Whether the
-        /// form is shown follows the session; this decides how it looks. Defaults to `.simple`.
-        /// Ignored when the mode is an explicit `.simple` / `.full` / `.off`.
+        /// Whether the billing address form may be shown. Defaults to `true`: whether it is actually
+        /// shown follows the checkout session's `collectBillingAddress` flag. Set `false` to never show
+        /// it; a billing address the host passes in is still sent. The host cannot force the form on
+        /// when the session does not ask for it.
+        public var billingAddressEnabled: Bool = true
+        /// Whether the shipping address form may be shown. Same rules as ``billingAddressEnabled``,
+        /// following the session's `collectShippingAddress` flag.
+        public var shippingAddressEnabled: Bool = true
+        /// How the billing address form looks when it is shown. Defaults to `.simple`.
         public var billingAddressStyle: AddressFormStyle = .simple
-        /// Form style for the shipping address when ``shippingAddressMode`` is `.automatic`. Defaults to
-        /// `.simple`. Ignored when the mode is an explicit `.simple` / `.full` / `.off`.
+        /// How the shipping address form looks when it is shown. Defaults to `.simple`.
         public var shippingAddressStyle: AddressFormStyle = .simple
 
         /// Whether the "Scan card" button is offered on the new-card page. Defaults to `.automatic`.
@@ -112,38 +109,6 @@
             case simple
             /// Backend-layout-driven full address form.
             case full
-        }
-
-        /// Address collection mode.
-        public enum AddressCollectionMode: Sendable {
-            /// Follows the checkout session for visibility: the backend `collect…Address` flag on → shown
-            /// (in the configured ``AddressFormStyle``, default `.simple`), off → `.off`.
-            /// This is the default. `.simple` / `.full` / `.off` are explicit choices that ignore the flag.
-            case automatic
-            /// Three fields: country / line1 / postal code.
-            case simple
-            /// Backend-layout-driven full address form.
-            case full
-            /// Not collected: the section is not shown at all.
-            case off
-
-            /// Resolves a configured mode against the session's collect flag and the host's address entry.
-            ///
-            /// - Parameters:
-            ///   - mode: The configured mode.
-            ///   - collect: The session's `collectBillingAddress` / `collectShippingAddress` flag.
-            ///   - hasUsableEntry: Whether the host supplied a complete entry for this address kind.
-            ///   - style: The form style used when `.automatic` resolves to shown.
-            /// - Returns: for `.automatic`, the style's mode (`.simple` / `.full`) when the session collects
-            ///   the address and the host has no usable entry, else `.off`; any explicit mode unchanged.
-            static func resolveAddressMode(
-                _ mode: AddressCollectionMode, collect: Bool, hasUsableEntry: Bool,
-                style: AddressFormStyle = .simple
-            ) -> AddressCollectionMode {
-                guard mode == .automatic else { return mode }
-                guard collect && !hasUsableEntry else { return .off }
-                return style == .full ? .full : .simple
-            }
         }
 
         /// Bottom-sheet sizing policy.
