@@ -30,6 +30,7 @@ function summarizeInput(input) {
         items: Array.isArray(input.items) ? input.items.length : undefined,
         collectBillingAddress: input.collectBillingAddress,
         collectShippingAddress: input.collectShippingAddress,
+        supportStoreCard: input.supportStoreCard,
     };
 }
 

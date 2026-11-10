@@ -238,6 +238,8 @@ struct DemoSettings: Codable, Equatable {
     var orderRequiresBillingAddress: Bool = false
     /// Ask the dev server to create sessions with `collectShippingAddress` on.
     var orderRequiresShippingAddress: Bool = false
+    /// Ask the dev server to create sessions that allow saved cards (the session's card-on-file flag).
+    var orderSupportsSavedCards: Bool = true
     /// Pass a fixed US test billing address to `PaymentSheet(billingAddress:)`.
     var passHostBillingAddress: Bool = false
     /// Pass a fixed, complete US test shipping address (with names and phone) to `PaymentSheet(shippingAddress:)`.

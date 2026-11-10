@@ -81,7 +81,7 @@ export function buildCreateSessionPayload(input, config, now) {
         collectShippingAddress: input.collectShippingAddress ?? false,
         merchantReturnUrl: input.returnUrl ?? '',
         notifyUrl: input.returnUrl ?? '',
-        supportStoreCard: true,
+        supportStoreCard: input.supportStoreCard ?? true,
         sessionType: 'sdk',
     };
 }

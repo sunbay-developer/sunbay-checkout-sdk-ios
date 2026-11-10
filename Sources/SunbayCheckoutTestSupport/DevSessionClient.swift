@@ -55,10 +55,12 @@ public struct DevSessionClient: Sendable {
     ///   - amountMajorUnits: Order amount in major units (for example dollars); the server converts to minor units.
     ///   - collectBillingAddress: Whether the session should collect a billing address.
     ///   - collectShippingAddress: Whether the session should collect a shipping address.
+    ///   - supportStoreCard: Whether the session allows saved cards. Defaults to `true`.
     /// - Returns: The created session.
     public func createSession(amountMajorUnits: Double = 0.01,
                               collectBillingAddress: Bool = false,
-                              collectShippingAddress: Bool = false) async throws -> DevSession {
+                              collectShippingAddress: Bool = false,
+                              supportStoreCard: Bool = true) async throws -> DevSession {
         var request = URLRequest(url: serverURL.appendingPathComponent("api/create-session"))
         request.httpMethod = "POST"
         request.timeoutInterval = 30
@@ -67,6 +69,7 @@ public struct DevSessionClient: Sendable {
             "amount": amountMajorUnits,
             "collectBillingAddress": collectBillingAddress,
             "collectShippingAddress": collectShippingAddress,
+            "supportStoreCard": supportStoreCard,
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 

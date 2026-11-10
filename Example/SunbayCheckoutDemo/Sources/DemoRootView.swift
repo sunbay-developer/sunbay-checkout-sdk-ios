@@ -6,6 +6,38 @@ import SunbayCheckoutTestSupport
     import SwiftUI
     import UIKit
 
+    // MARK: - Section help
+
+    /// A section title with a "?" button that explains the section in an alert (keeps the form compact).
+    struct SectionHelp: View {
+        let title: String
+        let message: String
+        @State private var isShown = false
+
+        init(_ title: String, _ message: String) {
+            self.title = title
+            self.message = message
+        }
+
+        var body: some View {
+            HStack(spacing: 6) {
+                Text(title)
+                Button {
+                    isShown = true
+                } label: {
+                    Image(systemName: "questionmark.circle")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Help: \(title)")
+            }
+            .alert(title, isPresented: $isShown) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(message)
+            }
+        }
+    }
+
     // MARK: - Log
 
     /// The live log behind the Logs tab. Lines are also printed to the console.
@@ -94,7 +126,6 @@ import SunbayCheckoutTestSupport
         var body: some View {
             TabView {
                 tab("Pay", systemImage: "creditcard") {
-                    backendSection
                     orderSection
                     sessionSection
                     paymentSheetSection
@@ -126,7 +157,8 @@ import SunbayCheckoutTestSupport
         /// Everything a created session depends on; changing any of it invalidates the session.
         private var sessionInputs: [String] {
             [settings.environment.rawValue, settings.devServerURL, String(settings.amountMinorUnits),
-             String(settings.orderRequiresBillingAddress), String(settings.orderRequiresShippingAddress)]
+             String(settings.orderRequiresBillingAddress), String(settings.orderRequiresShippingAddress),
+             String(settings.orderSupportsSavedCards)]
         }
 
         /// One tab: its own navigation stack around a form, so each tab keeps its scroll position.
@@ -142,33 +174,6 @@ import SunbayCheckoutTestSupport
             .tabItem { Label(title, systemImage: systemImage) }
         }
 
-        // MARK: - Backend
-
-        /// SDK environment and the URL of the session server (which holds the credentials for that environment).
-        private var backendSection: some View {
-            Section {
-                Picker("Environment", selection: $settings.environment) {
-                    ForEach(DemoSettings.DemoEnvironment.allCases) { env in
-                        Text(env.label).tag(env)
-                    }
-                }
-                .pickerStyle(.segmented)
-                HStack {
-                    Text("Server URL")
-                    Spacer()
-                    TextField("http://127.0.0.1:8095", text: $settings.devServerURL)
-                        .multilineTextAlignment(.trailing)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled(true)
-                }
-            } header: {
-                Text("Backend")
-            } footer: {
-                Text("The environment is the SDK's CheckoutConfiguration.environment. Orders are created through the session server at the URL above, which must hold credentials for the same environment.")
-            }
-        }
-
         // MARK: - Order
 
         private var orderSection: some View {
@@ -180,12 +185,28 @@ import SunbayCheckoutTestSupport
                         .multilineTextAlignment(.trailing)
                         .keyboardType(.numberPad)
                 }
-                Toggle("Order requires billing address", isOn: $settings.orderRequiresBillingAddress)
-                Toggle("Order requires shipping address", isOn: $settings.orderRequiresShippingAddress)
+                Toggle("Requires billing address", isOn: $settings.orderRequiresBillingAddress)
+                Toggle("Requires shipping address", isOn: $settings.orderRequiresShippingAddress)
+                Toggle("Supports saved cards", isOn: $settings.orderSupportsSavedCards)
+                DisclosureGroup("More") {
+                    Picker("Environment", selection: $settings.environment) {
+                        ForEach(DemoSettings.DemoEnvironment.allCases) { env in
+                            Text(env.label).tag(env)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    HStack {
+                        Text("Server URL")
+                        Spacer()
+                        TextField("http://127.0.0.1:8095", text: $settings.devServerURL)
+                            .multilineTextAlignment(.trailing)
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled(true)
+                    }
+                }
             } header: {
-                Text("Order")
-            } footer: {
-                Text("The server receives the amount in major units (minor units / 100). The \"requires\" toggles set the session's collect flags; see Options for how the sheet shows the address forms.")
+                SectionHelp("Order", "These values are sent to the session server when the session is created; changing any of them discards the current session. The server receives the amount in major units (minor units / 100). The \"Requires\" toggles set the session's collect flags and \"Supports saved cards\" sets the session's card-on-file flag (the host switch on the Options tab can only disable saved cards on top of it). More: Environment is the SDK's CheckoutConfiguration.environment (Dev by default); Server URL is the session server, which must hold credentials for the same environment.")
             }
         }
 
@@ -200,9 +221,7 @@ import SunbayCheckoutTestSupport
                 }
                 .pickerStyle(.menu)
             } header: {
-                Text("Locale")
-            } footer: {
-                Text("Drives CheckoutConfiguration.locale. Switch to zh-CN, then present the sheet to see the SDK render its Chinese UI strings.")
+                SectionHelp("Locale", "Drives CheckoutConfiguration.locale. Switch to zh-CN, then present the sheet to see the SDK render its Chinese UI strings.")
             }
         }
 
@@ -228,9 +247,7 @@ import SunbayCheckoutTestSupport
                     }
                 }
             } header: {
-                Text("Theme")
-            } footer: {
-                Text("Each theme sets colors, corner radius, shadow, density and express position on Appearance.")
+                SectionHelp("Theme", "Each theme sets colors, corner radius, shadow, density and express position on Appearance.")
             }
         }
 
@@ -256,9 +273,7 @@ import SunbayCheckoutTestSupport
                 .pickerStyle(.segmented)
                 Toggle("Page transitions", isOn: $settings.pageTransitions)
             } header: {
-                Text("Effects")
-            } footer: {
-                Text("Overrides applied on top of the theme. Color scheme and shadow stay at the theme's own value when set to Automatic / Theme.")
+                SectionHelp("Effects", "Overrides applied on top of the theme. Color scheme and shadow stay at the theme's own value when set to Automatic / Theme.")
             }
         }
 
@@ -279,9 +294,7 @@ import SunbayCheckoutTestSupport
                 Toggle("Pass a host billing address", isOn: $settings.passHostBillingAddress)
                 Toggle("Pass a host shipping address", isOn: $settings.passHostShippingAddress)
             } header: {
-                Text("Address collection")
-            } footer: {
-                Text("Automatic follows the session flag set by the \"Order requires\" toggles on the Pay tab (on: full form, off: hidden); Simple, Full and Off ignore it. The \"Pass a host ...\" toggles supply a fixed, complete US test address. A host address is used only when the session collects that kind and the address is complete; Automatic then hides the form for it. A form that is shown wins over the host address.")
+                SectionHelp("Address collection", "Automatic follows the session flag set by the \"Order requires\" toggles on the Pay tab (on: full form, off: hidden); Simple, Full and Off ignore it. The \"Pass a host ...\" toggles supply a fixed, complete US test address. A host address is used only when the session collects that kind and the address is complete; Automatic then hides the form for it. A form that is shown wins over the host address.")
             }
         }
 
@@ -290,9 +303,7 @@ import SunbayCheckoutTestSupport
                 Toggle("Hide Apple Pay", isOn: $settings.hideApplePay)
                 Toggle("Hide Card", isOn: $settings.hideCard)
             } header: {
-                Text("Payment methods")
-            } footer: {
-                Text("Maps to PaymentMethodFilter(hide:). Hiding Card also hides saved cards. Hiding every method makes present() fail with NO_PAYMENT_METHOD_AVAILABLE.")
+                SectionHelp("Payment methods", "Maps to PaymentMethodFilter(hide:). Hiding Card also hides saved cards. Hiding every method makes present() fail with NO_PAYMENT_METHOD_AVAILABLE.")
             }
         }
 
@@ -301,9 +312,7 @@ import SunbayCheckoutTestSupport
                 Toggle("Card on file enabled", isOn: $settings.cardOnFileEnabled)
                 Toggle("Pre-tick save card", isOn: $settings.preTickSaveCard)
             } header: {
-                Text("Saved cards")
-            } footer: {
-                Text("The host switch can only disable saved cards; the session must also allow them. \"Pre-tick save card\" only sets the checkbox's initial state.")
+                SectionHelp("Saved cards", "The host switch can only disable saved cards; the session must also allow them. \"Pre-tick save card\" only sets the checkbox's initial state.")
             }
         }
 
@@ -331,14 +340,9 @@ import SunbayCheckoutTestSupport
                     }
                 } else if let sessionError {
                     Text(sessionError).font(.footnote).foregroundColor(.red)
-                } else {
-                    Text("No session yet. Create one to enable the payment actions.")
-                        .font(.footnote).foregroundStyle(.secondary)
                 }
             } header: {
-                Text("Session")
-            } footer: {
-                Text("Creates an order through the session server using the Backend and Order settings above. Changing any of them discards the session.")
+                SectionHelp("Session", "Creates an order through the session server using the Backend and Order settings above. Changing any of them discards the session.")
             }
         }
 
@@ -348,7 +352,7 @@ import SunbayCheckoutTestSupport
             sessionError = nil
             session = nil
             let request = sessionRequest
-            log.add("Create session: env=\(settings.environment.label) amount=\(settings.amountMinorUnits) billing=\(request.collectBillingAddress) shipping=\(request.collectShippingAddress)")
+            log.add("Create session: env=\(settings.environment.label) amount=\(settings.amountMinorUnits) billing=\(request.collectBillingAddress) shipping=\(request.collectShippingAddress) savedCards=\(request.supportStoreCard)")
             Task { @MainActor in
                 defer { isCreatingSession = false }
                 do {
@@ -366,10 +370,7 @@ import SunbayCheckoutTestSupport
         // MARK: - Action sections
 
         private var paymentSheetSection: some View {
-            Section("PaymentSheet (L1 black-box)") {
-                Text("Presents the SDK sheet for the session: new-card form, 'Save this card', saved cards (COF one-tap), and an Apple Pay entry row.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+            Section {
                 PaySheetButton(
                     checkout: makeCheckout(),
                     session: session,
@@ -377,11 +378,13 @@ import SunbayCheckoutTestSupport
                     onOutcome: { handle($0, source: "Sheet") },
                     onState: { log.add("Sheet state: \(describeState($0))") }
                 )
+            } header: {
+                SectionHelp("PaymentSheet", "L1 black-box page for the current session: new-card form, 'Save this card', saved cards (one-tap) and an Apple Pay entry row.")
             }
         }
 
         private var applePaySection: some View {
-            Section("Standalone ApplePayButton (L3)") {
+            Section {
                 StandaloneApplePaySection(
                     checkout: makeCheckout(),
                     session: session,
@@ -430,8 +433,8 @@ import SunbayCheckoutTestSupport
                         }
                     }
                 }
-            } footer: {
-                Text("Newest first. Shows session creation, outcomes, sheet states and SDK diagnostics. Secrets and card data are never logged.")
+            } header: {
+                SectionHelp("Logs", "Newest first. Shows session creation, outcomes, sheet states and SDK diagnostics. Secrets and card data are never logged.")
             }
         }
 
@@ -454,6 +457,7 @@ import SunbayCheckoutTestSupport
                 amountMajorUnits: Double(settings.amountMinorUnits) / 100,
                 collectBillingAddress: settings.orderRequiresBillingAddress,
                 collectShippingAddress: settings.orderRequiresShippingAddress,
+                supportStoreCard: settings.orderSupportsSavedCards,
                 hostBillingAddress: settings.passHostBillingAddress ? Self.testBillingAddress : nil,
                 hostShippingAddress: settings.passHostShippingAddress ? Self.testShippingAddress : nil
             )
@@ -667,6 +671,8 @@ import SunbayCheckoutTestSupport
         let amountMajorUnits: Double
         let collectBillingAddress: Bool
         let collectShippingAddress: Bool
+        /// Whether the session allows saved cards (the session's card-on-file flag).
+        let supportStoreCard: Bool
         /// Host-provided billing address for `PaymentSheet(billingAddress:)` (nil: let the form collect it).
         let hostBillingAddress: AddressInput?
         /// Host-provided shipping address for `PaymentSheet(shippingAddress:)` (nil: let the form collect it).
@@ -678,7 +684,8 @@ import SunbayCheckoutTestSupport
             return try await DevSessionClient(serverURL: serverURL).createSession(
                 amountMajorUnits: amountMajorUnits,
                 collectBillingAddress: collectBillingAddress,
-                collectShippingAddress: collectShippingAddress
+                collectShippingAddress: collectShippingAddress,
+                supportStoreCard: supportStoreCard
             )
         }
     }
@@ -732,9 +739,7 @@ import SunbayCheckoutTestSupport
         var body: some View {
             if let session {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(available
-                        ? "Available - tap to drive the wallet authorization end-to-end (confirmWallet)."
-                        : "Hidden/unavailable (device cannot make payments or merchant-id not configured).")
+                    Text(available ? "Available" : "Unavailable (device cannot pay or merchant id not configured)")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                     ApplePayButtonView(
@@ -751,7 +756,7 @@ import SunbayCheckoutTestSupport
                     .frame(height: 48)
                 }
             } else {
-                Text("Create a session first. Apple Pay needs a real device.")
+                Text("Create a session first.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
