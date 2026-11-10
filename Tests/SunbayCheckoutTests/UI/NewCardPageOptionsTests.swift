@@ -47,7 +47,6 @@
             let vc = makeNewCardVC(billing: .simple, shipping: .off)
             let texts = visibleTexts(in: vc.view)
             XCTAssertFalse(texts.contains("SUNBAY.ADDRESS.SHIPPINGTITLE"), "No shipping title when off.")
-            XCTAssertFalse(texts.contains("sunbay.address.sameAsBilling"), "No 'Same as billing' when off.")
             XCTAssertTrue(texts.contains("SUNBAY.ADDRESS.BILLINGTITLE"), "Billing is unaffected.")
         }
 

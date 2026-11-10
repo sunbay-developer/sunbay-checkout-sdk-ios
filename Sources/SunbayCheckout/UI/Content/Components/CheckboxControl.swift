@@ -1,7 +1,7 @@
 #if canImport(UIKit)
     import UIKit
 
-    /// A square checkbox control (design: the COF "Save card" and "Same as billing" toggles).
+    /// A square checkbox control (design: the COF "Save card" toggle).
     ///
     /// Replaces `UISwitch` for the sheet's boolean opt-ins: an 18pt rounded square that renders an
     /// empty bordered box when off and a filled `primary` box with a white checkmark when on. Tapping
