@@ -65,6 +65,25 @@
         }
     }
 
+    /// Regression: the form must size to its rows once loaded. A leaked autoresizing-mask constraint
+    /// (`height == 0`) on the hidden error container used to collapse the whole form to zero height,
+    /// so the rows overlapped each other and the controls below.
+    extension DynamicAddressFormViewTests {
+        func test_loadedFormHasNonZeroHeightFittingAllRows() {
+            let v = DynamicAddressFormView(
+                appearance: .resolve(.default), localize: { $0 }, service: MockAddressMetadataService(),
+                locale: "en-US")
+            v.waitForLoadForTest()
+
+            let fitting = v.systemLayoutSizeFitting(
+                CGSize(width: 358, height: 0),
+                withHorizontalFittingPriority: .required,
+                verticalFittingPriority: .fittingSizeLevel)
+            // Country + line1 + (city, state, postal) rows, each at least the 48pt field floor.
+            XCTAssertGreaterThanOrEqual(fitting.height, 48 * 3)
+        }
+    }
+
     /// A two-country mock whose countries have DISTINCT subdivisions (US: CA/NY; Canada: ON/QC), so a
     /// stale subdivision code from one country is observable if not cleared on a country change.
     private struct TwoCountryMockService: AddressMetadataService {

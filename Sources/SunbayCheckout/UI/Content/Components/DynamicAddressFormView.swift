@@ -343,6 +343,7 @@
             addSubview(skeletonView)
 
             configureErrorContainer()
+            errorContainer.translatesAutoresizingMaskIntoConstraints = false
             addSubview(errorContainer)
 
             for view in [contentStack, skeletonView, errorContainer] {

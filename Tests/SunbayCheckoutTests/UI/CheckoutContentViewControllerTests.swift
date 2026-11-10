@@ -1193,12 +1193,14 @@
     @MainActor
     final class CheckoutContentAddressTests: XCTestCase {
         private func makeVC(
-            billing: Appearance.AddressCollectionMode = .automatic,
-            shipping: Appearance.AddressCollectionMode = .automatic,
+            billing: AddressCollectionMode = .automatic,
+            shipping: AddressCollectionMode = .automatic,
             collectBilling: Bool = false,
             collectShipping: Bool = false,
             billingEntryUsable: Bool = false,
             shippingEntryUsable: Bool = false,
+            billingStyle: Appearance.AddressFormStyle = .full,
+            shippingStyle: Appearance.AddressFormStyle = .full,
             localeCode: String? = nil,
             service: any AddressMetadataService = NameLayoutAddressService()
         ) -> (CheckoutContentViewController, AddressDelegate) {
@@ -1211,7 +1213,8 @@
                 session: session, savedCards: [], appearance: .resolve(.default), localize: { $0 },
                 localeCode: localeCode, billingMode: billing, shippingMode: shipping,
                 addressService: service, billingEntryUsable: billingEntryUsable,
-                shippingEntryUsable: shippingEntryUsable)
+                shippingEntryUsable: shippingEntryUsable,
+                billingStyle: billingStyle, shippingStyle: shippingStyle)
             let delegate = AddressDelegate()
             vc.delegate = delegate
             vc.loadViewIfNeeded()
@@ -1389,6 +1392,21 @@
         func test_automatic_unusableBillingEntry_showsFullBillingForm() {
             let (vc, _) = makeVC(collectBilling: true, billingEntryUsable: false)
             XCTAssertTrue(vc.billingAddressViewForTest is DynamicAddressFormView)
+        }
+
+        func test_automatic_formStyleIsIndependentOfVisibility() {
+            let (simple, _) = makeVC(
+                collectBilling: true, collectShipping: true, billingStyle: .simple, shippingStyle: .simple)
+            XCTAssertTrue(simple.billingAddressViewForTest is SimpleAddressFormView)
+            XCTAssertTrue(simple.shippingAddressViewForTest is SimpleAddressFormView)
+
+            let (full, _) = makeVC(collectBilling: true, collectShipping: true)
+            XCTAssertTrue(full.billingAddressViewForTest is DynamicAddressFormView)
+            XCTAssertTrue(full.shippingAddressViewForTest is DynamicAddressFormView)
+
+            // The style never overrides the session flag.
+            let (hidden, _) = makeVC(collectBilling: false, billingStyle: .full)
+            XCTAssertNil(hidden.billingAddressViewForTest)
         }
 
         func test_automatic_usableShippingEntry_hidesShippingForm() {
