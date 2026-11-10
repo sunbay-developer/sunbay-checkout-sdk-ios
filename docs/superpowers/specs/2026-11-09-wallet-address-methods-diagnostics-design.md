@@ -32,10 +32,12 @@ Goals
 - One diagnostic channel on the main entry (`SunbayCheckout.onDiagnostic`) for warnings and non-terminal errors.
 
 Non-goals
-- Processing `ewalletParam` (networks, capabilities, country, merchant id) on the client, and any host override of wallet
-  payment parameters. Paused by decision; the backend will return native-ready values per `sessionType`
-  (`docs/backend-native-wallet-params.md`). Until then the Apple Pay request keeps today's hard-coded country, networks and
-  capability.
+- Reading `ewalletParam` (networks, capabilities, country) in the Apple Pay request, and any host override of wallet
+  payment parameters (the latter is decided: never; network and capability support come from the session). Reading is
+  paused pending a decision. The comparison in `docs/backend-native-wallet-params.md` shows native and web can share the
+  same `ewalletParam`, with only a case-insensitive network-name lookup on the client; the user had asked for native-specific
+  values from the backend per `sessionType`. Until that is decided the Apple Pay request keeps today's hard-coded country,
+  networks and capability.
 - Google Pay on iOS, Google Places address autocomplete, postal-code to state lookup, the embedded component (L2).
 - Mirroring terminal payment failures on the diagnostic channel, and putting warnings on `CheckoutOutcome` (both decided:
   no).
@@ -115,8 +117,8 @@ Form options (internal): `AddressFormOptions` gains `collectPhone`; billing `(na
 - `WalletAuthorizing.authorize` takes a contact request (`billing: Bool`, `shipping: Bool`) and the merchant name; the
   `confirm` callback receives a value with the token `Data`, the optional billing and shipping addresses and the optional
   email instead of bare `Data`. The summary item label becomes the merchant name (fallback "Total").
-- Country, networks and capabilities stay hard-coded (see non-goals). When the backend delivers native values a follow-up
-  reads them one to one; this design does not.
+- Country, networks and capabilities stay hard-coded (see non-goals). A follow-up reads them from `ewalletParam` once the
+  decision above is made; this design does not.
 - The controller's wallet confirm merges addresses per 5.1 and passes them on.
 
 ### 5.3 Provider registry and payment-method filter
@@ -195,8 +197,9 @@ Internal changes: `WalletAuthorizing`, `SubmitRequest` (public struct, new optio
 
 ## 6. Open items
 
-1. Backend: native `ewalletParam` values per `sessionType` (separate document); Apple Pay merchant id and certificate
-   onboarding; token format confirmation.
+1. Backend (separate document `docs/backend-native-wallet-params.md`): `countryCode` in `ewalletParam`, Google Pay
+   `environment` per environment, Apple Pay merchant id and certificate onboarding, token format confirmation. Decision
+   pending on whether native shares the web `ewalletParam` as is.
 2. Cross-platform: Android needs the same address rules and warning codes; the JS `WARNING_CODES` registry is the shared list.
 
 ## 7. Left to the builder
