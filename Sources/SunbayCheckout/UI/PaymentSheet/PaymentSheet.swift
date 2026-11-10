@@ -89,6 +89,8 @@
             var billingEntryUsable: Bool = false
             /// Whether the host supplied a complete shipping address the session collects.
             var shippingEntryUsable: Bool = false
+            /// The session's method entries after the host filter (what the UI may offer).
+            var visibleEntries: [MethodEntry] = []
         }
 
         // MARK: - Dependencies
@@ -134,6 +136,8 @@
         private let walletAuthorizer: any WalletAuthorizing
         /// The resolved Apple Pay merchant id (host configuration first); nil hides the Apple Pay row.
         private let walletMerchantId: String?
+        /// The host's hide / order filter for payment methods.
+        private let paymentMethodFilter: PaymentMethodFilter
         /// Screen metrics snapshot shared with the checkout's default payment service; recorded in `present`.
         private let screenMetrics: ScreenMetricsStore?
         // MARK: - Public observation
@@ -194,7 +198,8 @@
                     configured: checkout.configuration.applePayMerchantId,
                     sessionProvided: nil
                 ),
-                screenMetrics: checkout.screenMetrics
+                screenMetrics: checkout.screenMetrics,
+                paymentMethodFilter: checkout.configuration.paymentMethodFilter
             )
         }
 
@@ -235,8 +240,10 @@
             addressMetadataService: any AddressMetadataService = EmptyAddressMetadataService(),
             walletAuthorizer: any WalletAuthorizing = WalletAuthorizer(),
             walletMerchantId: String? = nil,
-            screenMetrics: ScreenMetricsStore? = nil
+            screenMetrics: ScreenMetricsStore? = nil,
+            paymentMethodFilter: PaymentMethodFilter = PaymentMethodFilter()
         ) {
+            self.paymentMethodFilter = paymentMethodFilter
             self.screenMetrics = screenMetrics
             self.walletAuthorizer = walletAuthorizer
             self.walletMerchantId = walletMerchantId
@@ -430,8 +437,32 @@
                 return .startFailed(.unknown(sessionId: sessionId))
             }
 
+            // Host filter + provider availability, before any UI. Nothing available → terminal failure.
+            let filtered = PaymentMethodModel.apply(paymentMethodFilter, to: session.methodEntries)
+            await controller.reportFilterIgnored(filtered.ignored)
+            let expressOff = appearance.expressPosition == .off
+            let available = PaymentProviderRegistry.available(entries: filtered.entries) { provider in
+                guard provider.key == "APPLE_PAY" else { return true }
+                return !expressOff
+                    && ApplePayAvailability.evaluate(
+                        session: session, hiddenByFilter: false, authorizer: walletAuthorizer,
+                        merchantId: walletMerchantId
+                    ).available
+            }
+            guard !available.isEmpty else {
+                await controller.dismiss()
+                return .startFailed(.failed(
+                    txnId: nil,
+                    error: CheckoutError(
+                        code: "NO_PAYMENT_METHOD_AVAILABLE",
+                        message: "No payment method is available for this checkout.",
+                        category: .configuration, traceId: nil)))
+            }
+            let cardAvailable = available.contains { $0.key == "CARD" }
+
             // 2. Automatic COF inclusion decision (§2.2): has secret and the backend has COF on → list cards; otherwise do not.
-            let cardOnFileEnabled = await controller.isCardOnFileEnabled
+            // A hidden / absent CARD hides saved cards too and skips the list request.
+            let cardOnFileEnabled = await controller.isCardOnFileEnabled && cardAvailable
             let saveCardByDefault = await controller.cardOnFileSaveByDefault
             let savedCards: [SavedCard]
             if cardOnFileEnabled {
@@ -457,7 +488,8 @@
             let action = await seam(CheckoutContext(
                     session: session, savedCards: savedCards,
                     cardOnFileEnabled: cardOnFileEnabled, saveCardByDefault: saveCardByDefault,
-                    billingEntryUsable: billingEntryUsable, shippingEntryUsable: shippingEntryUsable))
+                    billingEntryUsable: billingEntryUsable, shippingEntryUsable: shippingEntryUsable,
+                    visibleEntries: filtered.entries))
 
             // 4. Drive the confirmation path.
             return await execute(action)
@@ -616,7 +648,8 @@
                 cardOnFileEnabled: context.cardOnFileEnabled,
                 saveCardByDefault: context.saveCardByDefault,
                 billingEntryUsable: context.billingEntryUsable,
-                shippingEntryUsable: context.shippingEntryUsable
+                shippingEntryUsable: context.shippingEntryUsable,
+                visibleEntries: context.visibleEntries
             )
             let containerVC = PaymentSheetContainerViewController(
                 content: contentVC,

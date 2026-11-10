@@ -80,6 +80,8 @@
         private let sessionId: String
         /// Diagnostics sink (nil when constructed without a host channel).
         private let reporter: DiagnosticsReporter?
+        /// The host's payment-method filter; `hide ["APPLE_PAY"]` makes the button unavailable.
+        private let paymentMethodFilter: PaymentMethodFilter
         /// The amount for this payment; overwritten with the session amount once the session finishes loading (may be a nil placeholder at construction).
         private var amount: Amount?
         /// Merchant name and Apple Pay parameters of the loaded session (used to build the sheet request).
@@ -161,7 +163,8 @@
                 checkoutClientSecret: checkoutClientSecret,
                 billingAddress: billingAddress,
                 shippingAddress: shippingAddress,
-                reporter: checkout.diagnostics
+                reporter: checkout.diagnostics,
+                paymentMethodFilter: checkout.configuration.paymentMethodFilter
             )
         }
 
@@ -186,8 +189,10 @@
             checkoutClientSecret: String? = nil,
             billingAddress: AddressInput? = nil,
             shippingAddress: AddressInput? = nil,
-            reporter: DiagnosticsReporter? = nil
+            reporter: DiagnosticsReporter? = nil,
+            paymentMethodFilter: PaymentMethodFilter = PaymentMethodFilter()
         ) {
+            self.paymentMethodFilter = paymentMethodFilter
             self.reporter = reporter
             self.controller = controller
             self.checkoutClientSecret = checkoutClientSecret
@@ -239,13 +244,16 @@
                     billingAddress: billingAddress,
                     shippingAddress: shippingAddress
                 )
+                let filtered = PaymentMethodModel.apply(paymentMethodFilter, to: session.methodEntries)
+                await controller.reportFilterIgnored(filtered.ignored)
+                let hiddenByFilter = !filtered.entries.contains { PaymentMethodModel.logicalKey($0) == "APPLE_PAY" }
                 let availability = ApplePayAvailability.evaluate(
-                    session: session, hiddenByFilter: false, authorizer: walletAuthorizer,
+                    session: session, hiddenByFilter: hiddenByFilter, authorizer: walletAuthorizer,
                     merchantId: resolvedMerchantId)
                 if !availability.missing.isEmpty {
                     await controller.reportWalletParamsInvalid(missing: availability.missing)
                 }
-                backendAllowed = session.methods.contains(.applePay) && availability.missing.isEmpty
+                backendAllowed = session.methods.contains(.applePay) && !hiddenByFilter && availability.missing.isEmpty
                 amount = session.amount
                 merchantName = session.merchantName
                 applePayParams = session.applePayParams

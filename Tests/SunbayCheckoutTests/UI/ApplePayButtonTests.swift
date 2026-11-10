@@ -77,6 +77,33 @@
             XCTAssertEqual(observed.last, true)
         }
 
+        func test_filterHidesApplePay_buttonIsUnavailable() {
+            let sessionId = "sess_apple_hidden"
+            let session = availableSession(id: sessionId)
+            let controller = makeController(
+                session: session,
+                submit: PaymentSnapshot(sessionId: sessionId, status: .succeeded, txnId: "txn_1")
+            )
+            let wallet = MockWalletAuthorizer(canMake: true, outcome: .success(Data([0x01])))
+            let neverAvailable = expectation(description: "never available")
+            neverAvailable.isInverted = true
+
+            let button = ApplePayButton(
+                controller: controller,
+                walletAuthorizer: wallet,
+                sessionId: sessionId,
+                configuredMerchantId: "merchant.com.acme",
+                amount: session.amount,
+                paymentMethodFilter: PaymentMethodFilter(hide: ["APPLE_PAY"])
+            )
+            button.onAvailabilityChange = { available in
+                if available { neverAvailable.fulfill() }
+            }
+
+            wait(for: [neverAvailable], timeout: 0.5)
+            XCTAssertFalse(button.isAvailable)
+        }
+
         // MARK: - 2. Tap drives the result
 
         func test_tap_drivesOnResult_withScriptedOutcome() {

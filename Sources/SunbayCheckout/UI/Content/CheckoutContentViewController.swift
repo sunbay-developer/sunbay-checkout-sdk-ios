@@ -44,6 +44,10 @@
 
         private let session: CheckoutSession
         private let savedCards: [SavedCard]
+        /// Whether the (filtered) session offers a card; no card → no new-card row and no saved cards.
+        private let cardAvailable: Bool
+        /// Whether the host filter left an `APPLE_PAY` entry in place.
+        private let applePayVisible: Bool
         private let appearance: ResolvedAppearance
         private let localize: (String) -> String
         /// The host-configured locale (BCP-47), or nil to follow the system. Drives amount formatting
@@ -203,8 +207,12 @@
             cardBinService: any CardBinService = EmptyCardBinService(),
             cardRulesService: any CardRulesService = EmptyCardRulesService(),
             billingEntryUsable: Bool = false,
-            shippingEntryUsable: Bool = false
+            shippingEntryUsable: Bool = false,
+            visibleEntries: [MethodEntry]? = nil
         ) {
+            let entries = visibleEntries ?? session.methodEntries
+            self.cardAvailable = entries.contains { PaymentMethodModel.logicalKey($0) == "CARD" }
+            self.applePayVisible = entries.contains { PaymentMethodModel.logicalKey($0) == "APPLE_PAY" }
             self.cardOnFileEnabled = cardOnFileEnabled
             self.saveCardByDefault = saveCardByDefault
             self.cardBinService = cardBinService
@@ -214,7 +222,7 @@
             self.walletContacts = walletContacts
             self.onWalletParamsInvalid = onWalletParamsInvalid
             self.session = session
-            self.savedCards = savedCards
+            self.savedCards = cardAvailable ? savedCards : []
             self.appearance = appearance
             self.localize = localize
             self.localeCode = localeCode
@@ -863,9 +871,11 @@
                 homeStack.addArrangedSubview(summary)
             }
 
-            let entry = makeNewCardEntryRow()
-            newCardEntryRow = entry
-            homeStack.addArrangedSubview(entry)
+            if cardAvailable {
+                let entry = makeNewCardEntryRow()
+                newCardEntryRow = entry
+                homeStack.addArrangedSubview(entry)
+            }
 
             if appearance.expressPosition == .bottom, let express {
                 homeStack.addArrangedSubview(express)
@@ -944,13 +954,13 @@
         /// home page's `homeStack` (first for `.top`, last for `.bottom`), so it never appears on the
         /// new-card subpage.
         private func makeExpressView() -> ExpressCheckoutView? {
-            guard appearance.expressPosition != .off, session.methods.contains(.applePay) else {
+            guard appearance.expressPosition != .off, applePayVisible, session.methods.contains(.applePay) else {
                 return nil
             }
             // Three-factor availability (design §7.4): backend allows ∩ device capable ∩ merchant id.
             if let walletAuthorizer {
                 let availability = ApplePayAvailability.evaluate(
-                    session: session, hiddenByFilter: false, authorizer: walletAuthorizer,
+                    session: session, hiddenByFilter: !applePayVisible, authorizer: walletAuthorizer,
                     merchantId: walletMerchantId)
                 if !availability.missing.isEmpty { onWalletParamsInvalid?(availability.missing) }
                 guard availability.available else { return nil }

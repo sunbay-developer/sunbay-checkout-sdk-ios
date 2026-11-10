@@ -87,6 +87,7 @@
             appearance: Appearance = .default, cofEnabled: Bool = false,
             cardOnFileEnabled: Bool = false, saveCardByDefault: Bool = false,
             localeCode: String? = nil,
+            visibleEntries: [MethodEntry]? = nil,
             localize: @escaping (String) -> String = { $0 }
         ) -> CheckoutContentViewController {
             CheckoutContentViewController(
@@ -99,7 +100,8 @@
                 shippingMode: .simple,
                 addressService: MockAddressService(),
                 cardOnFileEnabled: cardOnFileEnabled,
-                saveCardByDefault: saveCardByDefault
+                saveCardByDefault: saveCardByDefault,
+                visibleEntries: visibleEntries
             )
         }
 
@@ -579,6 +581,39 @@
             var appearance = Appearance.default
             appearance.expressPosition = position
             return appearance
+        }
+
+        // MARK: - Method filter (visible entries)
+
+        private let cardEntry = MethodEntry(method: "VISA", type: "CARD", name: "Visa", logoURL: nil)
+        private let appleEntry = MethodEntry(method: "APPLE_PAY", type: "E_WALLET", name: "Apple Pay", logoURL: nil)
+
+        func test_filter_hideApplePay_removesExpressRow() {
+            let vc = makeVC(
+                savedCards: [], methods: [.card, .applePay], visibleEntries: [cardEntry])
+            vc.loadViewIfNeeded()
+            XCTAssertEqual(vc.homeOrderForTest, ["newCardEntry"])
+        }
+
+        func test_filter_hideCard_removesNewCardRowAndSavedCards() {
+            let vc = makeVC(
+                savedCards: sampleSavedCards(), methods: [.card, .applePay], visibleEntries: [appleEntry])
+            vc.loadViewIfNeeded()
+            XCTAssertEqual(vc.homeOrderForTest, ["express"])
+        }
+
+        func test_noCardEntry_showsNoNewCardRow() {
+            let vc = makeVC(savedCards: [], methods: [.applePay])
+            vc.loadViewIfNeeded()
+            XCTAssertEqual(vc.homeOrderForTest, ["express"])
+        }
+
+        func test_filter_expressBottom_stillPlacesExpressBelow() {
+            let vc = makeVC(
+                savedCards: [], methods: [.card, .applePay], appearance: appearance(.bottom),
+                visibleEntries: [appleEntry, cardEntry])
+            vc.loadViewIfNeeded()
+            XCTAssertEqual(vc.homeOrderForTest, ["newCardEntry", "express"])
         }
 
         func test_expressPosition_orderOnHome() {

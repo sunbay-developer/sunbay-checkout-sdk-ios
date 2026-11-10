@@ -190,6 +190,7 @@ actor CheckoutController {
         hostBilling = AddressRules.sanitize(billingAddress)
         hostShipping = AddressRules.sanitize(shippingAddress)
         resetAddressWarnings()
+        reporter?.resetWarnings(containing: CheckoutWarning.Code.walletParamsInvalid.rawValue)
         if let secret = customerAccessSecret {
             await credentials.hold(customerAccessSecret: secret)
         }
@@ -371,6 +372,14 @@ actor CheckoutController {
             sessionId: session?.id)
     }
 
+    /// Reports each filter identifier that matched nothing (deduplicated by the reporter). Identifiers only.
+    func reportFilterIgnored(_ ignored: [PaymentMethodModel.FilterIgnored]) {
+        for item in ignored {
+            reporter?.warning(
+                .paymentMethodFilterIgnored, ignored: [item.identifier], reason: item.reason, sessionId: session?.id)
+        }
+    }
+
     // MARK: - Host address entries
 
     /// Replaces the host address entries (for example when a standalone Apple Pay button's properties change).
@@ -418,6 +427,7 @@ actor CheckoutController {
         hostBilling = nil
         hostShipping = nil
         resetAddressWarnings()
+        reporter?.resetWarnings(containing: CheckoutWarning.Code.walletParamsInvalid.rawValue)
         await credentials.clear()
     }
 

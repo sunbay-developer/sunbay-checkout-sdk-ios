@@ -499,6 +499,24 @@ final class CheckoutControllerTests: XCTestCase {
         return AddressRig(payment: payment, controller: controller, warnings: warnings)
     }
 
+    func test_walletParamsInvalid_isReportedAgainAfterStartAndDismiss() async throws {
+        let rig = try await addressRig(collectBilling: false)
+        await rig.controller.reportWalletParamsInvalid(missing: ["supportedNetworks"])
+        await rig.controller.reportWalletParamsInvalid(missing: ["supportedNetworks"])
+        var warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.map(\.code), [.walletParamsInvalid])
+
+        _ = try await rig.controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+        await rig.controller.reportWalletParamsInvalid(missing: ["supportedNetworks"])
+        warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.count, 2)
+
+        await rig.controller.dismiss()
+        await rig.controller.reportWalletParamsInvalid(missing: ["supportedNetworks"])
+        warnings = await rig.warningsFlushed()
+        XCTAssertEqual(warnings.count, 3)
+    }
+
     func test_address_notCollected_entryIsNotSubmittedAndSilent() async throws {
         let rig = try await addressRig(collectBilling: false, billing: fullBilling())
         _ = await rig.controller.confirmNewCard(newCardInput(), save: false)

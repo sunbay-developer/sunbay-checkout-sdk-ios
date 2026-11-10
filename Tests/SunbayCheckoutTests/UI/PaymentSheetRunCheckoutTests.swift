@@ -695,3 +695,93 @@
         }
     }
 #endif
+
+#if canImport(UIKit)
+    @testable import SunbayCheckout
+
+    /// Payment-method filter behavior of `PaymentSheet` (registry, empty result, saved-card listing).
+    final class PaymentSheetMethodFilterTests: XCTestCase {
+        private final class Box: @unchecked Sendable {
+            var context: PaymentSheet.CheckoutContext?
+            var warnings: [CheckoutWarning] = []
+        }
+
+        private func makeSession(methods: Set<PaymentMethodKind>) -> CheckoutSession {
+            CheckoutSession(
+                id: "sess_filter", amount: Amount(minorUnits: 999, currencyCode: "USD"), merchantName: "Acme",
+                methods: methods, expiresAt: Date().addingTimeInterval(600), cofEnabled: true)
+        }
+
+        private func makeSheet(
+            methods: Set<PaymentMethodKind> = [.card, .applePay], filter: PaymentMethodFilter,
+            reporter: DiagnosticsReporter? = nil
+        ) -> (PaymentSheet, MockCofService) {
+            let payment = MockPaymentService()
+            payment.stubSession(makeSession(methods: methods))
+            let cof = MockCofService()
+            cof.stubCards([SavedCard(id: "pm_1", brand: "visa", last4: "4242", expMonth: 12, expYear: 2030)])
+            let controller = CheckoutController(
+                paymentService: payment, cofService: cof, credentials: CredentialStore(),
+                actionHandler: StubActionHandler(result: .pending), reporter: reporter)
+            let sheet = PaymentSheet(
+                controller: controller, sessionId: "sess_filter", customerAccessSecret: "secret",
+                walletAuthorizer: MockWalletAuthorizer(canMake: true, outcome: .success(Data([1]))),
+                walletMerchantId: "merchant.com.acme", paymentMethodFilter: filter)
+            return (sheet, cof)
+        }
+
+        private func run(_ sheet: PaymentSheet) async -> (PaymentSheet.AttemptResult, PaymentSheet.CheckoutContext?) {
+            let box = Box()
+            let result = await sheet.runAttempt { context in
+                box.context = context
+                return .cancel
+            }
+            return (result, box.context)
+        }
+
+        func test_hideApplePay_keepsCardOnly() async {
+            let (sheet, _) = makeSheet(filter: PaymentMethodFilter(hide: ["APPLE_PAY"]))
+            let (_, context) = await run(sheet)
+            XCTAssertEqual(context?.visibleEntries.map(\.method), ["CARD"])
+        }
+
+        func test_hideCard_skipsSavedCardListing_andKeepsApplePay() async {
+            let (sheet, cof) = makeSheet(filter: PaymentMethodFilter(hide: ["CARD"]))
+            let (_, context) = await run(sheet)
+            XCTAssertEqual(cof.listCallCount, 0)
+            XCTAssertEqual(context?.savedCards.count, 0)
+            XCTAssertEqual(context?.visibleEntries.map(\.method), ["APPLE_PAY"])
+        }
+
+        func test_hideEverything_failsWithNoPaymentMethodAvailable_andPresentsNothing() async {
+            let (sheet, _) = makeSheet(filter: PaymentMethodFilter(hide: ["CARD", "APPLE_PAY"]))
+            let presenter = await MainActor.run { UIViewController() }
+            let outcome = await sheet.present(from: presenter)
+            guard case let .failed(_, error) = outcome else { return XCTFail("expected .failed, got \(outcome)") }
+            XCTAssertEqual(error.code, "NO_PAYMENT_METHOD_AVAILABLE")
+            XCTAssertEqual(error.category, .configuration)
+            let presented = await MainActor.run { presenter.presentedViewController }
+            XCTAssertNil(presented)
+        }
+
+        func test_sessionWithoutCardEntry_hidingApplePay_failsInsteadOfDefaultingToCard() async {
+            let (sheet, _) = makeSheet(methods: [.applePay], filter: PaymentMethodFilter(hide: ["APPLE_PAY"]))
+            let (result, _) = await run(sheet)
+            guard case let .startFailed(.failed(_, error)) = result else { return XCTFail("expected start failure") }
+            XCTAssertEqual(error.code, "NO_PAYMENT_METHOD_AVAILABLE")
+        }
+
+        func test_unknownIdentifiers_areReportedOncePerIdentifier() async {
+            let reporter = DiagnosticsReporter()
+            let box = Box()
+            reporter.handler = { if case let .warning(w) = $0 { box.warnings.append(w) } }
+            let (sheet, _) = makeSheet(
+                filter: PaymentMethodFilter(hide: ["nope", "nope"], order: ["GOOGLE_PAY"]), reporter: reporter)
+            _ = await run(sheet)
+            _ = await run(sheet)
+            await MainActor.run {}
+            XCTAssertEqual(box.warnings.map(\.code), [.paymentMethodFilterIgnored, .paymentMethodFilterIgnored])
+            XCTAssertEqual(box.warnings.flatMap(\.ignored), ["nope", "GOOGLE_PAY"])
+        }
+    }
+#endif

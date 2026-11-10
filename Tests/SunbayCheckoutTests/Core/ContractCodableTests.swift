@@ -258,6 +258,21 @@ final class ContractCodableTests: XCTestCase {
         XCTAssertTrue(session.methods.isEmpty)
     }
 
+    func test_decodeSession_keepsEveryMethodEntryInBackendOrder() throws {
+        let json = """
+            {"sessionId":"s1","currency":"USD","totalAmount":"1.00","expiresAt":"2026-10-26T12:30:00Z",
+             "merchantName":"A","supportStoreCard":false,
+             "paymentMethods":[
+               {"method":"GOOGLE_PAY","type":"E_WALLET","name":"Google Pay","logoURL":"https://x/g.png"},
+               {"method":"VISA","type":"CARD","name":"Visa"},
+               {"method":"APPLE_PAY","type":"E_WALLET"}]}
+            """
+        let session = try ContractDecoding.decodeSession(from: Data(json.utf8))
+        XCTAssertEqual(session.methodEntries.map(\.method), ["GOOGLE_PAY", "VISA", "APPLE_PAY"])
+        XCTAssertEqual(session.methodEntries.first?.logoURL, "https://x/g.png")
+        XCTAssertEqual(session.methodEntries[1].name, "Visa")
+    }
+
     func test_decodeSession_nullRsaPublicKey_isNil() throws {
         let session = try ContractDecoding.decodeSession(
             from: sessionJSON(rsa: #""rsaPublicKey": null,"#))

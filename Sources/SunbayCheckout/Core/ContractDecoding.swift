@@ -92,6 +92,9 @@ enum ContractDecoding {
                 collectBillingAddress: collectBillingAddress,
                 collectShippingAddress: collectShippingAddress
             )
+            session.methodEntries = paymentMethods.map {
+                MethodEntry(method: $0.method, type: $0.type, name: $0.name ?? "", logoURL: $0.logoURL)
+            }
             session.applePayParams = paymentMethods.first { $0.method == "APPLE_PAY" }?.ewalletParam
             return session
         }
@@ -103,15 +106,19 @@ enum ContractDecoding {
         let type: String
         /// `ewalletParam` as a JSON string containing an object, or as an object; anything else → nil (never throws).
         let ewalletParam: ApplePayParams?
+        let name: String?
+        let logoURL: String?
 
         private enum CodingKeys: String, CodingKey {
-            case method, type, ewalletParam
+            case method, type, ewalletParam, name, logoURL
         }
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             method = try c.decode(String.self, forKey: .method)
             type = try c.decode(String.self, forKey: .type)
+            name = try? c.decodeIfPresent(String.self, forKey: .name)
+            logoURL = try? c.decodeIfPresent(String.self, forKey: .logoURL)
             if let text = try? c.decode(String.self, forKey: .ewalletParam) {
                 ewalletParam = ApplePayParams.parse(Data(text.utf8))
             } else {
