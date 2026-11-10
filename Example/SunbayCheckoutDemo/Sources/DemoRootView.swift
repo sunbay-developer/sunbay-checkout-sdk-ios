@@ -94,6 +94,7 @@ import SunbayCheckoutTestSupport
         var body: some View {
             TabView {
                 tab("Pay", systemImage: "creditcard") {
+                    backendSection
                     orderSection
                     sessionSection
                     paymentSheetSection
@@ -108,7 +109,6 @@ import SunbayCheckoutTestSupport
                     methodsSection
                     addressSection
                     cofSection
-                    backendSection
                 }
                 tab("Logs", systemImage: "list.bullet.rectangle") {
                     logsSection
@@ -185,7 +185,7 @@ import SunbayCheckoutTestSupport
             } header: {
                 Text("Order")
             } footer: {
-                Text("The server receives the amount in major units (minor units / 100). The \"requires\" toggles set the session's collect flags; see Options for how the sheet shows the address forms. Set these before creating the session.")
+                Text("The server receives the amount in major units (minor units / 100). The \"requires\" toggles set the session's collect flags; see Options for how the sheet shows the address forms.")
             }
         }
 
@@ -309,8 +309,8 @@ import SunbayCheckoutTestSupport
 
         // MARK: - Session
 
-        /// The payment actions below stay disabled until a session exists. The session is created from the Order
-        /// settings above and the Backend settings (Options tab).
+        /// The payment actions below stay disabled until a session exists. The session is created from the Backend
+        /// and Order settings above.
         private var sessionSection: some View {
             Section {
                 Button {
@@ -322,13 +322,6 @@ import SunbayCheckoutTestSupport
                     }
                 }
                 .disabled(isCreatingSession)
-                HStack {
-                    Text("Backend")
-                    Spacer()
-                    Text("\(settings.environment.label) · \(settings.devServerURL)")
-                        .font(.footnote.monospaced()).foregroundStyle(.secondary)
-                        .lineLimit(1).truncationMode(.middle)
-                }
                 if let session {
                     HStack {
                         Text("Session")
@@ -345,7 +338,7 @@ import SunbayCheckoutTestSupport
             } header: {
                 Text("Session")
             } footer: {
-                Text("Creates an order through the session server using the Order settings above and the Backend settings (Options tab). Changing any of them discards the session.")
+                Text("Creates an order through the session server using the Backend and Order settings above. Changing any of them discards the session.")
             }
         }
 
