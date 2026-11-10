@@ -55,7 +55,7 @@ The settings screen has two toggles. They feed `CheckoutConfiguration(cardOnFile
 - **Card on file enabled** (default on): `CardOnFileOptions.isEnabled`. Turn it off to hide saved cards
   and the save checkbox. It can only disable COF; the session must also allow it.
 - **Pre-tick save card** (default off): `CardOnFileOptions.saveByDefault`. Only sets the checkbox's
-  initial state; the card is saved only if the checkbox is on at submit. Saving a card needs a billing address: turn on "Requires billing address" (Pay > Order) or "Pass a host billing address" (see Address collection).
+  initial state; the card is saved only if the checkbox is on at submit. Saving a card needs a billing address: keep "Requires billing address" on (Pay > Order, on by default) or "Pass a host billing address" (see Address collection).
 
 The saved-card list comes from the backend.
 
@@ -154,16 +154,18 @@ maps into a `CheckoutConfiguration` (environment from Pay > Order > More, defaul
 
 Pay tab:
 
-- **Order** - amount, "Requires billing / shipping address" and "Supports saved cards" (the session's
+- **Order** - amount, "Requires billing / shipping address" (billing on by default) and "Supports saved cards" (the session's
   card-on-file flag), plus a collapsed **More** group with the SDK environment and the session server URL
   (rarely changed). Set these first, then **Session** ("Create session") creates an order through the
   session server using them. Changing any of these, or a payment that reaches a final state (succeeded, pending, unknown), discards the session; the payment actions stay disabled until one exists. Section notes are behind the "?" next to each title.
 - **PaymentSheet (L1 black-box)** - "Pay (sheet)" constructs
   `PaymentSheet(checkout:sessionId:customerAccessSecret:checkoutClientSecret:)` for the session and calls
   `present(from:)`.
-- **Standalone ApplePayButton (L3)** - shows an `ApplePayButton` bound to the session's `sessionId` and
-  `checkoutClientSecret`, with `onResult` and `onAvailabilityChange` wired. Needs a real device for the
-  wallet sheet.
+- **Embedded components** - nothing is rendered until you tap "Load ApplePayButton"; it then shows an
+  `ApplePayButton` (L3) bound to the session's `sessionId` and `checkoutClientSecret`, with `onResult` and
+  `onAvailabilityChange` wired. "Remove" unloads it. Needs a real device for the wallet sheet.
+- **Result toast** - every payment result (succeeded, canceled, failed with its code, pending, unknown)
+  from the sheet or the embedded button is also shown as a toast.
 
 Logs tab: a live, newest-first log of session creation, sheet states, outcomes and every event delivered
 through `SunbayCheckout.onDiagnostic` (code, ignored names and reason only, never address values). Lines are

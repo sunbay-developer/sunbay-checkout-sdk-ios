@@ -235,7 +235,7 @@ struct DemoSettings: Codable, Equatable {
     /// The shipping address collection mode (maps to `Appearance.shippingAddressMode`).
     var shippingAddressMode: DemoAddressMode
     /// Ask the dev server to create sessions with `collectBillingAddress` on.
-    var orderRequiresBillingAddress: Bool = false
+    var orderRequiresBillingAddress: Bool = true
     /// Ask the dev server to create sessions with `collectShippingAddress` on.
     var orderRequiresShippingAddress: Bool = false
     /// Ask the dev server to create sessions that allow saved cards (the session's card-on-file flag).

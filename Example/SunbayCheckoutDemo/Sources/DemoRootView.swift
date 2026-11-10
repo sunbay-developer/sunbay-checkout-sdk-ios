@@ -6,6 +6,48 @@ import SunbayCheckoutTestSupport
     import SwiftUI
     import UIKit
 
+    // MARK: - Toast
+
+    /// A short message shown over the tabs.
+    struct DemoToast: Equatable {
+        enum Kind: Equatable { case success, error, info }
+        let id = UUID()
+        let message: String
+        let kind: Kind
+    }
+
+    struct ToastView: View {
+        let toast: DemoToast
+
+        var body: some View {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                Text(toast.message).font(.subheadline.bold())
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Capsule().fill(color))
+            .shadow(radius: 6)
+        }
+
+        private var icon: String {
+            switch toast.kind {
+            case .success: return "checkmark.circle.fill"
+            case .error: return "xmark.octagon.fill"
+            case .info: return "info.circle.fill"
+            }
+        }
+
+        private var color: Color {
+            switch toast.kind {
+            case .success: return .green
+            case .error: return .red
+            case .info: return .gray
+            }
+        }
+    }
+
     // MARK: - Section help
 
     /// A section title with a "?" button that explains the section in an alert (keeps the form compact).
@@ -109,6 +151,10 @@ import SunbayCheckoutTestSupport
         @State private var settings: DemoSettings = .default
         /// The live log shown on the Logs tab.
         @StateObject private var log = DemoLog()
+        /// The toast currently shown over the tabs (payment results).
+        @State private var toast: DemoToast?
+        /// Whether the embedded ApplePayButton has been loaded (it is not rendered until asked for).
+        @State private var embeddedLoaded = false
         /// The current order session; every payment action needs one.
         @State private var session: DevSession?
         /// True while a session is being created.
@@ -144,6 +190,18 @@ import SunbayCheckoutTestSupport
                 tab("Logs", systemImage: "list.bullet.rectangle") {
                     logsSection
                 }
+            }
+            .overlay(alignment: .bottom) {
+                if let toast {
+                    ToastView(toast: toast)
+                        .padding(.bottom, 70)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .allowsHitTesting(false)
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: toast)
+            .onChange(of: session?.sessionId) { id in
+                if id == nil { embeddedLoaded = false }
             }
             .onChange(of: sessionInputs) { _ in
                 // A session belongs to the inputs it was created with.
@@ -385,12 +443,26 @@ import SunbayCheckoutTestSupport
 
         private var applePaySection: some View {
             Section {
-                StandaloneApplePaySection(
-                    checkout: makeCheckout(),
-                    session: session,
-                    onResult: { handle($0, source: "Apple Pay") },
-                    onAvailability: { log.add("Apple Pay button available: \($0)") }
-                )
+                if embeddedLoaded, session != nil {
+                    StandaloneApplePaySection(
+                        checkout: makeCheckout(),
+                        session: session,
+                        onResult: { handle($0, source: "Apple Pay") },
+                        onAvailability: { log.add("Apple Pay button available: \($0)") }
+                    )
+                    Button("Remove") {
+                        embeddedLoaded = false
+                        log.add("Embedded ApplePayButton removed")
+                    }
+                } else {
+                    Button("Load ApplePayButton") {
+                        embeddedLoaded = true
+                        log.add("Embedded ApplePayButton loaded")
+                    }
+                    .disabled(session == nil)
+                }
+            } header: {
+                SectionHelp("Embedded components", "Components you embed in your own screen. Nothing is rendered until you load it. Currently: the L3 ApplePayButton bound to the current session (needs a real device). Card and billing-address components will be added here once they are embeddable.")
             }
         }
 
@@ -403,12 +475,30 @@ import SunbayCheckoutTestSupport
             default: level = .info
             }
             log.add("\(source) outcome: \(describe(outcome))", level: level)
+            showToast(for: outcome)
             switch outcome {
             case .succeeded, .pending, .unknown:
                 session = nil
                 log.add("Session finished; create a new one to pay again")
             case .failed, .canceled:
                 break
+            }
+        }
+
+        /// Shows the result of a payment attempt as a short toast (codes only, never sensitive data).
+        private func showToast(for outcome: CheckoutOutcome) {
+            let next: DemoToast
+            switch outcome {
+            case .succeeded: next = DemoToast(message: "Payment succeeded", kind: .success)
+            case .canceled: next = DemoToast(message: "Payment canceled", kind: .info)
+            case let .failed(_, error): next = DemoToast(message: "Payment failed: \(error.code)", kind: .error)
+            case .pending: next = DemoToast(message: "Payment pending", kind: .info)
+            case .unknown: next = DemoToast(message: "Payment result unknown", kind: .info)
+            }
+            toast = next
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                if toast == next { toast = nil }
             }
         }
 
@@ -703,7 +793,7 @@ import SunbayCheckoutTestSupport
         @State private var isBusy = false
 
         var body: some View {
-            Button("Pay (sheet)") {
+            Button {
                 guard !isBusy, let session, let presenter = topViewController() else { return }
                 isBusy = true
                 Task { @MainActor in
@@ -720,6 +810,8 @@ import SunbayCheckoutTestSupport
                     let outcome = await sheet.present(from: presenter)
                     onOutcome(outcome)
                 }
+            } label: {
+                Text("Pay (sheet)").frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .disabled(isBusy || session == nil)
