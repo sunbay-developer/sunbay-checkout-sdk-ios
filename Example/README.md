@@ -204,3 +204,9 @@ directly and does **not** depend on SunbayCheckout. It exists to verify the Appl
 wallet sheet -> token path on a real device without any backend. This Tuist app, by contrast, is the
 **SDK-consuming** real-device/demo surface - it exercises the SDK's public API end-to-end against the
 Dev backend.
+
+
+## Sandbox Test Card
+No.  4012000098765439
+Exp. 12/28
+CVV. 999
