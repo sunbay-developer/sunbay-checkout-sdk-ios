@@ -441,11 +441,13 @@
             case let .confirmNewCard(input, save, billing, shipping):
                 // `save` maps to `storeCard` in the controller (sent only when the checkbox is on and COF is effective: session `supportStoreCard`, host `cardOnFile.isEnabled`, and a `customerAccessSecret`).
                 return .outcome(await controller.confirmNewCard(
-                    input, save: save, billingAddress: billing, shippingAddress: shipping))
+                    input, save: save, billingAddress: billing, shippingAddress: shipping,
+                    billingFormShown: billing != nil, shippingFormShown: shipping != nil))
             case let .confirmSavedCard(paymentMethodId):
                 return .outcome(await controller.confirmSavedCard(paymentMethodId: paymentMethodId))
             case let .confirmWallet(token):
-                return .outcome(await controller.confirmWallet(token: token))
+                return .outcome(await controller.confirmWallet(
+                    WalletAuthorization(token: token, billing: nil, shipping: nil, email: nil)))
             case .cancel:
                 await controller.dismiss()
                 return .outcome(.canceled)

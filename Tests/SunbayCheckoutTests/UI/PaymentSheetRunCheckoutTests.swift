@@ -486,7 +486,7 @@
 
         // MARK: - Host-provided addresses
 
-        /// A host `billingAddress` / `shippingAddress` reaches the submit request even though the SDK
+        /// A complete host `billingAddress` / `shippingAddress` on a session that collects them reaches the submit request even though the SDK
         /// forms are off and the action carries no form values.
         @MainActor
         func test_hostAddresses_reachSubmit_withoutFormValues() async throws {
@@ -494,12 +494,15 @@
             let key = try PaymentSheetTests.makeRSAPublicKeyBase64(bits: 2048)
             let session = CheckoutSession(
                 id: sessionId, amount: Amount(minorUnits: 999, currencyCode: "USD"), merchantName: "Acme",
-                methods: [.card], expiresAt: Date().addingTimeInterval(600), rsaPublicKey: key, cofEnabled: false)
+                methods: [.card], expiresAt: Date().addingTimeInterval(600), rsaPublicKey: key, cofEnabled: false,
+                collectBillingAddress: true, collectShippingAddress: true)
             let (controller, payment, _) = makeController(
                 session: session, cards: [],
                 submit: [PaymentSnapshot(sessionId: sessionId, status: .succeeded, txnId: "txn_ok")])
-            let host = AddressInput(country: "US", line1: "1 Main", postalCode: "94103")
-            let ship = AddressInput(country: "CA", line1: "2 Side", postalCode: "M5V")
+            let host = AddressInput(country: "US", line1: "1 Main", city: "SF", postalCode: "94103")
+            let ship = AddressInput(
+                country: "CA", line1: "2 Side", city: "Toronto", postalCode: "M5V",
+                firstName: "Ada", lastName: "Lovelace", phone: "5551234")
             let sheet = PaymentSheet(
                 controller: controller, sessionId: sessionId, billingAddress: host, shippingAddress: ship)
             let card = CardInput(cardNumber: "4242424242424242", expiryMonth: "12", expiryYear: "2030", cvv: "123")

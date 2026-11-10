@@ -266,7 +266,8 @@
                         amount: amount,
                         merchantId: merchantId
                     ) { token in
-                        await controller.confirmWallet(token: token)
+                        await controller.confirmWallet(
+                            WalletAuthorization(token: token, billing: nil, shipping: nil, email: nil))
                     }
                 } catch {
                     // Authorization ended without a token. Distinguish a user cancel (→ `.canceled`,

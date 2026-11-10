@@ -78,6 +78,8 @@ final class HTTPPaymentService: PaymentService, PaymentActionProviding, @uncheck
         let userDeviceInfo: UserDeviceInfoWire?
         let payerBillingInfo: AddressInfoWire?
         let payerShippingAddress: AddressInfoWire?
+        let customerName: String?
+        let customerEmail: String?
     }
 
     // MARK: - PaymentService
@@ -109,7 +111,8 @@ final class HTTPPaymentService: PaymentService, PaymentActionProviding, @uncheck
             customerAccessSecret: req.customerAccessSecret, checkoutClientSecret: secret,
             userDeviceInfo: deviceInfo(),
             payerBillingInfo: AddressInfoWire.make(req.billingAddress),
-            payerShippingAddress: AddressInfoWire.make(req.shippingAddress))
+            payerShippingAddress: AddressInfoWire.make(req.shippingAddress),
+            customerName: req.customerName, customerEmail: req.customerEmail)
         let wire: ContractDecoding.ResultWire = try await client.post(
             .submitPayment, body: body, timeout: 30)
         return try accept(wire, fallbackSessionId: req.sessionId)

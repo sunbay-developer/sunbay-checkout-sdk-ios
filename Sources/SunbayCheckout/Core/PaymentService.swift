@@ -33,6 +33,10 @@ public struct SubmitRequest: Sendable, CustomStringConvertible, CustomDebugStrin
     public let billingAddress: AddressInput?
     /// Shipping address to submit (PII; never printed or reflected); nil when none.
     public let shippingAddress: AddressInput?
+    /// Customer full name derived from the resolved addresses (PII; never printed or reflected); nil when unknown.
+    public let customerName: String?
+    /// Customer email from the wallet contact (PII; never printed or reflected); nil when unknown.
+    public let customerEmail: String?
 
     /// Creates a payment submission request.
     public init(
@@ -47,7 +51,9 @@ public struct SubmitRequest: Sendable, CustomStringConvertible, CustomDebugStrin
         checkoutClientSecret: String? = nil,
         sessionType: String? = nil,
         billingAddress: AddressInput? = nil,
-        shippingAddress: AddressInput? = nil
+        shippingAddress: AddressInput? = nil,
+        customerName: String? = nil,
+        customerEmail: String? = nil
     ) {
         self.sessionId = sessionId
         self.paymentMethod = paymentMethod
@@ -61,6 +67,8 @@ public struct SubmitRequest: Sendable, CustomStringConvertible, CustomDebugStrin
         self.sessionType = sessionType
         self.billingAddress = billingAddress
         self.shippingAddress = shippingAddress
+        self.customerName = customerName
+        self.customerEmail = customerEmail
     }
 
     /// Redacted description: never prints secrets, tokens or ciphertext.

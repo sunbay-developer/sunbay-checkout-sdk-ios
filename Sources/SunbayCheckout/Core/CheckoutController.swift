@@ -120,9 +120,9 @@ actor CheckoutController {
     /// Diagnostics sink for non-terminal errors (nil when no host channel is wired).
     private let reporter: DiagnosticsReporter?
 
-    /// Host-provided addresses for the current start (PII; reset at the top of `start`, cleared on `dismiss`).
-    private var hostBillingAddress: AddressInput?
-    private var hostShippingAddress: AddressInput?
+    /// Sanitized host-provided address entries for the current start (PII; reset at the top of `start`, cleared on `dismiss`).
+    private var hostBilling: AddressInput?
+    private var hostShipping: AddressInput?
 
     /// Single active session guard (§4.2): `true` means a confirm is in progress.
     ///
@@ -173,8 +173,8 @@ actor CheckoutController {
     ///   - sessionId: Session identifier.
     ///   - customerAccessSecret: COF credential (optional); held in memory only, cleared on success / dismiss / session expiry.
     ///   - checkoutClientSecret: Session client secret (optional); held in memory only, cleared together with the other secret.
-    ///   - billingAddress: Host-provided billing address; wins over a form address on every submit.
-    ///   - shippingAddress: Host-provided shipping address; wins over a form address on every submit.
+    ///   - billingAddress: Host billing entry; sanitized and used only when the session collects billing and the entry is complete.
+    ///   - shippingAddress: Host shipping entry; same rules as `billingAddress`.
     /// - Returns: The loaded session.
     /// - Throws: Load failures propagate; if the session has expired, throws `CheckoutError` (`.validation`).
     func start(
@@ -187,8 +187,9 @@ actor CheckoutController {
         // Reset the previous decision first so a failed / expired re-start never keeps stale COF state.
         session = nil
         cofEffective = false
-        hostBillingAddress = billingAddress
-        hostShippingAddress = shippingAddress
+        hostBilling = AddressRules.sanitize(billingAddress)
+        hostShipping = AddressRules.sanitize(shippingAddress)
+        resetAddressWarnings()
         if let secret = customerAccessSecret {
             await credentials.hold(customerAccessSecret: secret)
         }
@@ -251,7 +252,9 @@ actor CheckoutController {
         _ input: CardInput,
         save: Bool,
         billingAddress: AddressInput? = nil,
-        shippingAddress: AddressInput? = nil
+        shippingAddress: AddressInput? = nil,
+        billingFormShown: Bool = false,
+        shippingFormShown: Bool = false
     ) async -> CheckoutOutcome {
         guard let session else {
             return .failed(txnId: nil, error: CheckoutErrors.sessionExpired())
@@ -273,6 +276,8 @@ actor CheckoutController {
             return .failed(txnId: nil, error: CheckoutErrors.encryptionFailed())
         }
 
+        let billing = resolveCardAddress(.billing, form: billingAddress, formShown: billingFormShown)
+        let shipping = resolveCardAddress(.shipping, form: shippingAddress, formShown: shippingFormShown)
         let request = SubmitRequest(
             sessionId: session.id,
             paymentMethod: "CARD",
@@ -281,8 +286,9 @@ actor CheckoutController {
             storeCard: (save && cofEffective) ? true : nil,
             checkoutClientSecret: await credentials.currentCheckoutClientSecret(),
             sessionType: session.sessionType,
-            billingAddress: hostBillingAddress ?? billingAddress,
-            shippingAddress: hostShippingAddress ?? shippingAddress
+            billingAddress: billing,
+            shippingAddress: shipping,
+            customerName: AddressRules.customerName(billing: billing, shipping: shipping)
         )
         return await submitAndResolve(request)
     }
@@ -301,6 +307,9 @@ actor CheckoutController {
         defer { endAttempt() }
         let attemptId = UUID()
 
+        reportIncompleteEntries()
+        let billing = usableHostEntry(.billing)
+        let shipping = usableHostEntry(.shipping)
         let request = SubmitRequest(
             sessionId: session.id,
             paymentMethod: "TOKEN",
@@ -309,14 +318,22 @@ actor CheckoutController {
             customerAccessSecret: await credentials.current(),
             checkoutClientSecret: await credentials.currentCheckoutClientSecret(),
             sessionType: session.sessionType,
-            billingAddress: hostBillingAddress,
-            shippingAddress: hostShippingAddress
+            billingAddress: billing,
+            shippingAddress: shipping,
+            customerName: AddressRules.customerName(billing: billing, shipping: shipping)
         )
         return await submitAndResolve(request)
     }
 
-    /// Apple Pay wallet payment. Carries only `walletToken`.
-    func confirmWallet(token: Data) async -> CheckoutOutcome {
+    /// Apple Pay wallet payment. Carries the wallet token, the resolved addresses and the wallet email.
+    ///
+    /// Per kind: the contact returned by the wallet wins; otherwise the usable host entry when no SDK form exists for the
+    /// kind; when a form exists the entry is ignored (the form cannot be read at tap time) and `ADDRESS_ENTRY_IGNORED` is reported.
+    func confirmWallet(
+        _ authorization: WalletAuthorization,
+        billingFormShown: Bool = false,
+        shippingFormShown: Bool = false
+    ) async -> CheckoutOutcome {
         guard let session else {
             return .failed(txnId: nil, error: CheckoutErrors.sessionExpired())
         }
@@ -326,17 +343,53 @@ actor CheckoutController {
         defer { endAttempt() }
         let attemptId = UUID()
 
+        reportIncompleteEntries()
+        let billing = resolveWalletAddress(.billing, contact: authorization.billing, formShown: billingFormShown)
+        let shipping = resolveWalletAddress(.shipping, contact: authorization.shipping, formShown: shippingFormShown)
         let request = SubmitRequest(
             sessionId: session.id,
             paymentMethod: "APPLE_PAY",
             attemptId: attemptId,
-            walletToken: token,
+            walletToken: authorization.token,
             checkoutClientSecret: await credentials.currentCheckoutClientSecret(),
             sessionType: session.sessionType,
-            billingAddress: hostBillingAddress,
-            shippingAddress: hostShippingAddress
+            billingAddress: billing,
+            shippingAddress: shipping,
+            customerName: AddressRules.customerName(billing: billing, shipping: shipping),
+            customerEmail: AddressRules.sanitize(AddressInput(email: authorization.email))?.email
         )
         return await submitAndResolve(request)
+    }
+
+    // MARK: - Host address entries
+
+    /// Replaces the host address entries (for example when a standalone Apple Pay button's properties change).
+    /// Resets the warning dedup for both kinds so the new values are evaluated afresh.
+    func updateHostAddresses(billing: AddressInput?, shipping: AddressInput?) {
+        hostBilling = AddressRules.sanitize(billing)
+        hostShipping = AddressRules.sanitize(shipping)
+        resetAddressWarnings()
+    }
+
+    /// The host entry for `kind` when it may be submitted: the session collects that kind and the entry is complete.
+    func usableHostEntry(_ kind: AddressKind) -> AddressInput? {
+        guard collects(kind), let entry = hostEntry(kind), AddressRules.isComplete(kind, entry) else { return nil }
+        return entry
+    }
+
+    /// Reports `ADDRESS_INCOMPLETE` for collected-but-incomplete entries and `ADDRESS_ENTRY_IGNORED` for usable
+    /// entries that an SDK form (shown for that kind) will override.
+    func evaluateHostEntries(billingFormShown: Bool, shippingFormShown: Bool) {
+        reportIncompleteEntries()
+        if billingFormShown, usableHostEntry(.billing) != nil { reportIgnored(.billing) }
+        if shippingFormShown, usableHostEntry(.shipping) != nil { reportIgnored(.shipping) }
+    }
+
+    /// The Apple Pay contacts to request: per kind, `collect && (no usable host entry || a form is shown)`.
+    func walletContactRequest(billingFormShown: Bool, shippingFormShown: Bool) -> WalletContactRequest {
+        WalletContactRequest(
+            billing: collects(.billing) && (usableHostEntry(.billing) == nil || billingFormShown),
+            shipping: collects(.shipping) && (usableHostEntry(.shipping) == nil || shippingFormShown))
     }
 
     // MARK: - Query / close
@@ -351,9 +404,72 @@ actor CheckoutController {
         isConfirming = false
         session = nil
         cofEffective = false
-        hostBillingAddress = nil
-        hostShippingAddress = nil
+        hostBilling = nil
+        hostShipping = nil
+        resetAddressWarnings()
         await credentials.clear()
+    }
+
+    // MARK: - Private: address resolution
+
+    private func collects(_ kind: AddressKind) -> Bool {
+        switch kind {
+        case .billing: return session?.collectBillingAddress ?? false
+        case .shipping: return session?.collectShippingAddress ?? false
+        }
+    }
+
+    private func hostEntry(_ kind: AddressKind) -> AddressInput? {
+        kind == .billing ? hostBilling : hostShipping
+    }
+
+    /// Card: a form draft beats the host entry (which is then reported as ignored); a country-only form value is not a
+    /// draft, so the usable entry is used; with neither, the form value (if a form exists) is submitted.
+    private func resolveCardAddress(_ kind: AddressKind, form: AddressInput?, formShown: Bool) -> AddressInput? {
+        reportIncompleteEntries(kind)
+        let value = AddressRules.sanitize(form)
+        let entry = usableHostEntry(kind)
+        if AddressRules.hasDraftContent(value) {
+            if entry != nil { reportIgnored(kind) }
+            return value
+        }
+        return entry ?? (formShown ? value : nil)
+    }
+
+    /// Wallet: the returned contact wins; else the usable entry when no form exists for the kind.
+    private func resolveWalletAddress(_ kind: AddressKind, contact: AddressInput?, formShown: Bool) -> AddressInput? {
+        if let contact = AddressRules.sanitize(contact) { return contact }
+        guard let entry = usableHostEntry(kind) else { return nil }
+        if formShown {
+            reportIgnored(kind)
+            return nil
+        }
+        return entry
+    }
+
+    private func reportIncompleteEntries() {
+        reportIncompleteEntries(.billing)
+        reportIncompleteEntries(.shipping)
+    }
+
+    private func reportIncompleteEntries(_ kind: AddressKind) {
+        guard collects(kind), hostEntry(kind) != nil, usableHostEntry(kind) == nil else { return }
+        reporter?.warning(
+            .addressIncomplete, ignored: [kind.identifier],
+            reason: "The \(kind.identifier) is missing required fields and was not used.",
+            sessionId: session?.id)
+    }
+
+    private func reportIgnored(_ kind: AddressKind) {
+        reporter?.warning(
+            .addressEntryIgnored, ignored: [kind.identifier],
+            reason: "The \(kind.identifier) was ignored because the checkout collects this address itself.",
+            sessionId: session?.id)
+    }
+
+    private func resetAddressWarnings() {
+        reporter?.resetWarnings(containing: AddressKind.billing.identifier)
+        reporter?.resetWarnings(containing: AddressKind.shipping.identifier)
     }
 
     // MARK: - Private: single active guard
