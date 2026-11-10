@@ -7,7 +7,7 @@
  */
 
 import { createServer } from 'node:http';
-import { createSession, ENVIRONMENT_NAMES, hasCredentialsFor, HAS_CREDENTIALS, DEV_WARNING } from './session.mjs';
+import { createSession, HAS_CREDENTIALS, DEV_WARNING } from './session.mjs';
 import { log } from './log.mjs';
 
 const HOST = process.env.HOST ?? '127.0.0.1';
@@ -25,7 +25,6 @@ function readBody(req) {
 /** Business fields of an incoming create-session request worth logging. */
 function summarizeInput(input) {
     return {
-        environment: input.environment,
         amount: input.amount,
         currency: input.currency,
         items: Array.isArray(input.items) ? input.items.length : undefined,
@@ -54,11 +53,16 @@ const server = createServer(async (req, res) => {
     try {
         const path = req.url?.split('?')[0];
         if (req.method === 'GET' && path === '/healthz') {
-            const environments = Object.fromEntries(ENVIRONMENT_NAMES.map((n) => [n, hasCredentialsFor(n)]));
-            sendJson(res, 200, { ok: true, hasCredentials: HAS_CREDENTIALS, environments, warning: DEV_WARNING });
+            sendJson(res, 200, { ok: true, hasCredentials: HAS_CREDENTIALS, warning: DEV_WARNING });
             return;
         }
         if (req.method === 'POST' && path === '/api/create-session') {
+            if (!HAS_CREDENTIALS) {
+                sendJson(res, 503, {
+                    error: 'Merchant credentials missing. Copy .env.example to .env.local and fill in API_KEY / APP_ID / MERCHANT_ID.',
+                });
+                return;
+            }
             let input;
             try {
                 const raw = await readBody(req);
@@ -87,5 +91,5 @@ server.listen(PORT, HOST, () => {
     console.log(`\n\x1b[41m\x1b[97m ${DEV_WARNING} \x1b[0m\n`);
     console.log(`  session: POST http://${HOST}:${PORT}/api/create-session`);
     console.log(`  healthz: GET  http://${HOST}:${PORT}/healthz`);
-    console.log(`  credentials: ${ENVIRONMENT_NAMES.map((n) => `${n}=${hasCredentialsFor(n) ? 'present' : 'missing'}`).join(' ')}\n`);
+    console.log(`  credentials: ${HAS_CREDENTIALS ? 'present' : 'MISSING'}\n`);
 });

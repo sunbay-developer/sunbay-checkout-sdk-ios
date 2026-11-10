@@ -42,20 +42,21 @@ import SunbayCheckoutTestSupport
         var body: some View {
             TabView {
                 tab("Pay", systemImage: "creditcard") {
-                    backendSection
                     orderSection
                     paymentSheetSection
                     applePaySection
                     outcomeSection
                 }
+                tab("Look", systemImage: "paintbrush") {
+                    appearanceSection
+                    effectsSection
+                    localeSection
+                }
                 tab("Options", systemImage: "slider.horizontal.3") {
                     methodsSection
                     addressSection
                     cofSection
-                }
-                tab("Look", systemImage: "paintbrush") {
-                    localeSection
-                    appearanceSection
+                    backendSection
                 }
             }
         }
@@ -75,7 +76,7 @@ import SunbayCheckoutTestSupport
 
         // MARK: - Backend
 
-        /// Environment and local session-server URL.
+        /// SDK environment and the URL of the session server (which holds the credentials for that environment).
         private var backendSection: some View {
             Section {
                 Picker("Environment", selection: $settings.environment) {
@@ -96,7 +97,7 @@ import SunbayCheckoutTestSupport
             } header: {
                 Text("Backend")
             } footer: {
-                Text("The environment selects the SDK backend and the credentials the local DevServer uses (TEST_ / PROD_ variables in .env.local). Prod creates real orders.")
+                Text("The environment is the SDK's CheckoutConfiguration.environment. Orders are created through the session server at the URL above, which must hold credentials for the same environment.")
             }
         }
 
@@ -139,22 +140,57 @@ import SunbayCheckoutTestSupport
 
         private var appearanceSection: some View {
             Section {
-                Picker("Preset", selection: $settings.appearancePreset) {
-                    ForEach(DemoSettings.DemoAppearancePreset.allCases) { preset in
-                        Text(preset.label).tag(preset)
+                ForEach(DemoSettings.DemoAppearancePreset.allCases) { preset in
+                    Button {
+                        settings.appearancePreset = preset
+                    } label: {
+                        HStack(spacing: 12) {
+                            Circle()
+                                .fill(Color(UIColor(sunbayHex: preset.swatchHex) ?? .systemOrange))
+                                .frame(width: 22, height: 22)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(preset.label).foregroundColor(.primary)
+                                Text(preset.detail).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if settings.appearancePreset == preset {
+                                Image(systemName: "checkmark").foregroundColor(.accentColor)
+                            }
+                        }
                     }
                 }
-                .pickerStyle(.menu)
+            } header: {
+                Text("Theme")
+            } footer: {
+                Text("Each theme sets colors, corner radius, shadow, density and express position on Appearance.")
+            }
+        }
+
+        private var effectsSection: some View {
+            Section {
                 Picker("Color scheme", selection: $settings.colorScheme) {
                     ForEach(DemoSettings.DemoColorScheme.allCases) { scheme in
                         Text(scheme.label).tag(scheme)
                     }
                 }
                 .pickerStyle(.segmented)
+                Picker("Shadow", selection: $settings.shadow) {
+                    ForEach(DemoSettings.DemoShadow.allCases) { shadow in
+                        Text(shadow.label).tag(shadow)
+                    }
+                }
+                .pickerStyle(.segmented)
+                Picker("Sheet size", selection: $settings.sheetSize) {
+                    ForEach(DemoSettings.DemoSheetSize.allCases) { size in
+                        Text(size.label).tag(size)
+                    }
+                }
+                .pickerStyle(.segmented)
+                Toggle("Page transitions", isOn: $settings.pageTransitions)
             } header: {
-                Text("Appearance")
+                Text("Effects")
             } footer: {
-                Text("Presets mirror the prototype's Customize lab (primary color, corner radius, express position, density). The color-scheme control overrides the preset's scheme when not Automatic.")
+                Text("Overrides applied on top of the theme. Color scheme and shadow stay at the theme's own value when set to Automatic / Theme.")
             }
         }
 
@@ -271,7 +307,6 @@ import SunbayCheckoutTestSupport
         private var sessionRequest: DevSessionRequest {
             DevSessionRequest(
                 serverURL: URL(string: settings.devServerURL),
-                environment: settings.environment.serverName,
                 amountMajorUnits: Double(settings.amountMinorUnits) / 100,
                 collectBillingAddress: settings.orderRequiresBillingAddress,
                 collectShippingAddress: settings.orderRequiresShippingAddress,
@@ -351,30 +386,93 @@ import SunbayCheckoutTestSupport
             switch settings.appearancePreset {
             case .brandDefault:
                 // Brand orange #ff6000; leave built-in corner radius / express-top / comfortable.
-                appearance.colors.primary = UIColor(sunbayHex: "#ff6000") ?? .systemOrange
+                appearance.colors.primary = hex("#ff6000")
             case .sharpBlueExpressBottom:
-                appearance.colors.primary = UIColor(sunbayHex: "#2563eb") ?? .systemBlue
+                appearance.colors.primary = hex("#2563eb")
                 appearance.cornerRadius = 3
                 appearance.expressPosition = .bottom
                 appearance.density = .compact
             case .roundGreenDark:
-                appearance.colors.primary = UIColor(sunbayHex: "#16a34a") ?? .systemGreen
+                appearance.colors.primary = hex("#16a34a")
                 appearance.cornerRadius = 20
                 appearance.colorScheme = .dark
+            case .midnight:
+                appearance.colorScheme = .dark
+                appearance.colors.primary = hex("#8b5cf6")
+                appearance.colors.background = hex("#0b1020")
+                appearance.colors.componentBackground = hex("#151b30")
+                appearance.colors.text = hex("#e6e9f5")
+                appearance.colors.textSecondary = hex("#8d96b8")
+                appearance.colors.border = hex("#2a3354")
+                appearance.cornerRadius = 14
+                appearance.shadow = .medium
+            case .ocean:
+                appearance.colorScheme = .light
+                appearance.colors.primary = hex("#0ea5e9")
+                appearance.colors.background = hex("#f0f9ff")
+                appearance.colors.componentBackground = hex("#ffffff")
+                appearance.colors.border = hex("#bae6fd")
+                appearance.cornerRadius = 12
+                appearance.shadow = .soft
+            case .sunset:
+                appearance.colorScheme = .light
+                appearance.colors.primary = hex("#f43f5e")
+                appearance.colors.background = hex("#fff1f2")
+                appearance.colors.componentBackground = hex("#ffffff")
+                appearance.colors.border = hex("#fecdd3")
+                appearance.cornerRadius = 24
+                appearance.primaryButton.cornerRadius = 24
+                appearance.shadow = .medium
+            case .mono:
+                appearance.colorScheme = .light
+                appearance.colors.primary = hex("#111827")
+                appearance.colors.background = hex("#ffffff")
+                appearance.colors.border = hex("#111827")
+                appearance.cornerRadius = 0
+                appearance.borderWidth = 1.5
+                appearance.density = .compact
+            case .editorial:
+                appearance.colorScheme = .light
+                appearance.colors.primary = hex("#92400e")
+                appearance.colors.background = hex("#fffbeb")
+                appearance.colors.componentBackground = hex("#fffdf5")
+                appearance.colors.text = hex("#3b2a14")
+                appearance.colors.border = hex("#e7d3a8")
+                appearance.cornerRadius = 4
+                appearance.font.base = UIFont(name: "Georgia", size: 16)
             }
 
             switch settings.colorScheme {
             case .automatic:
-                break // keep the preset's scheme
+                break // keep the theme's scheme
             case .light:
                 appearance.colorScheme = .light
             case .dark:
                 appearance.colorScheme = .dark
             }
 
+            switch settings.shadow {
+            case .theme: break
+            case .none: appearance.shadow = .none
+            case .soft: appearance.shadow = .soft
+            case .medium: appearance.shadow = .medium
+            }
+
+            switch settings.sheetSize {
+            case .adaptive: break
+            case .half: appearance.sheetSizing = .init(mode: .fixedFraction(0.5))
+            case .large: appearance.sheetSizing = .init(mode: .large)
+            }
+            appearance.pageTransitionsEnabled = settings.pageTransitions
+
             appearance.billingAddressMode = addressMode(settings.billingAddressMode)
             appearance.shippingAddressMode = addressMode(settings.shippingAddressMode)
             return appearance
+        }
+
+        /// A color from a hardcoded valid hex literal (the fallback is unreachable).
+        private func hex(_ value: String) -> UIColor {
+            UIColor(sunbayHex: value) ?? .systemOrange
         }
 
         /// Maps a demo address-mode knob to the SDK's `Appearance.AddressCollectionMode`.
@@ -422,8 +520,6 @@ import SunbayCheckoutTestSupport
     /// What the dev server needs to create an order session. `serverURL` is nil for a malformed URL.
     struct DevSessionRequest {
         let serverURL: URL?
-        /// Server-side environment name (`dev`, `test`, `prod`).
-        let environment: String
         let amountMajorUnits: Double
         let collectBillingAddress: Bool
         let collectShippingAddress: Bool
@@ -438,8 +534,7 @@ import SunbayCheckoutTestSupport
             return try await DevSessionClient(serverURL: serverURL).createSession(
                 amountMajorUnits: amountMajorUnits,
                 collectBillingAddress: collectBillingAddress,
-                collectShippingAddress: collectShippingAddress,
-                environment: environment
+                collectShippingAddress: collectShippingAddress
             )
         }
     }

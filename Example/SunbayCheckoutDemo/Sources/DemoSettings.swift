@@ -57,12 +57,11 @@ struct DemoSettings: Codable, Equatable {
 
     // MARK: Appearance preset
 
-    /// An appearance preset mirroring the prototype's "Customize" lab.
+    /// A theme preset.
     ///
-    /// Each case maps to a concrete `Appearance` (primary color, corner radius, express position,
-    /// density, color scheme). The raw value is a stable identifier for SwiftUI/Codable; the
-    /// `Appearance` itself is UIKit-only and built in `DemoRootView` (this value type stays free of
-    /// SDK reference/UIKit types so it remains trivially `Codable`/`Equatable`).
+    /// Each case maps to a concrete `Appearance` (colors, corner radius, shadow, density, express
+    /// position, color scheme) built in `DemoRootView`; this value type stays free of UIKit types so it
+    /// remains trivially `Codable`/`Equatable`.
     enum DemoAppearancePreset: String, Codable, CaseIterable, Identifiable {
         /// Brand default: orange #ff6000, rounded corners, express on top.
         case brandDefault
@@ -70,15 +69,91 @@ struct DemoSettings: Codable, Equatable {
         case sharpBlueExpressBottom
         /// Round corners, green #16a34a primary, forced dark scheme.
         case roundGreenDark
+        /// Dark navy surfaces with a violet accent and a medium shadow.
+        case midnight
+        /// Light blue surfaces with a soft shadow.
+        case ocean
+        /// Warm rose accent with pill-shaped controls and a medium shadow.
+        case sunset
+        /// Black on white, square corners, thick borders, compact.
+        case mono
+        /// Cream paper, brown accent, serif font.
+        case editorial
 
         var id: String { rawValue }
 
         /// A short display label.
         var label: String {
             switch self {
-            case .brandDefault: return "Default (orange)"
-            case .sharpBlueExpressBottom: return "Sharp · Blue · Express bottom"
-            case .roundGreenDark: return "Round · Green · Dark"
+            case .brandDefault: return "Default"
+            case .sharpBlueExpressBottom: return "Sharp Blue"
+            case .roundGreenDark: return "Round Green"
+            case .midnight: return "Midnight"
+            case .ocean: return "Ocean"
+            case .sunset: return "Sunset"
+            case .mono: return "Mono"
+            case .editorial: return "Editorial"
+            }
+        }
+
+        /// A one-line description of what the theme changes.
+        var detail: String {
+            switch self {
+            case .brandDefault: return "Orange, rounded, express on top"
+            case .sharpBlueExpressBottom: return "Sharp corners, compact, express at the bottom"
+            case .roundGreenDark: return "Round corners, forced dark"
+            case .midnight: return "Dark navy, violet accent, medium shadow"
+            case .ocean: return "Light blue surfaces, soft shadow"
+            case .sunset: return "Rose accent, pill-shaped controls"
+            case .mono: return "Black and white, square, thick borders"
+            case .editorial: return "Cream paper, brown accent, serif font"
+            }
+        }
+
+        /// The accent color shown as the swatch in the theme list.
+        var swatchHex: String {
+            switch self {
+            case .brandDefault: return "#ff6000"
+            case .sharpBlueExpressBottom: return "#2563eb"
+            case .roundGreenDark: return "#16a34a"
+            case .midnight: return "#8b5cf6"
+            case .ocean: return "#0ea5e9"
+            case .sunset: return "#f43f5e"
+            case .mono: return "#111827"
+            case .editorial: return "#92400e"
+            }
+        }
+    }
+
+    // MARK: Effects
+
+    /// Shadow override (maps to `Appearance.shadow`); `theme` keeps the theme's own value.
+    enum DemoShadow: String, Codable, CaseIterable, Identifiable {
+        case theme, none, soft, medium
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .theme: return "Theme"
+            case .none: return "None"
+            case .soft: return "Soft"
+            case .medium: return "Medium"
+            }
+        }
+    }
+
+    /// Sheet size override (maps to `Appearance.sheetSizing`).
+    enum DemoSheetSize: String, Codable, CaseIterable, Identifiable {
+        case adaptive, half, large
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .adaptive: return "Adaptive"
+            case .half: return "Half"
+            case .large: return "Large"
             }
         }
     }
@@ -147,6 +222,12 @@ struct DemoSettings: Codable, Equatable {
     var preTickSaveCard: Bool = false
     /// The appearance preset (maps to an `Appearance` at Pay time).
     var appearancePreset: DemoAppearancePreset
+    /// The shadow override (maps to `Appearance.shadow`).
+    var shadow: DemoShadow = .theme
+    /// The sheet size override (maps to `Appearance.sheetSizing`).
+    var sheetSize: DemoSheetSize = .adaptive
+    /// Whether page transitions animate (maps to `Appearance.pageTransitionsEnabled`).
+    var pageTransitions: Bool = true
     /// The color-scheme override (maps to `Appearance.colorScheme`).
     var colorScheme: DemoColorScheme
     /// The billing address collection mode (maps to `Appearance.billingAddressMode`).

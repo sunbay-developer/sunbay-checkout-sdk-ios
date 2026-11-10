@@ -55,13 +55,10 @@ public struct DevSessionClient: Sendable {
     ///   - amountMajorUnits: Order amount in major units (for example dollars); the server converts to minor units.
     ///   - collectBillingAddress: Whether the session should collect a billing address.
     ///   - collectShippingAddress: Whether the session should collect a shipping address.
-    ///   - environment: The server-side environment name (`dev`, `test` or `prod`) whose credentials and
-    ///     open-platform host the server uses. Defaults to `dev`.
     /// - Returns: The created session.
     public func createSession(amountMajorUnits: Double = 0.01,
                               collectBillingAddress: Bool = false,
-                              collectShippingAddress: Bool = false,
-                              environment: String = "dev") async throws -> DevSession {
+                              collectShippingAddress: Bool = false) async throws -> DevSession {
         var request = URLRequest(url: serverURL.appendingPathComponent("api/create-session"))
         request.httpMethod = "POST"
         request.timeoutInterval = 30
@@ -70,17 +67,13 @@ public struct DevSessionClient: Sendable {
             "amount": amountMajorUnits,
             "collectBillingAddress": collectBillingAddress,
             "collectShippingAddress": collectShippingAddress,
-            "environment": environment,
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200 else {
-            // The dev server's own error text (for example missing credentials for an environment) carries no secrets.
-            let message = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
-            throw DevSessionError(description: "Dev session server returned HTTP \(status)"
-                + (message.map { ": \($0)" } ?? "."))
+            throw DevSessionError(description: "Dev session server returned HTTP \(status).")
         }
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let sessionId = object["sessionId"] as? String,
