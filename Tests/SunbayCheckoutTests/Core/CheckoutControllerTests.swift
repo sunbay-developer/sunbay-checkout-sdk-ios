@@ -48,14 +48,16 @@ final class CheckoutControllerTests: XCTestCase {
         cof: MockCofService = MockCofService(),
         credentials: CredentialStore = CredentialStore(),
         actionHandler: StubActionHandler = StubActionHandler(),
-        cardOnFile: CardOnFileOptions = CardOnFileOptions()
+        cardOnFile: CardOnFileOptions = CardOnFileOptions(),
+        reporter: DiagnosticsReporter? = nil
     ) -> CheckoutController {
         CheckoutController(
             paymentService: payment,
             cofService: cof,
             credentials: credentials,
             actionHandler: actionHandler,
-            cardOnFile: cardOnFile
+            cardOnFile: cardOnFile,
+            reporter: reporter
         )
     }
 
@@ -285,6 +287,30 @@ final class CheckoutControllerTests: XCTestCase {
         XCTAssertNil(req.walletToken)
     }
 
+
+    // MARK: - Diagnostics
+
+    func test_listSavedCards_failure_returnsEmptyAndReportsError() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession(cofEnabled: true))
+        let cof = MockCofService()
+        cof.stubError(CheckoutError(code: "COF_DOWN", message: "down", category: .network, traceId: nil))
+        let reporter = DiagnosticsReporter()
+        let e = expectation(description: "diagnostic")
+        nonisolated(unsafe) var received: [CheckoutDiagnostic] = []
+        reporter.handler = { received.append($0); e.fulfill() }
+        let controller = makeController(payment: payment, cof: cof, reporter: reporter)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+
+        let cards = await controller.listSavedCards()
+
+        XCTAssertEqual(cards, [])
+        await fulfillment(of: [e], timeout: 2)
+        XCTAssertEqual(received.count, 1)
+        guard case .error(let error, let sessionId) = received[0] else { return XCTFail("expected error") }
+        XCTAssertEqual(error.code, "COF_DOWN")
+        XCTAssertEqual(sessionId, "sess_1")
+    }
 
     // MARK: - Real submit contract (Task 4)
 

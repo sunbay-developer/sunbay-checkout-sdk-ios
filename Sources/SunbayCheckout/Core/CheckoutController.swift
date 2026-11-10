@@ -117,6 +117,8 @@ actor CheckoutController {
 
     /// The currently loaded session; written after `start` succeeds.
     private var session: CheckoutSession?
+    /// Diagnostics sink for non-terminal errors (nil when no host channel is wired).
+    private let reporter: DiagnosticsReporter?
 
     /// Host-provided addresses for the current start (PII; reset at the top of `start`, cleared on `dismiss`).
     private var hostBillingAddress: AddressInput?
@@ -141,8 +143,10 @@ actor CheckoutController {
         cofService: any CofService,
         credentials: CredentialStore,
         actionHandler: any ActionHandling,
-        cardOnFile: CardOnFileOptions = CardOnFileOptions()
+        cardOnFile: CardOnFileOptions = CardOnFileOptions(),
+        reporter: DiagnosticsReporter? = nil
     ) {
+        self.reporter = reporter
         self.paymentService = paymentService
         self.cofService = cofService
         self.credentials = credentials
@@ -227,6 +231,13 @@ actor CheckoutController {
             )
         } catch {
             // Downgrade: do not throw, fall back to new card only.
+            let reported = (error as? CheckoutError)
+                ?? CheckoutError(
+                    code: "SAVED_CARDS_FAILED",
+                    message: "Saved cards could not be loaded.",
+                    category: .network,
+                    traceId: nil)
+            reporter?.error(reported, sessionId: session.id)
             return []
         }
     }

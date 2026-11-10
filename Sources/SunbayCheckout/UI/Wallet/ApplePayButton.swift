@@ -78,6 +78,8 @@
         private let controller: CheckoutController
         private let walletAuthorizer: any WalletAuthorizing
         private let sessionId: String
+        /// Diagnostics sink (nil when constructed without a host channel).
+        private let reporter: DiagnosticsReporter?
         /// The amount for this payment; overwritten with the session amount once the session finishes loading (may be a nil placeholder at construction).
         private var amount: Amount?
         /// The resolved Apple Pay merchant id (host configuration takes precedence); nil means not configured → not available.
@@ -148,7 +150,8 @@
                 style: style,
                 checkoutClientSecret: checkoutClientSecret,
                 billingAddress: billingAddress,
-                shippingAddress: shippingAddress
+                shippingAddress: shippingAddress,
+                reporter: checkout.diagnostics
             )
         }
 
@@ -172,8 +175,10 @@
             style: ApplePayButtonStyle = .automatic,
             checkoutClientSecret: String? = nil,
             billingAddress: AddressInput? = nil,
-            shippingAddress: AddressInput? = nil
+            shippingAddress: AddressInput? = nil,
+            reporter: DiagnosticsReporter? = nil
         ) {
+            self.reporter = reporter
             self.controller = controller
             self.checkoutClientSecret = checkoutClientSecret
             self.billingAddress = billingAddress
@@ -227,6 +232,13 @@
                 backendAllowed = session.methods.contains(.applePay)
                 amount = session.amount
             } catch {
+                let reported = (error as? CheckoutError)
+                    ?? CheckoutError(
+                        code: "SESSION_LOAD_FAILED",
+                        message: "The checkout session could not be loaded.",
+                        category: .network,
+                        traceId: nil)
+                reporter?.error(reported, sessionId: sessionId)
                 backendAllowed = false
             }
             recomputeAvailability()

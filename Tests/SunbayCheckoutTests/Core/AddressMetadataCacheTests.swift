@@ -75,4 +75,37 @@ final class AddressMetadataCacheTests: XCTestCase {
         let count = await spy.readCountriesCallCount()
         XCTAssertEqual(count, 1)
     }
+
+    // MARK: - ReportingAddressMetadataService
+
+    private struct ThrowingAddressService: AddressMetadataService {
+        let error: Error
+        func countries(locale: String?) async throws -> AddressCountryList { throw error }
+        func countryConfig(countryCode: String, locale: String?) async throws -> AddressCountryConfig { throw error }
+    }
+
+    func test_reportingDecorator_successPassesThrough() async throws {
+        let reporter = DiagnosticsReporter()
+        let service = ReportingAddressMetadataService(wrapping: SpyAddressService(), reporter: reporter)
+        let list = try await service.countries(locale: nil)
+        XCTAssertEqual(list.countries.first?.code, "US")
+    }
+
+    func test_reportingDecorator_rethrowsAndReportsOnce() async throws {
+        let reporter = DiagnosticsReporter()
+        let e = expectation(description: "reported")
+        nonisolated(unsafe) var received: [CheckoutDiagnostic] = []
+        reporter.handler = { received.append($0); e.fulfill() }
+        let thrown = CheckoutError(code: "ADDR_X", message: "m", category: .network, traceId: nil)
+        let service = ReportingAddressMetadataService(
+            wrapping: ThrowingAddressService(error: thrown), reporter: reporter)
+        do {
+            _ = try await service.countries(locale: nil)
+            XCTFail("expected throw")
+        } catch {
+            XCTAssertEqual(error as? CheckoutError, thrown)
+        }
+        await fulfillment(of: [e], timeout: 2)
+        XCTAssertEqual(received, [.error(thrown, sessionId: nil)])
+    }
 }
