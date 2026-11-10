@@ -127,7 +127,8 @@
         /// Builds the Apple Pay button, using an official `PKPaymentButton` where PassKit is available.
         private func makeApplePayButton() -> UIView {
             #if canImport(PassKit)
-                let button = PKPaymentButton(paymentButtonType: .plain, paymentButtonStyle: .automatic)
+                let button = PKPaymentButton(
+                    paymentButtonType: appearance.applePayButtonType.pkType, paymentButtonStyle: .automatic)
                 button.cornerRadius = appearance.primaryButtonCornerRadius
                 button.addTarget(self, action: #selector(handleApplePayTap), for: .touchUpInside)
                 return button

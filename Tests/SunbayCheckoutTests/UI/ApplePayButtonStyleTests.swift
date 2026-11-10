@@ -19,6 +19,16 @@
             XCTAssertEqual(ApplePayButton.pkStyle(for: .automatic, trait: .light), .black)
         }
 
+        func test_buttonTypeMapsToDistinctPassKitTypes() {
+            let mapped = ApplePayButtonType.allCases.map { $0.pkType.rawValue }
+            XCTAssertEqual(Set(mapped).count, ApplePayButtonType.allCases.count)
+            XCTAssertEqual(ApplePayButtonType.buy.pkType, .buy)
+            XCTAssertEqual(ResolvedAppearance.resolve(Appearance()).applePayButtonType, .plain)
+            var appearance = Appearance()
+            appearance.applePayButtonType = .checkout
+            XCTAssertEqual(ResolvedAppearance.resolve(appearance).applePayButtonType, .checkout)
+        }
+
         func test_fixedStylesMapDirectly() {
             XCTAssertEqual(ApplePayButton.pkStyle(for: .black, trait: .light), .black)
             XCTAssertEqual(ApplePayButton.pkStyle(for: .white, trait: .light), .white)

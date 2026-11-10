@@ -183,6 +183,7 @@ public struct Appearance: Sendable, Equatable {
     public var colorScheme: ColorScheme = .automatic // drives overrideUserInterfaceStyle (light/dark/follow-system)
     public var density: Density = .comfortable
     public var expressPosition: ExpressPosition = .top
+    public var applePayButtonType: ApplePayButtonType = .plain   // wording on the Apple Pay button (PassKit renders and localizes it)
     public var billingAddressMode: AddressCollectionMode = .automatic
     public var shippingAddressMode: AddressCollectionMode = .automatic
     public var pageTransitionsEnabled: Bool = true // forward/back slide between in-sheet pages

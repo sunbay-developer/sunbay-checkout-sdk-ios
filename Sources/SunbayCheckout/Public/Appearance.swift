@@ -38,6 +38,8 @@
         public var density: Density = .comfortable
         /// Where the express-checkout (wallet) row is placed on the home page (top / bottom / off).
         public var expressPosition: ExpressPosition = .top
+        /// The wording on the Apple Pay button in the express row (default `.plain`, the logo only).
+        public var applePayButtonType: ApplePayButtonType = .plain
         /// Billing address collection mode. Defaults to `.automatic` (follows the session's
         /// `collectBillingAddress` flag). The default was `.simple` in earlier versions; hosts that
         /// switch exhaustively over ``AddressCollectionMode`` must handle the `.automatic` case.

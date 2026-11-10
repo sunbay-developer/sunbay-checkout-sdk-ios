@@ -360,8 +360,14 @@ import SunbayCheckoutTestSupport
             Section {
                 Toggle("Hide Apple Pay", isOn: $settings.hideApplePay)
                 Toggle("Hide Card", isOn: $settings.hideCard)
+                Picker("Apple Pay button text", selection: $settings.applePayText) {
+                    ForEach(DemoSettings.DemoApplePayText.allCases) { text in
+                        Text(text.label).tag(text)
+                    }
+                }
+                .pickerStyle(.menu)
             } header: {
-                SectionHelp("Payment methods", "Maps to PaymentMethodFilter(hide:). Hiding Card also hides saved cards. Hiding every method makes present() fail with NO_PAYMENT_METHOD_AVAILABLE.")
+                SectionHelp("Payment methods", "Hide maps to PaymentMethodFilter(hide:). Hiding Card also hides saved cards; hiding every method makes present() fail with NO_PAYMENT_METHOD_AVAILABLE. Apple Pay button text maps to Appearance.applePayButtonType (the sheet's express row) and ApplePayButton(type:) (the embedded button).")
             }
         }
 
@@ -447,6 +453,7 @@ import SunbayCheckoutTestSupport
                     StandaloneApplePaySection(
                         checkout: makeCheckout(),
                         session: session,
+                        type: settings.applePayText.sdk,
                         onResult: { handle($0, source: "Apple Pay") },
                         onAvailability: { log.add("Apple Pay button available: \($0)") }
                     )
@@ -703,6 +710,7 @@ import SunbayCheckoutTestSupport
             }
             appearance.pageTransitionsEnabled = settings.pageTransitions
 
+            appearance.applePayButtonType = settings.applePayText.sdk
             appearance.billingAddressMode = addressMode(settings.billingAddressMode)
             appearance.shippingAddressMode = addressMode(settings.shippingAddressMode)
             return appearance
@@ -824,6 +832,7 @@ import SunbayCheckoutTestSupport
     struct StandaloneApplePaySection: View {
         let checkout: SunbayCheckout
         let session: DevSession?
+        let type: ApplePayButtonType
         let onResult: (CheckoutOutcome) -> Void
         let onAvailability: (Bool) -> Void
         @State private var available = false
@@ -838,13 +847,14 @@ import SunbayCheckoutTestSupport
                         checkout: checkout,
                         sessionId: session.sessionId,
                         checkoutClientSecret: session.checkoutClientSecret,
+                        type: type,
                         onResult: onResult,
                         onAvailabilityChange: {
                             available = $0
                             onAvailability($0)
                         }
                     )
-                    .id(session.sessionId)
+                    .id("\(session.sessionId)-\(type)")
                     .frame(height: 48)
                 }
             } else {
@@ -873,6 +883,7 @@ import SunbayCheckoutTestSupport
         let checkout: SunbayCheckout
         let sessionId: String
         let checkoutClientSecret: String
+        let type: ApplePayButtonType
         let onResult: (CheckoutOutcome) -> Void
         let onAvailabilityChange: (Bool) -> Void
 
@@ -881,6 +892,7 @@ import SunbayCheckoutTestSupport
                 checkout: checkout,
                 sessionId: sessionId,
                 style: .automatic,
+                type: type,
                 checkoutClientSecret: checkoutClientSecret
             )
             button.onResult = onResult
@@ -907,6 +919,30 @@ import SunbayCheckoutTestSupport
             top = presented
         }
         return top
+    }
+
+    extension DemoSettings.DemoApplePayText {
+        /// The SDK button wording for this demo choice.
+        var sdk: ApplePayButtonType {
+            switch self {
+            case .plain: return .plain
+            case .buy: return .buy
+            case .setUp: return .setUp
+            case .inStore: return .inStore
+            case .donate: return .donate
+            case .checkout: return .checkout
+            case .book: return .book
+            case .subscribe: return .subscribe
+            case .reload: return .reload
+            case .addMoney: return .addMoney
+            case .topUp: return .topUp
+            case .order: return .order
+            case .rent: return .rent
+            case .support: return .support
+            case .contribute: return .contribute
+            case .tip: return .tip
+            }
+        }
     }
 
 #endif

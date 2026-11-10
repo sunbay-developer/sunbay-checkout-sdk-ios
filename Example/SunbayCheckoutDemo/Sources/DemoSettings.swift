@@ -125,6 +125,38 @@ struct DemoSettings: Codable, Equatable {
         }
     }
 
+    // MARK: Apple Pay button wording
+
+    /// The wording on the Apple Pay button (maps to `ApplePayButtonType`).
+    enum DemoApplePayText: String, Codable, CaseIterable, Identifiable {
+        case plain, buy, setUp, inStore, donate, checkout, book, subscribe
+        case reload, addMoney, topUp, order, rent, support, contribute, tip
+
+        var id: String { rawValue }
+
+        /// A short display label.
+        var label: String {
+            switch self {
+            case .plain: return "Plain (logo only)"
+            case .buy: return "Buy"
+            case .setUp: return "Set up"
+            case .inStore: return "In store"
+            case .donate: return "Donate"
+            case .checkout: return "Check out"
+            case .book: return "Book"
+            case .subscribe: return "Subscribe"
+            case .reload: return "Reload"
+            case .addMoney: return "Add money"
+            case .topUp: return "Top up"
+            case .order: return "Order"
+            case .rent: return "Rent"
+            case .support: return "Support"
+            case .contribute: return "Contribute"
+            case .tip: return "Tip"
+            }
+        }
+    }
+
     // MARK: Effects
 
     /// Shadow override (maps to `Appearance.shadow`); `theme` keeps the theme's own value.
@@ -244,6 +276,8 @@ struct DemoSettings: Codable, Equatable {
     var passHostBillingAddress: Bool = false
     /// Pass a fixed, complete US test shipping address (with names and phone) to `PaymentSheet(shippingAddress:)`.
     var passHostShippingAddress: Bool = false
+    /// The wording on the Apple Pay button, in the sheet's express row and the embedded button.
+    var applePayText: DemoApplePayText = .plain
     /// Hide Apple Pay through `PaymentMethodFilter(hide:)`.
     var hideApplePay: Bool = false
     /// Hide the card methods (new card and saved cards) through `PaymentMethodFilter(hide:)`.

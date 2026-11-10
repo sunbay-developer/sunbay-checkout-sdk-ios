@@ -146,7 +146,8 @@ maps into a `CheckoutConfiguration` (environment from Pay > Order > More, defaul
     `PaymentSheet(billingAddress:shippingAddress:)`. A host address is used only when the session collects
     that kind and the address is complete; with Automatic the form for that kind is then hidden. A form that
     is shown wins over the host address.
-- **Payment methods** - **Hide Apple Pay** / **Hide Card** build `CheckoutConfiguration.paymentMethodFilter`
+- **Payment methods** - **Apple Pay button text** sets `Appearance.applePayButtonType` (the sheet's express row)
+  and `ApplePayButton(type:)` (the embedded button); the default `.plain` shows the logo only. **Hide Apple Pay** / **Hide Card** build `CheckoutConfiguration.paymentMethodFilter`
   (`PaymentMethodFilter(hide:)`). Hiding Card also hides saved cards; hiding both makes `present` fail with
   `NO_PAYMENT_METHOD_AVAILABLE`.
 - **Amount** - USD only; minor units (default 105 = 1.05). Sent to the dev server as major units.
