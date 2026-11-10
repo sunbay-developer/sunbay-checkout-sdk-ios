@@ -126,10 +126,10 @@ placeholder.
 
 ## Configuration playground
 
-The app is a three-tab config screen (`DemoRootView`) over a `DemoSettings` value: **Pay** (order, the pay actions and
-the last outcome), **Look** (themes, effects, locale) and **Options** (payment methods, addresses, saved
-cards, backend), ordered by how often they are used. Every knob
-maps into a `CheckoutConfiguration` (environment always `.dev`) or the dev-session request at Pay time:
+The app is a four-tab config screen (`DemoRootView`) over a `DemoSettings` value: **Pay** (session, order, the pay actions),
+**Look** (themes, effects, locale), **Options** (payment methods, addresses, saved cards, backend) and
+**Logs** (live output), ordered by how often they are used. Every knob
+maps into a `CheckoutConfiguration` (environment from Options > Backend, default `.dev`) or the dev-session request at Pay time:
 
 - **Server URL** - base URL of the local dev session server.
 - **Locale** - `en-US` / `zh-CN` (maps to `CheckoutConfiguration.locale`). **This drives SDK UI
@@ -152,18 +152,23 @@ maps into a `CheckoutConfiguration` (environment always `.dev`) or the dev-sessi
 - **Amount** - USD only; minor units (default 105 = 1.05). Sent to the dev server as major units.
 - **Card on file** - the two switches above.
 
-Below the knobs:
+Pay tab:
 
-- **Diagnostics** (inside "Last outcome") - every event delivered through `SunbayCheckout.onDiagnostic`,
-  one line each: code, ignored names and reason only (never address values). "Clear" empties the list.
+- **Session** (top) - "Create session" creates an order through the session server using the Order
+  settings. Every payment action stays disabled until a session exists. Changing the order or backend
+  settings discards it, and so does a payment that reaches a final state (succeeded, pending, unknown).
+  A creation failure (invalid URL, server error) is shown as text.
+- **PaymentSheet (L1 black-box)** - "Pay (sheet)" constructs
+  `PaymentSheet(checkout:sessionId:customerAccessSecret:checkoutClientSecret:)` for the session and calls
+  `present(from:)`.
+- **Standalone ApplePayButton (L3)** - shows an `ApplePayButton` bound to the session's `sessionId` and
+  `checkoutClientSecret`, with `onResult` and `onAvailabilityChange` wired. Needs a real device for the
+  wallet sheet.
 
-- **PaymentSheet (L1 black-box)** - "Pay (sheet)" creates a session through the dev server, then
-  constructs `PaymentSheet(checkout:sessionId:customerAccessSecret:checkoutClientSecret:)` and calls
-  `present(from:)`. A failure to create the session (invalid URL, server error) is shown as text. The
-  returned `CheckoutOutcome` is shown in "Last outcome".
-- **Standalone ApplePayButton (L3)** - "Create session" creates a session, then shows an
-  `ApplePayButton` bound to its `sessionId` and `checkoutClientSecret`, with `onResult` and
-  `onAvailabilityChange` wired. Needs a real device for the wallet sheet.
+Logs tab: a live, newest-first log of session creation, sheet states, outcomes and every event delivered
+through `SunbayCheckout.onDiagnostic` (code, ignored names and reason only, never address values). Lines are
+also printed to the Xcode console with a `[SunbayDemo]` prefix. "Copy" puts the log on the clipboard and
+"Clear" empties it. Secrets and card data are never logged.
 
 ## Localization verification gate
 

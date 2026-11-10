@@ -6,6 +6,56 @@ import SunbayCheckoutTestSupport
     import SwiftUI
     import UIKit
 
+    // MARK: - Log
+
+    /// The live log behind the Logs tab. Lines are also printed to the console.
+    ///
+    /// Callers must only pass text that is safe to show: ids, codes and counts, never secrets, tokens,
+    /// card data or addresses.
+    @MainActor
+    final class DemoLog: ObservableObject {
+        enum Level {
+            case info, success, warning, error
+
+            var color: Color {
+                switch self {
+                case .info: return .primary
+                case .success: return .green
+                case .warning: return .orange
+                case .error: return .red
+                }
+            }
+        }
+
+        struct Entry: Identifiable {
+            let id: Int
+            let time: String
+            let level: Level
+            let message: String
+        }
+
+        @Published private(set) var entries: [Entry] = []
+        private var nextId = 0
+        private let formatter: DateFormatter = {
+            let f = DateFormatter()
+            f.dateFormat = "HH:mm:ss.SSS"
+            return f
+        }()
+
+        /// Plain-text copy of all lines, oldest first.
+        var text: String { entries.map { "\($0.time) \($0.message)" }.joined(separator: "\n") }
+
+        func add(_ message: String, level: Level = .info) {
+            let entry = Entry(id: nextId, time: formatter.string(from: Date()), level: level, message: message)
+            nextId += 1
+            entries.append(entry)
+            if entries.count > 500 { entries.removeFirst(entries.count - 500) }
+            print("[SunbayDemo] \(entry.time) \(message)")
+        }
+
+        func clear() { entries = [] }
+    }
+
     // MARK: - Root view
 
     /// The demo configuration playground.
@@ -13,7 +63,7 @@ import SunbayCheckoutTestSupport
     /// A tabbed config screen (Pay / Options / Look) exposing every `DemoSettings` knob, a "Pay (sheet)"
     /// action that creates a real order through the local `Example/DevServer` and presents the SDK
     /// `PaymentSheet` against the selected backend, a standalone `ApplePayButton` section, and a
-    /// last-outcome display. The environment is switchable (dev by default); there is no mock mode.
+    /// live Logs tab. The environment is switchable (dev by default); there is no mock mode.
     ///
     /// Consumes only the SDK public API (`SunbayCheckout`, `CheckoutConfiguration`, `PaymentSheet`,
     /// `ApplePayButton`, `CheckoutOutcome`, `CheckoutError`) plus `DevSessionClient` from
@@ -25,12 +75,14 @@ import SunbayCheckoutTestSupport
     struct DemoRootView: View {
         /// The live configuration surface driven by the playground controls.
         @State private var settings: DemoSettings = .default
-        /// A readable description of the most recent checkout result.
-        @State private var lastOutcome: String = "-"
-        /// The most recent presentation state observed via `PaymentSheet.onStateChange`.
-        @State private var lastState: String = "-"
-        /// Diagnostic events received through `SunbayCheckout.onDiagnostic` (code, ignored names, reason only).
-        @State private var diagnostics: [String] = []
+        /// The live log shown on the Logs tab.
+        @StateObject private var log = DemoLog()
+        /// The current order session; every payment action needs one.
+        @State private var session: DevSession?
+        /// True while a session is being created.
+        @State private var isCreatingSession = false
+        /// The last session-creation failure, if any.
+        @State private var sessionError: String?
 
         /// The Apple Pay merchant id baked into Info.plist (`SunbayDemoMerchantId`) by the Tuist
         /// manifest, so it always matches the entitlement. Falls back to the committed placeholder.
@@ -42,10 +94,10 @@ import SunbayCheckoutTestSupport
         var body: some View {
             TabView {
                 tab("Pay", systemImage: "creditcard") {
+                    sessionSection
                     orderSection
                     paymentSheetSection
                     applePaySection
-                    outcomeSection
                 }
                 tab("Look", systemImage: "paintbrush") {
                     appearanceSection
@@ -58,7 +110,23 @@ import SunbayCheckoutTestSupport
                     cofSection
                     backendSection
                 }
+                tab("Logs", systemImage: "list.bullet.rectangle") {
+                    logsSection
+                }
             }
+            .onChange(of: sessionInputs) { _ in
+                // A session belongs to the inputs it was created with.
+                if session != nil {
+                    session = nil
+                    log.add("Session discarded: order or backend settings changed")
+                }
+            }
+        }
+
+        /// Everything a created session depends on; changing any of it invalidates the session.
+        private var sessionInputs: [String] {
+            [settings.environment.rawValue, settings.devServerURL, String(settings.amountMinorUnits),
+             String(settings.orderRequiresBillingAddress), String(settings.orderRequiresShippingAddress)]
         }
 
         /// One tab: its own navigation stack around a form, so each tab keeps its scroll position.
@@ -239,18 +307,74 @@ import SunbayCheckoutTestSupport
             }
         }
 
+        // MARK: - Session
+
+        /// Creating the session comes first: the payment actions below stay disabled until one exists.
+        private var sessionSection: some View {
+            Section {
+                Button {
+                    createSession()
+                } label: {
+                    HStack {
+                        Text(session == nil ? "Create session" : "Create a new session")
+                        if isCreatingSession { Spacer(); ProgressView() }
+                    }
+                }
+                .disabled(isCreatingSession)
+                if let session {
+                    HStack {
+                        Text("Session")
+                        Spacer()
+                        Text(session.sessionId).font(.footnote.monospaced()).foregroundStyle(.secondary)
+                            .lineLimit(1).truncationMode(.middle)
+                    }
+                } else if let sessionError {
+                    Text(sessionError).font(.footnote).foregroundColor(.red)
+                } else {
+                    Text("No session yet. Create one to enable the payment actions.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Session")
+            } footer: {
+                Text("Creates an order through the session server using the order settings below. Changing them discards the session.")
+            }
+        }
+
+        private func createSession() {
+            guard !isCreatingSession else { return }
+            isCreatingSession = true
+            sessionError = nil
+            session = nil
+            let request = sessionRequest
+            log.add("Create session: env=\(settings.environment.label) amount=\(settings.amountMinorUnits) billing=\(request.collectBillingAddress) shipping=\(request.collectShippingAddress)")
+            Task { @MainActor in
+                defer { isCreatingSession = false }
+                do {
+                    let created = try await request.create()
+                    session = created
+                    log.add("Session created: \(created.sessionId)")
+                } catch {
+                    let message = describeSessionError(error)
+                    sessionError = message
+                    log.add("Create session failed: \(message)", level: .error)
+                }
+            }
+        }
+
         // MARK: - Action sections
 
         private var paymentSheetSection: some View {
             Section("PaymentSheet (L1 black-box)") {
-                Text("Creates an order session, then presents the SDK sheet: new-card form, 'Save this card', saved cards (COF one-tap), and an Apple Pay entry row.")
+                Text("Presents the SDK sheet for the session: new-card form, 'Save this card', saved cards (COF one-tap), and an Apple Pay entry row.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 PaySheetButton(
                     checkout: makeCheckout(),
+                    session: session,
                     request: sessionRequest,
-                    onOutcome: { lastOutcome = describe($0) },
-                    onState: { lastState = describeState($0) }
+                    onOutcome: { handle($0, source: "Sheet") },
+                    onState: { log.add("Sheet state: \(describeState($0))") }
                 )
             }
         }
@@ -259,35 +383,54 @@ import SunbayCheckoutTestSupport
             Section("Standalone ApplePayButton (L3)") {
                 StandaloneApplePaySection(
                     checkout: makeCheckout(),
-                    request: sessionRequest,
-                    onResult: { lastOutcome = describe($0) }
+                    session: session,
+                    onResult: { handle($0, source: "Apple Pay") },
+                    onAvailability: { log.add("Apple Pay button available: \($0)") }
                 )
-                // A session belongs to one environment: switching it drops the bound button.
-                .id(settings.environment)
             }
         }
 
-        private var outcomeSection: some View {
-            Section("Last outcome") {
-                Text(lastOutcome).font(.body.monospaced())
+        /// Logs an outcome; a session that reached a final state is spent, so the next payment needs a new one.
+        private func handle(_ outcome: CheckoutOutcome, source: String) {
+            let level: DemoLog.Level
+            switch outcome {
+            case .succeeded: level = .success
+            case .failed: level = .error
+            default: level = .info
+            }
+            log.add("\(source) outcome: \(describe(outcome))", level: level)
+            switch outcome {
+            case .succeeded, .pending, .unknown:
+                session = nil
+                log.add("Session finished; create a new one to pay again")
+            case .failed, .canceled:
+                break
+            }
+        }
+
+        // MARK: - Logs
+
+        private var logsSection: some View {
+            Section {
                 HStack {
-                    Text("Last state")
+                    Button("Copy") { UIPasteboard.general.string = log.text }
+                        .disabled(log.entries.isEmpty)
                     Spacer()
-                    Text(lastState).font(.body.monospaced()).foregroundStyle(.secondary)
+                    Button("Clear", role: .destructive) { log.clear() }
+                        .disabled(log.entries.isEmpty)
                 }
-                HStack {
-                    Text("Diagnostics")
-                    Spacer()
-                    Button("Clear") { diagnostics = [] }
-                        .disabled(diagnostics.isEmpty)
-                }
-                if diagnostics.isEmpty {
-                    Text("-").font(.footnote.monospaced()).foregroundStyle(.secondary)
+                if log.entries.isEmpty {
+                    Text("No logs yet.").font(.footnote).foregroundStyle(.secondary)
                 } else {
-                    ForEach(Array(diagnostics.enumerated()), id: \.offset) { _, line in
-                        Text(line).font(.footnote.monospaced())
+                    ForEach(log.entries.reversed()) { entry in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(entry.time).font(.caption2.monospaced()).foregroundStyle(.secondary)
+                            Text(entry.message).font(.footnote.monospaced()).foregroundColor(entry.level.color)
+                        }
                     }
                 }
+            } footer: {
+                Text("Newest first. Shows session creation, outcomes, sheet states and SDK diagnostics. Secrets and card data are never logged.")
             }
         }
 
@@ -366,9 +509,9 @@ import SunbayCheckoutTestSupport
                 paymentMethodFilter: methodFilter
             )
             let checkout = SunbayCheckout(configuration: config)
-            let sink = $diagnostics
+            let sink = log
             checkout.onDiagnostic = { event in
-                sink.wrappedValue.append(Self.describe(event))
+                sink.add("Diagnostic: \(Self.describe(event))", level: .warning)
             }
             return checkout
         }
@@ -541,84 +684,53 @@ import SunbayCheckoutTestSupport
 
     // MARK: - PaymentSheet wrapper (SwiftUI button -> presents the UIKit payment page)
 
-    /// A SwiftUI button that creates a dev session, presents the public `PaymentSheet` on the
+    /// A SwiftUI button that presents the public `PaymentSheet` for an existing session on the
     /// frontmost view controller and passes back the returned `CheckoutOutcome`.
     struct PaySheetButton: View {
         let checkout: SunbayCheckout
+        let session: DevSession?
         let request: DevSessionRequest
         let onOutcome: (CheckoutOutcome) -> Void
         let onState: (CheckoutPresentationState) -> Void
-        @State private var errorMessage: String?
         @State private var isBusy = false
 
         var body: some View {
-            VStack(alignment: .leading) {
-                Button("Pay (sheet)") {
-                    guard !isBusy, let presenter = topViewController() else { return }
-                    errorMessage = nil
-                    isBusy = true
-                    Task { @MainActor in
-                        defer { isBusy = false }
-                        let session: DevSession
-                        do {
-                            session = try await request.create()
-                        } catch {
-                            errorMessage = describeSessionError(error)
-                            return
-                        }
-                        let sheet = PaymentSheet(
-                            checkout: checkout,
-                            sessionId: session.sessionId,
-                            customerAccessSecret: session.customerAccessSecret,
-                            checkoutClientSecret: session.checkoutClientSecret,
-                            billingAddress: request.hostBillingAddress,
-                            shippingAddress: request.hostShippingAddress
-                        )
-                        sheet.onStateChange = onState
-                        let outcome = await sheet.present(from: presenter)
-                        onOutcome(outcome)
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(isBusy)
-                if let errorMessage {
-                    Text(errorMessage).font(.footnote).foregroundColor(.red)
+            Button("Pay (sheet)") {
+                guard !isBusy, let session, let presenter = topViewController() else { return }
+                isBusy = true
+                Task { @MainActor in
+                    defer { isBusy = false }
+                    let sheet = PaymentSheet(
+                        checkout: checkout,
+                        sessionId: session.sessionId,
+                        customerAccessSecret: session.customerAccessSecret,
+                        checkoutClientSecret: session.checkoutClientSecret,
+                        billingAddress: request.hostBillingAddress,
+                        shippingAddress: request.hostShippingAddress
+                    )
+                    sheet.onStateChange = onState
+                    let outcome = await sheet.present(from: presenter)
+                    onOutcome(outcome)
                 }
             }
+            .buttonStyle(.borderedProminent)
+            .disabled(isBusy || session == nil)
         }
     }
 
     // MARK: - Standalone ApplePayButton section
 
-    /// "Create session" then show the standalone `ApplePayButton` bound to that session.
+    /// The standalone `ApplePayButton` bound to the current session.
     struct StandaloneApplePaySection: View {
         let checkout: SunbayCheckout
-        let request: DevSessionRequest
+        let session: DevSession?
         let onResult: (CheckoutOutcome) -> Void
-        @State private var session: DevSession?
-        @State private var errorMessage: String?
+        let onAvailability: (Bool) -> Void
         @State private var available = false
-        @State private var isBusy = false
 
         var body: some View {
-            VStack(alignment: .leading, spacing: 8) {
-                Button("Create session") {
-                    guard !isBusy else { return }
-                    errorMessage = nil
-                    session = nil
-                    isBusy = true
-                    Task { @MainActor in
-                        defer { isBusy = false }
-                        do {
-                            session = try await request.create()
-                        } catch {
-                            errorMessage = describeSessionError(error)
-                        }
-                    }
-                }
-                .buttonStyle(.bordered)
-                .disabled(isBusy)
-                if let session {
+            if let session {
+                VStack(alignment: .leading, spacing: 8) {
                     Text(available
                         ? "Available - tap to drive the wallet authorization end-to-end (confirmWallet)."
                         : "Hidden/unavailable (device cannot make payments or merchant-id not configured).")
@@ -629,17 +741,18 @@ import SunbayCheckoutTestSupport
                         sessionId: session.sessionId,
                         checkoutClientSecret: session.checkoutClientSecret,
                         onResult: onResult,
-                        onAvailabilityChange: { available = $0 }
+                        onAvailabilityChange: {
+                            available = $0
+                            onAvailability($0)
+                        }
                     )
                     .id(session.sessionId)
                     .frame(height: 48)
-                } else if let errorMessage {
-                    Text(errorMessage).font(.footnote).foregroundColor(.red)
-                } else {
-                    Text("Creates an order session first; the button is then bound to it. Apple Pay needs a real device.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
                 }
+            } else {
+                Text("Create a session first. Apple Pay needs a real device.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
     }
