@@ -13,7 +13,7 @@ final class LocalizationE2ETests: XCTestCase {
     /// Task 5 string table wires `sunbay.error.payment_failed` to both locales. `zh-CN` resolves to
     /// the `zh-Hans` bundle and `en-US` to the `en` bundle via `LocalizationResolver`.
     func test_error_localized_zhVsEn() {
-        let e = CheckoutError(code: "PAYMENT_FAILED", message: "dev", category: .payment, traceId: nil)
+        let e = CheckoutError(code: "PAYMENT_FAILED", message: CheckoutErrors.defaultPaymentFailedMessage, category: .payment, traceId: nil)
         XCTAssertEqual(
             e.localizedDisplayMessage(using: LocalizationResolver(explicitLocale: "zh-CN", systemLanguages: [])),
             "支付失败"

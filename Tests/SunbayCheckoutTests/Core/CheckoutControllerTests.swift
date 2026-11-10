@@ -178,6 +178,46 @@ final class CheckoutControllerTests: XCTestCase {
         }
     }
 
+    // MARK: - Failure reason
+
+    func test_failedSnapshotWithReason_usesReasonAsMessage_keepsCode() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession())
+        payment.stubSubmit([
+            PaymentSnapshot(sessionId: "sess_1", status: .failed, txnId: "txn_f", failureReason: "Card declined")
+        ])
+        let controller = makeController(payment: payment)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+
+        let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
+
+        guard case .failed(let txnId, let error) = outcome else {
+            return XCTFail("expected failed, got: \(outcome)")
+        }
+        XCTAssertEqual(txnId, "txn_f")
+        XCTAssertEqual(error.code, "PAYMENT_FAILED")
+        XCTAssertEqual(error.message, "Card declined")
+    }
+
+    func test_failedSnapshotWithBlankReason_usesDefaultMessage() async throws {
+        for reason in [nil, "", "   "] as [String?] {
+            let payment = MockPaymentService()
+            payment.stubSession(makeSession())
+            payment.stubSubmit([
+                PaymentSnapshot(sessionId: "sess_1", status: .failed, txnId: "txn_f", failureReason: reason)
+            ])
+            let controller = makeController(payment: payment)
+            _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+
+            let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
+
+            guard case .failed(_, let error) = outcome else {
+                return XCTFail("expected failed, got: \(outcome)")
+            }
+            XCTAssertEqual(error.message, CheckoutErrors.defaultPaymentFailedMessage)
+        }
+    }
+
     // MARK: - Non-terminal submit result (I) → pending, no client polling
 
     /// The core realignment: a submit that returns a non-terminal `I` maps STRAIGHT to `.pending`.

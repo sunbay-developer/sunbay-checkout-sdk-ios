@@ -148,7 +148,8 @@ public struct AddressCountryList: Sendable, Equatable {
 ///
 /// Both the simple and full address forms produce this type. Values are stored as codes where
 /// applicable (`country`, `state` subdivision code) so they survive a locale change (names are
-/// display-only). Simple mode fills only `country` / `line1` / `postalCode`.
+/// display-only). Simple mode is the full form filtered to `country` / `line1` / `postalCode`, plus
+/// `firstName` / `lastName` for shipping.
 public struct AddressInput: Sendable, Equatable {
     /// ISO country code.
     public var country: String?

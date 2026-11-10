@@ -17,8 +17,11 @@
     /// ## States
     /// While fetching it shows a loading skeleton; on failure it shows an error message plus a retry
     /// button (matching the web `AddressForm.tsx` behavior); on success it shows the resolved rows. The
-    /// state field is a subdivisions dropdown; the postal field is validated against the backend
-    /// `pattern`. No Google autocomplete, no postal→state lookup.
+    /// state field is a subdivisions dropdown. `validate()` checks only the postal code, driven by the
+    /// selected country's `postalCode` field config (required / `pattern`) via `PostalCodeValidator`; it
+    /// returns false while metadata is loading (the tap is ignored), and never blocks after a load failure
+    /// or when the country has no postal field. No
+    /// other field is validated here, and there is no Google autocomplete or postal→state lookup.
     ///
     /// iOS-only: gated by `#if canImport(UIKit)`; does not compile under the macOS host (`swift test`).
     final class DynamicAddressFormView: UIView {
@@ -26,6 +29,8 @@
         private let options: AddressFormOptions
         private let localize: (String) -> String
         private let service: any AddressMetadataService
+        /// When non-nil, only these field types are rendered (the country row is always rendered).
+        private let visibleFields: Set<AddressFieldType>?
 
         private var locale: String?
 
@@ -49,6 +54,10 @@
         private let errorContainer = UIView()
         private let errorLabel = UILabel()
         private let retryButton = UIButton(type: .system)
+        /// The localization key of the postal error currently shown, if any.
+        private var postalErrorKey: String?
+        /// The postal error label of the current render (rebuilt with the fields).
+        private var postalErrorLabel: UILabel?
 
         // Field controls keyed by type (rebuilt on each render).
         private var textFields: [AddressFieldType: UITextField] = [:]
@@ -68,14 +77,18 @@
         ///   - service: The address-metadata service (host-injected; mock or real adapter).
         ///   - locale: The effective locale for the initial fetch (nil uses the backend default).
         ///   - options: Per-form switches (for example whether names are collected); defaults to billing.
+        ///   - visibleFields: When non-nil, restricts the rendered rows to these field types (the country
+        ///     row is always rendered); nil renders every field the country config lays out.
         init(
             appearance: ResolvedAppearance,
             localize: @escaping (String) -> String,
             service: any AddressMetadataService,
             locale: String?,
-            options: AddressFormOptions = .billing
+            options: AddressFormOptions = .billing,
+            visibleFields: Set<AddressFieldType>? = nil
         ) {
             self.options = options
+            self.visibleFields = visibleFields
             self.appearance = appearance
             self.localize = localize
             self.service = service
@@ -95,7 +108,49 @@
         /// The user-entered address values (codes / raw text).
         var addressInput: AddressInput {
             captureFieldValues()
-            return model
+            var input = model
+            // A country without a postal field must not submit the previous country's stale value.
+            if let config, config.fields[.postalCode] == nil { input.postalCode = nil }
+            return input
+        }
+
+        /// Validates the postal code against the selected country's config and shows the error inline.
+        ///
+        /// - Returns: `false` while the metadata is still loading (the skeleton is visible, so no message is
+        ///   shown and the Pay tap is simply ignored), or when the postal field is rendered and its value is
+        ///   required-but-empty or does not match the country pattern. Returns `true` after a load failure
+        ///   (full-mode exemption), when the country has no postal field, or when the postal field is not visible.
+        func validate() -> Bool {
+            if loadState == .loading { return false }
+            guard loadState == .loaded, let postalConfig = config?.fields[.postalCode],
+                textFields[.postalCode] != nil
+            else {
+                setPostalError(nil)
+                return true
+            }
+            captureFieldValues()
+            switch PostalCodeValidator.validate(model.postalCode, config: postalConfig) {
+            case .valid:
+                setPostalError(nil)
+                return true
+            case .required:
+                setPostalError("sunbay.address.postalCode.required")
+                return false
+            case .invalidFormat:
+                setPostalError("sunbay.address.postalCode.invalid")
+                return false
+            }
+        }
+
+        private func setPostalError(_ key: String?) {
+            postalErrorKey = key
+            postalErrorLabel?.text = key.map(localize)
+            postalErrorLabel?.isHidden = key == nil
+            (textFields[.postalCode] as? FloatingLabelTextField)?.setErrorActive(key != nil)
+        }
+
+        @objc private func handlePostalEditingChanged() {
+            if postalErrorKey != nil { setPostalError(nil) }
         }
 
         /// Refetches with a new locale and rebuilds, preserving already-entered values (§7.3).
@@ -193,8 +248,11 @@
 
         /// Rebuilds the field controls from the current config, then re-applies stored values.
         private func rebuildFields() {
+            let hadPostalError = postalErrorKey != nil
             contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
             textFields.removeAll()
+            postalErrorLabel = nil
+            postalErrorKey = nil
             countryButton = nil
             stateButton = nil
             phoneField = nil
@@ -204,7 +262,9 @@
             if let config {
                 let rows = AddressFormLayoutResolver.renderRows(config: config, collectName: options.collectName)
                 for row in rows {
-                    let fields = row.filter { $0.type != .country }
+                    let fields = row.filter { field in
+                        field.type != .country && (visibleFields?.contains(field.type) ?? true)
+                    }
                     guard !fields.isEmpty else { continue }
                     contentStack.addArrangedSubview(makeRow(fields))
                 }
@@ -214,7 +274,15 @@
                 contentStack.addArrangedSubview(makePhoneRow())
             }
 
+            // The new country has no postal field: drop the stale value rather than carry it along.
+            if let config, config.fields[.postalCode] == nil { model.postalCode = nil }
+
             applyStoredValues()
+
+            // After a country change / rebuild, re-check a typed or previously flagged postal code.
+            if hadPostalError || !(textFields[.postalCode]?.text ?? "").isEmpty {
+                _ = validate()
+            }
         }
 
         private func makePhoneRow() -> UIView {
@@ -253,6 +321,8 @@
             rowStack.axis = .horizontal
             rowStack.spacing = 8
             rowStack.distribution = .fillEqually
+            // Top-align so a taller cell (postal field + inline error) does not stretch its siblings.
+            rowStack.alignment = .top
             for field in fields {
                 rowStack.addArrangedSubview(makeField(field))
             }
@@ -272,7 +342,21 @@
                 KeyboardDismissal.installDoneAccessory(on: textField)
             }
             textFields[field.type] = textField
-            return FieldContainerView(appearance: appearance, control: textField)
+            let container = FieldContainerView(appearance: appearance, control: textField)
+            guard field.type == .postalCode else { return container }
+
+            // Postal cell: the field box with its inline error label below (CardFormView style).
+            textField.addTarget(self, action: #selector(handlePostalEditingChanged), for: .editingChanged)
+            let label = UILabel()
+            label.font = UIFont.preferredFont(forTextStyle: .caption1)
+            label.textColor = appearance.danger
+            label.numberOfLines = 0
+            label.isHidden = true
+            postalErrorLabel = label
+            let cell = UIStackView(arrangedSubviews: [container, label])
+            cell.axis = .vertical
+            cell.spacing = 4
+            return cell
         }
 
         private func makeStateRow(_ field: AddressFieldConfig, subdivisions: [AddressSubdivision]) -> UIView {
@@ -404,6 +488,30 @@
 
         /// The text-field types currently rendered (names appear only when the options collect them).
         var renderedFieldTypesForTest: Set<AddressFieldType> { Set(textFields.keys) }
+
+        /// The postal error message currently shown (the localized text), or nil when none is shown.
+        var postalErrorMessageForTest: String? {
+            guard let label = postalErrorLabel, !label.isHidden else { return nil }
+            return label.text
+        }
+
+        /// Whether the first / last name row is collected.
+        var hasNameFieldsForTest: Bool { options.collectName }
+
+        /// Fills the model directly (bypassing the country menu and keystrokes), then re-applies it to
+        /// the controls.
+        func fillForTest(
+            country: String, line1: String, postalCode: String, firstName: String? = nil, lastName: String? = nil,
+            phone: String? = nil
+        ) {
+            model.country = country
+            model.line1 = line1
+            model.postalCode = postalCode
+            model.firstName = firstName
+            model.lastName = lastName
+            model.phone = phone
+            applyStoredValues()
+        }
 
         /// Whether the phone field is currently rendered.
         var hasPhoneFieldForTest: Bool { phoneField != nil }

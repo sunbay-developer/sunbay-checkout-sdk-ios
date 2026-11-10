@@ -106,6 +106,9 @@
         func test_numberPadFields_haveDoneAccessory() {
             let (vc, window) = makeHostedNewCardVC()
             defer { window.isHidden = true; window.rootViewController = nil }
+            // The simple address forms load their fields asynchronously (fallback config here).
+            (vc.billingAddressViewForTest as? DynamicAddressFormView)?.waitForLoadForTest()
+            (vc.shippingAddressViewForTest as? DynamicAddressFormView)?.waitForLoadForTest()
 
             let padFields = textFields(in: vc.view).filter {
                 $0.keyboardType == .asciiCapableNumberPad || $0.keyboardType == .numbersAndPunctuation

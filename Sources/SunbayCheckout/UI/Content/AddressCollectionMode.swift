@@ -10,7 +10,7 @@
         /// Visible iff the session collects the address and the host has no usable entry; the form style
         /// comes from the configured `AddressFormStyle`.
         case automatic
-        /// Three fields: country / line1 / postal code.
+        /// Three fields: country / line1 / postal code (plus first/last name for shipping).
         case simple
         /// Backend-layout-driven full address form.
         case full

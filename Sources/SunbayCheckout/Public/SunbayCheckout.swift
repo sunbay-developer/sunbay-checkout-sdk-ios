@@ -120,8 +120,8 @@ public final class SunbayCheckout {
     ///
     /// The optional `addressMetadataService` powers the full-mode address form (§7.5). It defaults
     /// to a fail-soft empty service (returns an empty country list / minimal config rather than
-    /// throwing), so hosts that never opt into `.full` address collection — the default is
-    /// `.simple`, which never calls it — do not have to inject anything. Whatever is supplied is
+    /// throwing), so hosts that never opt into `.full` address collection do not have to inject
+    /// anything (`.simple`, the default, falls back to a local config when metadata is empty). Whatever is supplied is
     /// wrapped in an `AddressMetadataCache` (caching + in-flight dedup).
     ///
     /// - Parameters:

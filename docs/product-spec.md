@@ -274,7 +274,11 @@ Two independent dimensions; the backend decides **whether** to collect, the host
   for it. The host cannot force a form on when the session does not ask for one. When disabled, the SDK shows
   nothing and uses the host-provided address, if any.
 - **Style** is `Appearance.billingAddressStyle` / `shippingAddressStyle`:
-  - `.simple` (default): three fields only (country / line1 / postal code), no network.
+  - `.simple` (default): country / line1 / postal code, plus first and last name when the form is a shipping form (names come from
+    `AddressFormOptions.collectName`; billing has no names); phone is not shown in simple mode. Rendered by the same form as
+    `.full` (`DynamicAddressFormView`): metadata-driven, with a per-country postal label and rule and the country
+    list from `GET /api/address/country`. If metadata fails to load or is empty, it falls back to the system
+    country list and a generic config (postal code required, no pattern).
   - `.full`: backend-layout-driven address form. Data comes from `AddressMetadataService`
     (Core/AddressMetadata, no UIKit); the default `SunbayCheckout(configuration:)` wires the real HPP adapter
     (`HTTPAddressMetadataService`: `GET /api/address/country` and `GET /api/address/country/{code}`).
@@ -298,7 +302,17 @@ never logged, never returned in callbacks and never part of a diagnostic. The ru
   kind) the usable host entry. If a form is shown for the kind and a host entry is present, the entry is ignored for
   the wallet and `ADDRESS_ENTRY_IGNORED` is reported once, even when the wallet-returned contact wins.
 - **Saved card.** Usable host entries only.
-- The SDK never blocks a submit because an address is missing; the backend decides.
+- **Postal-code validation.** A new-card submit is blocked when the postal code violates the country's
+  `required` / `pattern`. Rules come only from backend config (except the local fallback used by simple mode when metadata is unavailable); if neither is present there is no validation.
+  Patterns are matched against the whole trimmed value, and uncompilable patterns are ignored. Other address
+  fields never block a submit (the backend decides). Saved-card and wallet paths are not gated, and
+  host-provided addresses are not validated. A new-card submit is ignored while address metadata is still loading; it
+  does not block when full-mode metadata failed to load, when the selected country has no postal-code field, or when the
+  postal field is not rendered.
+- **Failure reason.** `failureReason` on a failed result becomes `CheckoutError.message` under code
+  `PAYMENT_FAILED`; a blank reason becomes the default "The payment failed."
+- **Session loading.** `PaymentSheet` loads the session once per presentation. It is not reloaded between
+  attempts; an expired session surfaces as a backend rejection shown inline.
 
 Deferred: Google address autocomplete (a browser Maps key cannot be used from apps; options: an HPP proxy,
 recommended; Google Places SDK for iOS with per-bundle keys; MapKit `MKLocalSearchCompleter`) and
@@ -579,7 +593,7 @@ checkout-sdk-native/ios/
 │   │   ├── Theme/                      # ResolvedAppearance / ColorHex / AppearanceDefaults
 │   │   ├── Content/                    # CheckoutContentViewController + delegate + state
 │   │   │   └── Components/             # CardFormView / SavedCardList / ExpressCheckout / ConfirmButton /
-│   │   │                               #   InlineNotice / Simple+DynamicAddressForm / Footer / SheetHeader
+│   │   │                               #   InlineNotice / DynamicAddressForm / Footer / SheetHeader
 │   │   ├── Container/                  # PaymentSheetContainerViewController (L1 bottom sheet)
 │   │   ├── PaymentSheet/               # L1 public entry [首版]
 │   │   ├── Wallet/                     # L3 ApplePayButton [首版]

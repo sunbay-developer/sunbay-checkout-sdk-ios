@@ -39,6 +39,16 @@ final class ContractCodableTests: XCTestCase {
         XCTAssertEqual(session.methods.count, 2)
     }
 
+    func test_resultWithFailureReason_decodesIntoSnapshot() throws {
+        let with = Data(#"{"txnId":"t1","txnStatus":"F","failureReason":"Insufficient funds"}"#.utf8)
+        let envelope = try ContractDecoding.decodeResult(from: with, fallbackSessionId: "s1")
+        XCTAssertEqual(envelope.snapshot.failureReason, "Insufficient funds")
+
+        let without = Data(#"{"txnId":"t1","txnStatus":"F"}"#.utf8)
+        let envelope2 = try ContractDecoding.decodeResult(from: without, fallbackSessionId: "s1")
+        XCTAssertNil(envelope2.snapshot.failureReason)
+    }
+
     func test_decodeSession_withoutCardEntries_hasNoCardMethodEntry() throws {
         let json = """
             {

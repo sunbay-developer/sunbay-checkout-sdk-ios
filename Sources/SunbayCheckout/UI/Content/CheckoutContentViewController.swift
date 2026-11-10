@@ -421,8 +421,14 @@
         #if DEBUG
             // MARK: - Test seams
 
-            /// Fills the card form with a valid test card (bypasses keystrokes).
-            func fillCardForTest() {
+            /// Fills the card form with a valid test card (bypasses keystrokes). By default it first lets any
+            /// address form finish loading, since a Pay tap is ignored while address metadata loads; pass
+            /// `awaitingAddressLoad: false` to test that window.
+            func fillCardForTest(awaitingAddressLoad: Bool = true) {
+                if awaitingAddressLoad {
+                    (billingAddressViewForTest as? DynamicAddressFormView)?.waitForLoadForTest()
+                    (shippingAddressViewForTest as? DynamicAddressFormView)?.waitForLoadForTest()
+                }
                 cardForm.setFieldsForTest(pan: "4242424242424242", expiry: "12/99", cvv: "123")
                 refreshConfirmButtonState()
             }
@@ -591,6 +597,10 @@
                 cardForm.showFieldError(.number, message: localize("sunbay.card.invalid"))
                 return
             }
+            // Validate every shown address form (no short-circuit, so each shows its own error).
+            let addressViews = [billingAddressView, shippingAddressView].compactMap { $0 as? DynamicAddressFormView }
+            let addressResults = addressViews.map { $0.validate() }
+            guard addressResults.allSatisfy({ $0 }) else { return }
             let save = saveCardSwitch?.isOn ?? false
             let billing = formAddress(from: billingAddressView)
             // The shipping form's own values; nil when there is no shipping section.
@@ -607,7 +617,6 @@
         /// The values currently entered in an address form (nil when the form is absent). PII: never logged.
         private func formAddress(from view: UIView?) -> AddressInput? {
             switch view {
-            case let simple as SimpleAddressFormView: return simple.addressInput
             case let dynamic as DynamicAddressFormView: return dynamic.addressInput
             default: return nil
             }
@@ -1289,7 +1298,18 @@
         private func makeAddressView(mode: AddressCollectionMode, options: AddressFormOptions) -> UIView? {
             switch mode {
             case .simple:
-                return SimpleAddressFormView(appearance: appearance, localize: localize, options: options)
+                // Simple mode is the dynamic form restricted to country, line1, postal code and names,
+                // wrapped so an unavailable metadata service degrades to a minimal local config.
+                let labels = FallbackAddressMetadataService.Labels(
+                    firstName: localize("sunbay.address.firstName"),
+                    lastName: localize("sunbay.address.lastName"),
+                    line1: localize("sunbay.address.line1"),
+                    postalCode: localize("sunbay.address.postalCode"))
+                return DynamicAddressFormView(
+                    appearance: appearance, localize: localize,
+                    service: FallbackAddressMetadataService(wrapping: addressService, labels: labels),
+                    locale: localeCode, options: options,
+                    visibleFields: [.country, .line1, .postalCode, .firstName, .lastName])
             case .full:
                 return DynamicAddressFormView(
                     appearance: appearance, localize: localize, service: addressService,

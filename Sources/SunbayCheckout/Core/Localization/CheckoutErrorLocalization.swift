@@ -12,6 +12,10 @@ extension CheckoutError {
     /// - Parameter resolver: The resolver bound to the chosen locale.
     /// - Returns: The localized display message, or `message` when unmapped.
     func localizedDisplayMessage(using resolver: LocalizationResolver) -> String {
+        // A server-provided payment-failure reason is shown as-is; only the SDK default is localized.
+        if code == "PAYMENT_FAILED", message != CheckoutErrors.defaultPaymentFailedMessage {
+            return message
+        }
         let key = "sunbay.error." + code.lowercased()
         let resolved = resolver.localized(key, "")
         if resolved == key {

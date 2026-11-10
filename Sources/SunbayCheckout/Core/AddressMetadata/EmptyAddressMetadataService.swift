@@ -6,7 +6,8 @@ import Foundation
 /// `SunbayCheckout` must still construct *something* for the full-mode address form to depend on.
 /// This default returns an empty country list and a minimal, dependency-free country config instead
 /// of throwing, so a merchant who never configures `.full` address collection (the default is
-/// `.simple`, which never calls this) sees no crash and the SDK degrades gracefully.
+/// `.simple`, which loads metadata through `FallbackAddressMetadataService` and falls back to a
+/// local config when this service returns empty data) sees no crash and the SDK degrades gracefully.
 ///
 /// It is swapped out the moment the host injects a real `AddressMetadataService`; the UI never
 /// distinguishes this default from a real adapter (both arrive wrapped in `AddressMetadataCache`).

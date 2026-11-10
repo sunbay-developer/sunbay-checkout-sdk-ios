@@ -96,7 +96,7 @@ Sources/SunbayCheckout/UI/
 │       ├── ExpressCheckoutView.swift   # PKPaymentButton + "Or pay using" divider
 │       ├── ConfirmButton.swift         # enabled/disabled/processing/succeeded(ring→check)
 │       ├── InlineNoticeView.swift      # severity .error (danger block) / .info (neutral)
-│       ├── SimpleAddressFormView.swift # 3 fields: country / line1 / postalCode
+│       ├── SimpleAddressFormView.swift # 3 fields: country / line1 / postalCode (superseded: see 2026-11-10 address-form-unification design; simple is now rendered by DynamicAddressFormView)
 │       ├── DynamicAddressFormView.swift# backend-layout-driven (reserved, UI + protocol built)
 │       ├── AddressFormLayoutResolver.swift # pure fn: fields+layout → render plan (unit-testable)
 │       ├── CheckoutFooterView.swift    # lock + "Powered by SUNBAY"
@@ -320,6 +320,8 @@ read `Appearance` themselves. `ResolvedAppearance.resolve(_:)` is a pure functio
 - **SimpleAddressFormView** — exactly 3 fields: Country (local system list), Address (line1),
   Postal code. No linkage/dynamic filtering. Submits only country / line1 / postalCode.
   Default mode; zero network.
+  *Superseded by docs/superpowers/specs/2026-11-10-address-form-unification-and-postal-validation-design.md:
+  simple is now rendered by DynamicAddressFormView.*
 - **DynamicAddressFormView** — full mode, backend-layout driven (reserved; UI + protocol
   built, no real data this phase): renders by `layout` rows, rebuilds on country change,
   subdivisions dropdown, pattern validation, loading skeleton + error/retry — behavior
@@ -516,6 +518,8 @@ tests.
 2. Apple Pay uses official `PKPaymentButton` (compliance), not a pixel-exact self-drawn button.
 3. Simple address = 3 fields (country/line1/postalCode), no linkage; full mode is the
    backend-driven dynamic renderer.
+   *Superseded by docs/superpowers/specs/2026-11-10-address-form-unification-and-postal-validation-design.md:
+   simple is now rendered by DynamicAddressFormView.*
 4. Full mode this phase: protocol + UI + cache built, **no real data wiring**; no Google
    autocomplete, no postal→state lookup.
 5. Collection mode (simple/full) is decided by SDK configuration; the backend only decides

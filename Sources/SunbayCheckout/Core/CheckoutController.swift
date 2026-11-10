@@ -67,11 +67,15 @@ enum CheckoutErrors {
         )
     }
 
+    /// The default `PAYMENT_FAILED` message used when the server gives no reason.
+    static let defaultPaymentFailedMessage = "The payment failed."
+
     /// Payment failed (mapped from the terminal state `F`; the fallback when the backend gives no finer-grained reason).
-    static func paymentFailed() -> CheckoutError {
-        CheckoutError(
+    static func paymentFailed(reason: String? = nil) -> CheckoutError {
+        let trimmed = reason?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return CheckoutError(
             code: "PAYMENT_FAILED",
-            message: "The payment failed.",
+            message: trimmed.isEmpty ? defaultPaymentFailedMessage : trimmed,
             category: .payment,
             traceId: nil
         )
@@ -556,7 +560,7 @@ actor CheckoutController {
             return .succeeded(txnId: txnId)
 
         case .failed:
-            return .failed(txnId: snapshot.txnId, error: CheckoutErrors.paymentFailed())
+            return .failed(txnId: snapshot.txnId, error: CheckoutErrors.paymentFailed(reason: snapshot.failureReason))
 
         case .initial:
             // Non-terminal: report pending at once (no client polling); the host resolves the final

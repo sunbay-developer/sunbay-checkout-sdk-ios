@@ -4,19 +4,15 @@
 
     @testable import SunbayCheckout
 
-    /// Retry-loop coverage for the rewired `PaymentSheet` (Task 9) plus the container's state bridge.
+    /// Coverage for the `PaymentSheet` attempt loop plus the container's state bridge.
     ///
-    /// ## Where the retry lives
-    /// `runCheckout(seam:)` stays **single-shot** (one seam call → one confirm → one outcome), to
-    /// preserve the existing `PaymentSheetTests`. The retry loop is implemented in the
-    /// present/container layer: on a non-terminal outcome (`.failed` / `.pending` / `.unknown`) the
-    /// content VC stays open and re-editable, and the next user confirm drives **another**
-    /// `runCheckout` attempt. The present layer therefore loops `runCheckout` — one call per confirm.
-    ///
-    /// These tests exercise that exact mechanism at the `runCheckout` seam the present layer loops
-    /// over: calling `runCheckout` twice (a first confirm whose submit fails, a second whose submit
-    /// succeeds) models "failed round → user taps again → second confirm succeeds". This runs
-    /// headlessly (no real UIKit presentation), identical to how `PaymentSheetTests` drives the seam.
+    /// ## Where the loop lives
+    /// `present()` loads the session once (`loadContext`) and then drives each user action through the
+    /// presentation coordinator and `execute` (one confirm → one outcome). Non-terminal outcomes
+    /// (`.failed` / `.pending` / `.unknown`) keep the content open; the next confirm drives another attempt.
+    /// `runCheckout(seam:)` stays single-shot (load + one seam call + one confirm) and is exercised
+    /// headlessly here, like `PaymentSheetTests`. The `presentSheet` tests drive the real sheet over a
+    /// test window.
     ///
     /// UIKit is iOS-only; on the macOS host this whole file is excluded by `#if canImport(UIKit)`. The
     /// real RED/GREEN requires building against the iOS Simulator SDK (see the task report).
@@ -234,62 +230,6 @@
             func set(_ v: CheckoutOutcome) { lock.lock(); _value = v; lock.unlock() }
         }
 
-        /// A deterministic, wall-clock-free gate for ordering-sensitive races. Code under test calls
-        /// `await wait()` (which suspends until `release()`), and the test can `await untilEntered()` to
-        /// observe that the gate has actually been reached. This replaces time-based `stubLoadDelay`
-        /// windows in races where "the code is parked HERE" must be guaranteed, not merely likely.
-        private final class MockGate: @unchecked Sendable {
-            private let lock = NSLock()
-            private var released = false
-            private var waiters: [CheckedContinuation<Void, Never>] = []
-            private var enteredWaiters: [CheckedContinuation<Void, Never>] = []
-            private var entered = false
-
-            /// Called from code under test: suspends until `release()`, then returns. After release it
-            /// returns immediately. Also signals any `untilEntered()` awaiter that the gate was reached.
-            func wait() async {
-                await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
-                    lock.lock()
-                    entered = true
-                    let toEnter = enteredWaiters
-                    enteredWaiters.removeAll()
-                    if released {
-                        lock.unlock()
-                        for e in toEnter { e.resume() }
-                        c.resume()
-                        return
-                    }
-                    waiters.append(c)
-                    lock.unlock()
-                    for e in toEnter { e.resume() }
-                }
-            }
-
-            /// Called from the test: suspends until the gate has been entered by code under test.
-            func untilEntered() async {
-                await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
-                    lock.lock()
-                    if entered {
-                        lock.unlock()
-                        c.resume()
-                        return
-                    }
-                    enteredWaiters.append(c)
-                    lock.unlock()
-                }
-            }
-
-            /// Called from the test: releases all current and future waiters.
-            func release() {
-                lock.lock()
-                released = true
-                let toResume = waiters
-                waiters.removeAll()
-                lock.unlock()
-                for w in toResume { w.resume() }
-            }
-        }
-
         /// Presents the real sheet over a test window; returns what's needed to drive it. The localizer
         /// is the identity so notices can be asserted by key.
         @MainActor
@@ -423,9 +363,8 @@
 
         // MARK: - Buffered user action (unlock window after a .failed)
 
-        /// A Pay tap that lands in the unlock window (the sheet is interactive again after a `.failed`,
-        /// but the loop is still reloading the session and is not yet suspended in `awaitEvent`) must NOT
-        /// be dropped: the tap is buffered and delivered to the next `awaitEvent`, so the second submit
+        /// A Pay tap right after a `.failed` (the sheet is interactive again, possibly before the loop is
+        /// suspended in `awaitEvent`) must NOT be dropped: it is buffered or delivered, so the second submit
         /// happens and `present()` resolves instead of sticking in `.processing` with ✕ disabled.
         @MainActor
         func test_tapDuringUnlockWindow_isBuffered_notDropped() async throws {
@@ -434,18 +373,53 @@
             let p = try await presentSheet(submit: [failed, ok], getResult: [])
             defer { p.tearDown() }
 
-            // The reload that follows the failed attempt is slow, so the loop sits in `start` for a while.
-            p.payment.stubLoadDelay(.milliseconds(700))
             payWithSavedCard(p)
             try await waitUntil("failed state") { self.isFailed(p.content.currentViewState) }
             XCTAssertEqual(p.payment.submitCallCount, 1)
 
-            // Tap Pay inside the window: nobody is awaiting an action yet.
+            // A tap right after the failure submits attempt 2.
             p.content.simulateTapPay()
 
             let outcome = await p.outcome(within: 6)
-            XCTAssertEqual(outcome, .succeeded(txnId: "txn_2"), "the buffered tap must reach the next attempt")
+            XCTAssertEqual(outcome, .succeeded(txnId: "txn_2"), "a tap right after a failure must reach the next attempt")
             XCTAssertEqual(p.payment.submitCallCount, 2)
+        }
+
+        /// A confirmed failure keeps the sheet open and does NOT reload the session; the user retries.
+        @MainActor
+        func test_failedConfirm_keepsSheetOpen_andDoesNotReloadSession() async throws {
+            let ok = PaymentSnapshot(sessionId: "sess_present", status: .succeeded, txnId: "txn_2")
+            let failed = PaymentSnapshot(sessionId: "sess_present", status: .failed, txnId: "txn_1")
+            let p = try await presentSheet(submit: [failed, ok], getResult: [])
+            defer { p.tearDown() }
+
+            payWithSavedCard(p)
+            try await waitUntil("failed state") { self.isFailed(p.content.currentViewState) }
+            try await Task.sleep(nanoseconds: 200_000_000)
+            XCTAssertEqual(p.payment.loadSessionCallCount, 1, "a failed confirm must not reload the session")
+
+            p.content.simulateTapPay()
+            let outcome = await p.outcome(within: 6)
+            XCTAssertEqual(outcome, .succeeded(txnId: "txn_2"))
+            XCTAssertEqual(p.payment.submitCallCount, 2)
+        }
+
+        /// Even if a reload would fail, the failed state stays on screen (no reload happens at all).
+        @MainActor
+        func test_failedConfirm_thenLoadWouldFail_stillKeepsSheetOpen() async throws {
+            let failed = PaymentSnapshot(sessionId: "sess_present", status: .failed, txnId: "txn_1")
+            let p = try await presentSheet(submit: [failed], getResult: [])
+            defer { p.tearDown() }
+
+            p.payment.stubLoadError(CheckoutErrors.networkUnavailable())
+            payWithSavedCard(p)
+            try await waitUntil("failed state") { self.isFailed(p.content.currentViewState) }
+            try await Task.sleep(nanoseconds: 300_000_000)
+
+            XCTAssertTrue(isFailed(p.content.currentViewState), "the sheet must still show the failed state")
+            XCTAssertTrue(p.container.requestCancel())
+            let outcome = await p.outcome()
+            XCTAssertEqual(outcome, .canceled)
         }
 
         /// A close landing while a tap is buffered still wins: `present()` resolves with the close
@@ -457,31 +431,15 @@
             let p = try await presentSheet(submit: [failed, ok], getResult: [])
             defer { p.tearDown() }
 
-            // Gate the SECOND session (re)load — the one the retry loop performs after the first attempt
-            // fails — so the loop deterministically parks there. (The first load, which presents the
-            // sheet, is let through.) This replaces a wall-clock `stubLoadDelay` window: the race the
-            // test checks is "a close observed while a tap is buffered wins over the buffered tap", and
-            // the gate guarantees the loop is parked (tap buffered) BEFORE the close, with no timing luck.
-            let gate = MockGate()
-            let payment = p.payment
-            payment.stubLoadGate { [weak payment] in
-                // Only hold the reload (2nd+ load); the initial present already loaded once.
-                if (payment?.loadSessionCallCount ?? 0) >= 2 { await gate.wait() }
-            }
-
             payWithSavedCard(p)
             try await waitUntil("failed state") { self.isFailed(p.content.currentViewState) }
 
-            // The loop is now re-entering the gated reload; wait until it is actually parked in the gate.
-            await gate.untilEntered()
-
-            p.content.simulateTapPay()                // buffered (loop is parked in the reload)
-            p.container.onFinish?(.canceled)          // close observed before the loop resumes
-            gate.release()                            // let the loop wake and re-enter awaitEvent
+            // A close right after a failure ends the presentation as a cancel and submits nothing more.
+            p.container.onFinish?(.canceled)
 
             let outcome = await p.outcome(within: 6)
-            XCTAssertEqual(outcome, .canceled, "a close must win over a buffered tap")
-            XCTAssertEqual(p.payment.submitCallCount, 1, "the buffered tap must not submit after a close")
+            XCTAssertEqual(outcome, .canceled, "a close after a failure is a genuine cancel")
+            XCTAssertEqual(p.payment.submitCallCount, 1, "nothing is submitted after a close")
         }
 
         // MARK: - Host-provided addresses
@@ -523,25 +481,22 @@
             var codes: [String] { lock.lock(); defer { lock.unlock() }; return items }
         }
 
-        // MARK: - F2: start failure inside the retry loop
+        // MARK: - Reconciling lock and first-load failure
 
-        /// A session RE-load failing while an earlier attempt is unresolved (the sheet is locked) must not
-        /// be applied to the content as a payment outcome: the VC stays locked, and `present()` returns the
-        /// unresolved outcome when the user closes (not the start failure, not `.canceled`).
+        /// A pending attempt locks the sheet without any session reload; closing returns the unresolved
+        /// outcome (not `.canceled`).
         @MainActor
-        func test_startFailureWhileLocked_doesNotUnlock_returnsUnresolvedOutcome() async throws {
+        func test_pendingConfirm_doesNotReload_closeReturnsPending() async throws {
             let p = try await presentSheet(submit: [initialSnap], getResult: [initialSnap])
             defer { p.tearDown() }
 
-            // The next (re)load, which the loop performs after the unsettled attempt, will fail.
-            p.payment.stubLoadError(CheckoutErrors.networkUnavailable())
             payWithSavedCard(p)
             try await waitUntil("confirming notice") {
                 p.content.noticeMessageForTest == "sunbay.notice.reconciling"
             }
             try await Task.sleep(nanoseconds: 300_000_000)
 
-            XCTAssertEqual(p.content.currentViewState, .reconciling, "a start failure must not unlock the locked sheet")
+            XCTAssertEqual(p.content.currentViewState, .reconciling, "a pending outcome must keep the sheet locked in reconciling (no reload, no unlock)")
             XCTAssertFalse(p.content.isConfirmButtonVisibleForTest)
             XCTAssertTrue(p.container.requestCancel())
 
@@ -583,27 +538,6 @@
             XCTAssertLessThanOrEqual(payment.loadSessionCallCount, 2, "must not hammer the backend with reloads")
         }
 
-        /// A reload failing while the sheet is merely editable (after a confirmed `.failed`) ends the
-        /// presentation with the start failure; it neither spins nor leaves the sheet hanging.
-        @MainActor
-        func test_reloadFailureAfterConfirmedFailure_endsWithStartFailure() async throws {
-            let failed = PaymentSnapshot(sessionId: "sess_present", status: .failed, txnId: "t1")
-            let p = try await presentSheet(submit: [failed], getResult: [])
-            defer { p.tearDown() }
-
-            p.payment.stubLoadError(CheckoutErrors.networkUnavailable())
-            payWithSavedCard(p)
-
-            guard let outcome = await p.outcome(within: 5) else {
-                return XCTFail("present() did not return: the loop is spinning on the reload failure")
-            }
-            guard case let .failed(_, error) = outcome else {
-                return XCTFail("expected the start failure, got \(outcome)")
-            }
-            XCTAssertEqual(error.code, "NETWORK_UNAVAILABLE")
-            XCTAssertLessThanOrEqual(p.payment.loadSessionCallCount, 3)
-        }
-
         // MARK: - onStateChange bridge
 
         /// The container forwards the content's `didChangeState` to its `onStateChange` callback,
@@ -634,6 +568,9 @@
             content.loadViewIfNeeded()
             content.openNewCardForTest()
             content.fillCardForTest()
+            // The fallback address config requires a postal code, so fill the loaded forms before Pay.
+            (content.billingAddressViewForTest as? DynamicAddressFormView)?.setPostalCodeForTest("94103")
+            (content.shippingAddressViewForTest as? DynamicAddressFormView)?.setPostalCodeForTest("94103")
             content.simulateTapPay()
 
             XCTAssertEqual(observed, .processing)

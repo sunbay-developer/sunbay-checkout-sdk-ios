@@ -482,15 +482,20 @@ import SunbayCheckoutTestSupport
             case .failed, .canceled:
                 break
             }
+            if case let .failed(_, error) = outcome {
+                log.add(
+                    "Payment failed: code=\(error.code) message=\(error.message) traceId=\(error.traceId ?? "-")",
+                    level: .error)
+            }
         }
 
-        /// Shows the result of a payment attempt as a short toast (codes only, never sensitive data).
+        /// Shows the result of a payment attempt as a short toast (codes plus the server message, never sensitive data).
         private func showToast(for outcome: CheckoutOutcome) {
             let next: DemoToast
             switch outcome {
             case .succeeded: next = DemoToast(message: "Payment succeeded", kind: .success)
             case .canceled: next = DemoToast(message: "Payment canceled", kind: .info)
-            case let .failed(_, error): next = DemoToast(message: "Payment failed: \(error.code)", kind: .error)
+            case let .failed(_, error): next = DemoToast(message: "Payment failed: \(error.message) (\(error.code))", kind: .error)
             case .pending: next = DemoToast(message: "Payment pending", kind: .info)
             case .unknown: next = DemoToast(message: "Payment result unknown", kind: .info)
             }

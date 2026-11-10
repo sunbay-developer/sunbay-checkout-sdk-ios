@@ -75,7 +75,7 @@ let config = CheckoutConfiguration(appearance: appearance)
   `.light` / `.dark`.
 - **Address collection.** Whether an address form is shown follows the checkout session; the host can only
   turn one off with `appearance.billingAddressEnabled = false` / `shippingAddressEnabled = false`.
-  `billingAddressStyle` / `shippingAddressStyle` choose `.simple` (country / line1 / postal code) or `.full`
+  `billingAddressStyle` / `shippingAddressStyle` choose `.simple` (country / line1 / postal code, plus first and last name for shipping) or `.full`
   (backend-layout driven).
 
 ## Distribution

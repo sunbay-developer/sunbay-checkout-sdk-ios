@@ -167,7 +167,7 @@
         ///   - sessionId: The session identifier to check out.
         ///   - customerAccessSecret: COF credential (optional); delivered by the host backend over HTTPS, held in memory only, never logged.
         ///   - checkoutClientSecret: Client secret issued by the host backend together with the session (optional); kept in memory only, never logged.
-        ///   - billingAddress: A billing address the host already knows (optional). It is sent as is and wins over what the user enters in the SDK form; the SDK never blocks a payment because an address is missing.
+        ///   - billingAddress: A billing address the host already knows (optional). It is sent as is and wins over what the user enters in the SDK form; host-provided addresses are never validated. A new-card submit is blocked only by an invalid postal code in the SDK's address form; no other address field blocks a payment.
         ///   - shippingAddress: A shipping address the host already knows (optional); same rules as `billingAddress`.
         public convenience init(
             checkout: SunbayCheckout,
@@ -270,10 +270,10 @@
         /// outcome per attempt — feeding each outcome back to the content via `applyOutcome(_:)`.
         ///
         /// ## Retry loop
-        /// `runCheckout` stays single-shot (one seam → one confirm → one outcome, preserving the
-        /// existing `PaymentSheetTests`). The retry loop lives here: a `.failed` / `.pending` /
-        /// `.unknown` outcome is fed back to the content (inline notice, the sheet stays open); the
-        /// next user confirm produces another `didRequest` and another `runCheckout` attempt. The loop
+        /// The session loads once per presentation (`loadContext`). The retry loop lives here: a
+        /// `.failed` / `.pending` / `.unknown` outcome is fed back to the content (inline notice, the
+        /// sheet stays open); the next user confirm produces another `didRequest` and another
+        /// `execute` on the same loaded session (no reload). The loop
         /// ends when the content finishes (`didFinishWith` — e.g. a success auto-close) or the user
         /// cancels / pulls the sheet down (`.canceled`, unless the last outcome was an unsettled
         /// `.pending` / `.unknown`, in which case that outcome is returned so the host knows to call
@@ -284,9 +284,8 @@
         /// After `.pending` / `.unknown` the sheet locks (Pay hidden, only ✕) and shows a neutral
         /// "we're confirming this payment; you can close; we won't double-charge" notice. The SDK does
         /// NOT poll: the sheet simply stays open until the user closes it, and the host reconciles the
-        /// final state via `retrievePayment()` / webhook. A session (re)load failure inside the loop is
-        /// never shown as a payment outcome: with an earlier unsettled attempt the sheet keeps waiting
-        /// for the user to close; otherwise the presentation ends with that start failure.
+        /// final state via `retrievePayment()` / webhook. A session load failure is never shown as a
+        /// payment outcome: the sheet is not presented and `present()` returns that start failure.
         ///
         /// - Parameter presenter: The host view controller used to present the payment page modally.
         /// - Returns: The `CheckoutOutcome` of this presentation (user cancel before any unsettled
@@ -314,21 +313,22 @@
             )
 
             // Drive attempts until the content finishes (success auto-close / cancel) or the sheet is
-            // canceled. Each confirm is exactly one `runAttempt` (one confirm → one outcome);
-            // non-terminal outcomes keep the sheet open for the next confirm (no blind resubmit).
+            // canceled. Each loop pass takes one user action from the coordinator and `execute`s it
+            // (one confirm → one outcome); non-terminal outcomes keep the sheet open for the next
+            // confirm (no blind resubmit). The session loads once per presentation (`loadContext`). A failed first load is not a payment outcome:
+            // nothing was presented, so return it as is.
+            let context: CheckoutContext
+            switch await loadContext() {
+            case let .startFailed(failure):
+                coordinator.dismiss()
+                return failure
+            case let .ready(loaded):
+                context = loaded
+            }
+
             var lastOutcome: CheckoutOutcome = .canceled
             loop: while true {
-                var attempt = await runAttempt { context in
-                    await coordinator.awaitNextAction(context: context)
-                }
-
-                // A session (re)load failure is NOT a payment outcome (F2). While an earlier attempt is
-                // still unsettled the sheet is locked: do not touch the content, do not retry the load in
-                // a loop; just wait for the user to close the sheet. Otherwise it ends the presentation
-                // (handled below).
-                if case .startFailed = attempt, PaymentSheet.isUnresolved(lastOutcome), !coordinator.wasCanceled {
-                    attempt = await execute(await coordinator.awaitEvent())
-                }
+                let attempt = await execute(await coordinator.awaitNextAction(context: context))
 
                 // The user closed (✕ / backdrop / pull-down) → done. If the last known outcome was an
                 // unsettled `.pending` / `.unknown`, report THAT instead of `.canceled`: a payment may be
@@ -340,10 +340,9 @@
                 }
 
                 switch attempt {
-                case let .startFailed(failure):
-                    // Nothing unresolved (see above): surface the start failure and stop. Never fed to the
-                    // content, and never retried in-line (no hot loop while offline).
-                    lastOutcome = failure
+                case .startFailed:
+                    // Unreachable: `execute` never produces a start failure (the session loads once above).
+                    assertionFailure("execute() must not produce a start failure")
                     break loop
                 case let .outcome(outcome):
                     lastOutcome = outcome
@@ -415,12 +414,32 @@
             }
         }
 
-        /// One pass of the checkout: the same flow as `runCheckout`, but it keeps "the session (re)load
-        /// failed before any confirm" distinct from a confirm outcome so `present()` never feeds a load
-        /// failure to the content as if it were a payment result.
+        /// One load-then-confirm pass, used by `runCheckout` and tests. It keeps "the session load failed
+        /// before any confirm" distinct from a confirm outcome. `present()` does not call it: it loads the
+        /// context once via `loadContext()` and drives each attempt with the presentation coordinator.
         func runAttempt(
             seam: @Sendable (CheckoutContext) async -> UserAction
         ) async -> AttemptResult {
+            switch await loadContext() {
+            case let .startFailed(outcome):
+                return .startFailed(outcome)
+            case let .ready(context):
+                // 3. Wait for the user action, then 4. drive the confirmation path.
+                return await execute(await seam(context))
+            }
+        }
+
+        /// What `loadContext()` produced.
+        enum ContextResult {
+            /// The session loaded and at least one payment method is available.
+            case ready(CheckoutContext)
+            /// The session load (or method availability) failed before any confirm. NOT a payment outcome.
+            case startFailed(CheckoutOutcome)
+        }
+
+        /// Steps 1–2 of the checkout: load the session, apply the host filter and provider availability,
+        /// decide COF and list saved cards. `present()` calls it once per presentation.
+        func loadContext() async -> ContextResult {
             // 1. Load the session.
             let session: CheckoutSession
             do {
@@ -489,15 +508,11 @@
             await controller.evaluateHostEntries(
                 billingFormShown: billingFormShown, shippingFormShown: shippingFormShown)
 
-            // 3. Wait for the user action.
-            let action = await seam(CheckoutContext(
-                    session: session, savedCards: savedCards,
-                    cardOnFileEnabled: cardOnFileEnabled, saveCardByDefault: saveCardByDefault,
-                    billingEntryUsable: billingEntryUsable, shippingEntryUsable: shippingEntryUsable,
-                    visibleEntries: filtered.entries))
-
-            // 4. Drive the confirmation path.
-            return await execute(action)
+            return .ready(CheckoutContext(
+                session: session, savedCards: savedCards,
+                cardOnFileEnabled: cardOnFileEnabled, saveCardByDefault: saveCardByDefault,
+                billingEntryUsable: billingEntryUsable, shippingEntryUsable: shippingEntryUsable,
+                visibleEntries: filtered.entries))
         }
 
         /// Drives the `controller.confirm*` call (or cancel) for a user action.

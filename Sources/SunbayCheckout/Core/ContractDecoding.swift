@@ -236,6 +236,8 @@ enum ContractDecoding {
         /// Absent on `payment/result` responses (present on submit); callers supply a fallback.
         let sessionId: String?
         let action: ActionWire?
+        /// Server-provided failure reason (present when `txnStatus == "F"`).
+        let failureReason: String?
     }
 
     /// The `action` object (§7.4; carried when `txnStatus == "R"`).
@@ -348,7 +350,8 @@ extension ContractDecoding.ResultWire {
                 )
             )
         }
-        let snapshot = PaymentSnapshot(sessionId: sessionId ?? fallbackSessionId, status: status, txnId: txnId)
+        let snapshot = PaymentSnapshot(sessionId: sessionId ?? fallbackSessionId, status: status, txnId: txnId,
+            failureReason: failureReason)
         let mapped: PaymentAction? = status == .requiresAction ? ContractDecoding.mapAction(action) : nil
         return ResultEnvelope(snapshot: snapshot, action: mapped)
     }

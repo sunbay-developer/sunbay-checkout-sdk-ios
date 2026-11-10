@@ -105,7 +105,7 @@
 
         /// How an address form looks, independent of whether it is shown.
         public enum AddressFormStyle: Sendable {
-            /// Three fields: country / line1 / postal code.
+            /// Three fields: country / line1 / postal code (plus first/last name for shipping).
             case simple
             /// Backend-layout-driven full address form.
             case full

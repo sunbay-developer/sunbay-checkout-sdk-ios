@@ -29,6 +29,8 @@
 "sunbay.address.phone" = "Phone number";
 "sunbay.address.line1.placeholder" = "123 Market St";
 "sunbay.address.postalCode.placeholder" = "94103";
+"sunbay.address.postalCode.required" = "Enter a postal code.";
+"sunbay.address.postalCode.invalid" = "Enter a valid postal code.";
 "sunbay.address.loadError" = "Couldn't load address options.";
 "sunbay.card.informationTitle" = "Card information";
 "sunbay.card.number" = "Card number";

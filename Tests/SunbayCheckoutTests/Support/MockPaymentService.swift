@@ -21,10 +21,6 @@ final class MockPaymentService: PaymentService, PaymentActionProviding, @uncheck
     private var _loadError: Error?
     /// Artificial delay before `loadSession` returns (for unlock-window / reload tests).
     private var _loadDelay: Duration?
-    /// Deterministic gate awaited inside `loadSession` (after any delay, before returning). Lets a test
-    /// hold the session (re)load suspended until it releases the gate — a wall-clock-free alternative to
-    /// `stubLoadDelay` for ordering-sensitive races (see `MockGate`).
-    private var _loadGate: (@Sendable () async -> Void)?
 
     /// Scripted snapshot sequence for `submit` (consumed in call order; once exhausted, the last one is reused).
     private var _submitSnapshots: [PaymentSnapshot] = []
@@ -62,12 +58,6 @@ final class MockPaymentService: PaymentService, PaymentActionProviding, @uncheck
     func stubLoadDelay(_ delay: Duration?) {
         lock.lock(); defer { lock.unlock() }
         _loadDelay = delay
-    }
-
-    /// Installs a deterministic gate awaited inside `loadSession` (after any delay, before returning).
-    func stubLoadGate(_ gate: (@Sendable () async -> Void)?) {
-        lock.lock(); defer { lock.unlock() }
-        _loadGate = gate
     }
 
     func stubLoadError(_ error: Error) {
@@ -113,13 +103,12 @@ final class MockPaymentService: PaymentService, PaymentActionProviding, @uncheck
     // MARK: - PaymentService
 
     func loadSession(_ id: String) async throws -> CheckoutSession {
-        let (session, error, delay, gate): (CheckoutSession?, Error?, Duration?, (@Sendable () async -> Void)?) = {
+        let (session, error, delay): (CheckoutSession?, Error?, Duration?) = {
             lock.lock(); defer { lock.unlock() }
             loadSessionCallCount += 1
-            return (_session, _loadError, _loadDelay, _loadGate)
+            return (_session, _loadError, _loadDelay)
         }()
         if let delay { try? await Task.sleep(for: delay) }
-        if let gate { await gate() }
         if let error { throw error }
         guard let session else {
             throw NSError(domain: "MockPaymentService", code: -1,

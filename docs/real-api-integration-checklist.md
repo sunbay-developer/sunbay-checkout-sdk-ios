@@ -240,3 +240,22 @@ empty, the matched brand while typing; design: `docs/superpowers/specs/2026-11-1
       field falls back to the system card glyph).
 - [ ] Verify `method` values (`VISA`, `MASTERCARD`, `AMEX`, `DISCOVER`, `JCB`, `DINERSCLUB`, `UNIONPAY`)
       match the rule-set scheme keys case-insensitively, so the matched icon shows while typing.
+
+## Address validation and payment failure reasons (built ahead of verification)
+
+- [ ] Postal-code `required` / `pattern` from `/api/address/country/{code}` is now enforced on new-card
+      submits (`.simple` and `.full` share `DynamicAddressFormView`). Verify the real backend patterns on dev
+      for US, CA, GB and CN: that valid postal codes pass and invalid ones block Pay.
+- [ ] The fallback config (system country list, postal required, no pattern) is local only. It is used when
+      metadata fails or is empty and is not backed by any backend contract. Confirm this is acceptable.
+- [ ] `failureReason` text is shown as `CheckoutError.message` (code `PAYMENT_FAILED`). Verify that its language
+      follows `Accept-Language`, and that it contains no sensitive data.
+- [ ] `PaymentSheet` loads the session once per presentation, with no session-expiry re-check between attempts.
+      Verify that an expired session produces a backend rejection that is shown inline.
+- [ ] Manual dev check still open: a declining card keeps the sheet open and shows the failure reason.
+- [ ] The fallback postal field is required with no pattern, so a payer in a country without postal codes (for
+      example HK or AE) cannot pay while address metadata is down. Product decision pending.
+- [ ] Ask backend/web whether postal `pattern`s are case-sensitive (for example lowercase UK input).
+- [ ] `CheckoutController.start` holds the secrets before `loadSession`, so a failed start leaves them held
+      until the sheet is dismissed. Possible follow-up.
+- [ ] A server `failureReason` is shown as is (not localized). Mention in the release notes.
