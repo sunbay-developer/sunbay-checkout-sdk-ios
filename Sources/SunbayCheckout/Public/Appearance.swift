@@ -48,6 +48,13 @@
         /// `collectShippingAddress` flag). The default was `.simple` in earlier versions; hosts that
         /// switch exhaustively over ``AddressCollectionMode`` must handle the `.automatic` case.
         public var shippingAddressMode: AddressCollectionMode = .automatic
+        /// Form style for the billing address when ``billingAddressMode`` is `.automatic`. Whether the
+        /// form is shown follows the session; this decides how it looks. Defaults to `.simple`.
+        /// Ignored when the mode is an explicit `.simple` / `.full` / `.off`.
+        public var billingAddressStyle: AddressFormStyle = .simple
+        /// Form style for the shipping address when ``shippingAddressMode`` is `.automatic`. Defaults to
+        /// `.simple`. Ignored when the mode is an explicit `.simple` / `.full` / `.off`.
+        public var shippingAddressStyle: AddressFormStyle = .simple
 
         /// Whether the "Scan card" button is offered on the new-card page. Defaults to `.automatic`.
         public var cardScanning: CardScanning = .automatic
@@ -99,9 +106,18 @@
             case disabled
         }
 
+        /// How an address form looks, independent of whether it is shown.
+        public enum AddressFormStyle: Sendable {
+            /// Three fields: country / line1 / postal code.
+            case simple
+            /// Backend-layout-driven full address form.
+            case full
+        }
+
         /// Address collection mode.
         public enum AddressCollectionMode: Sendable {
-            /// Follows the checkout session: the backend `collect…Address` flag on → `.full`, off → `.off`.
+            /// Follows the checkout session for visibility: the backend `collect…Address` flag on → shown
+            /// (in the configured ``AddressFormStyle``, default `.simple`), off → `.off`.
             /// This is the default. `.simple` / `.full` / `.off` are explicit choices that ignore the flag.
             case automatic
             /// Three fields: country / line1 / postal code.
@@ -117,12 +133,16 @@
             ///   - mode: The configured mode.
             ///   - collect: The session's `collectBillingAddress` / `collectShippingAddress` flag.
             ///   - hasUsableEntry: Whether the host supplied a complete entry for this address kind.
-            /// - Returns: `.full` for `.automatic` when the session collects the address and the host has no
-            ///   usable entry, else `.off`; any explicit mode unchanged.
+            ///   - style: The form style used when `.automatic` resolves to shown.
+            /// - Returns: for `.automatic`, the style's mode (`.simple` / `.full`) when the session collects
+            ///   the address and the host has no usable entry, else `.off`; any explicit mode unchanged.
             static func resolveAddressMode(
-                _ mode: AddressCollectionMode, collect: Bool, hasUsableEntry: Bool
+                _ mode: AddressCollectionMode, collect: Bool, hasUsableEntry: Bool,
+                style: AddressFormStyle = .simple
             ) -> AddressCollectionMode {
-                mode == .automatic ? (collect && !hasUsableEntry ? .full : .off) : mode
+                guard mode == .automatic else { return mode }
+                guard collect && !hasUsableEntry else { return .off }
+                return style == .full ? .full : .simple
             }
         }
 

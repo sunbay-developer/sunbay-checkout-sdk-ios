@@ -217,9 +217,9 @@ struct DemoSettings: Codable, Equatable {
 
     /// Billing/shipping address-collection knob. Maps to `Appearance.AddressCollectionMode`.
     ///
-    /// `.automatic` follows the session's `collectXAddress` flag (flag on: full form, off: hidden).
-    /// `.simple` / `.full` / `.off` are explicit host choices that ignore the flag. The session flags
-    /// themselves are driven by the separate "Order requires ..." toggles.
+    /// `.automatic` follows the session's `collectXAddress` flag for visibility (shown in the form style
+    /// chosen by the "full form" switch). `.simple` / `.full` / `.off` are explicit host choices that
+    /// ignore the flag. The session flags themselves are driven by the "Order requires ..." toggles.
     enum DemoAddressMode: String, Codable, CaseIterable, Identifiable {
         case automatic
         case simple
@@ -235,6 +235,22 @@ struct DemoSettings: Codable, Equatable {
             case .simple: return "Simple (country / line1 / ZIP)"
             case .full: return "Full (backend layout)"
             case .off: return "Off (not collected)"
+            }
+        }
+    }
+
+    /// Form style for an Automatic address mode. Maps to `Appearance.AddressFormStyle`.
+    enum DemoAddressStyle: String, Codable, CaseIterable, Identifiable {
+        case simple
+        case full
+
+        var id: String { rawValue }
+
+        /// A short display label.
+        var label: String {
+            switch self {
+            case .simple: return "Simple (country / line1 / ZIP)"
+            case .full: return "Full (backend layout)"
             }
         }
     }
@@ -263,9 +279,13 @@ struct DemoSettings: Codable, Equatable {
     /// The color-scheme override (maps to `Appearance.colorScheme`).
     var colorScheme: DemoColorScheme
     /// The billing address collection mode (maps to `Appearance.billingAddressMode`).
-    var billingAddressMode: DemoAddressMode
+    var billingAddressMode: DemoAddressMode = .automatic
     /// The shipping address collection mode (maps to `Appearance.shippingAddressMode`).
-    var shippingAddressMode: DemoAddressMode
+    var shippingAddressMode: DemoAddressMode = .automatic
+    /// The billing form style used when the billing mode is Automatic (maps to `Appearance.billingAddressStyle`).
+    var billingAddressStyle: DemoAddressStyle = .simple
+    /// The shipping form style used when the shipping mode is Automatic (maps to `Appearance.shippingAddressStyle`).
+    var shippingAddressStyle: DemoAddressStyle = .simple
     /// Ask the dev server to create sessions with `collectBillingAddress` on.
     var orderRequiresBillingAddress: Bool = true
     /// Ask the dev server to create sessions with `collectShippingAddress` on.
@@ -291,7 +311,5 @@ struct DemoSettings: Codable, Equatable {
         amountMinorUnits: 105,
         appearancePreset: .brandDefault,
         colorScheme: .automatic,
-        billingAddressMode: .automatic,
-        shippingAddressMode: .automatic
     )
 }

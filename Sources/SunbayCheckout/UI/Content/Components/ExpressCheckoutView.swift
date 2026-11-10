@@ -33,6 +33,7 @@
         private let leftRule = UIView()
         private let rightRule = UIView()
         private let dividerPlacement: DividerPlacement
+        private let showsDivider: Bool
 
         /// Creates the express row with resolved appearance tokens.
         ///
@@ -40,9 +41,12 @@
         ///   - appearance: The resolved appearance providing the secondary text color, body font, and
         ///     corner radius for the Apple Pay button.
         ///   - dividerPlacement: Whether the divider sits below (default) or above the button.
-        init(appearance: ResolvedAppearance, dividerPlacement: DividerPlacement = .below) {
+        ///   - showsDivider: Whether to render the "Or pay using" divider at all. Pass `false` when the
+        ///     express row is the only payment option on the page (nothing to separate it from).
+        init(appearance: ResolvedAppearance, dividerPlacement: DividerPlacement = .below, showsDivider: Bool = true) {
             self.appearance = appearance
             self.dividerPlacement = dividerPlacement
+            self.showsDivider = showsDivider
             super.init(frame: .zero)
             configureSubviews()
         }
@@ -69,6 +73,10 @@
             let payButton = makeApplePayButton()
             payButton.translatesAutoresizingMaskIntoConstraints = false
             payButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 48).isActive = true
+            guard showsDivider else {
+                stack.addArrangedSubview(payButton)
+                return
+            }
             let divider = makeDivider()
             switch dividerPlacement {
             case .below:

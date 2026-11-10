@@ -343,16 +343,18 @@ import SunbayCheckoutTestSupport
                     }
                 }
                 .pickerStyle(.menu)
+                Toggle("Billing full form (Automatic)", isOn: fullFormBinding(\.billingAddressStyle))
                 Picker("Shipping address", selection: $settings.shippingAddressMode) {
                     ForEach(DemoSettings.DemoAddressMode.allCases) { mode in
                         Text(mode.label).tag(mode)
                     }
                 }
                 .pickerStyle(.menu)
+                Toggle("Shipping full form (Automatic)", isOn: fullFormBinding(\.shippingAddressStyle))
                 Toggle("Pass a host billing address", isOn: $settings.passHostBillingAddress)
                 Toggle("Pass a host shipping address", isOn: $settings.passHostShippingAddress)
             } header: {
-                SectionHelp("Address collection", "Automatic follows the session flag set by the \"Order requires\" toggles on the Pay tab (on: full form, off: hidden); Simple, Full and Off ignore it. The \"Pass a host ...\" toggles supply a fixed, complete US test address. A host address is used only when the session collects that kind and the address is complete; Automatic then hides the form for it. A form that is shown wins over the host address.")
+                SectionHelp("Address collection", "Automatic follows the session flag set by the \"Order requires\" toggles on the Pay tab for visibility (on: shown, off: hidden); Simple, Full and Off ignore it. The \"full form\" switch picks the form style used under Automatic (off: simple, on: full). The \"Pass a host ...\" toggles supply a fixed, complete US test address. A host address is used only when the session collects that kind and the address is complete; Automatic then hides the form for it. A form that is shown wins over the host address.")
             }
         }
 
@@ -713,6 +715,8 @@ import SunbayCheckoutTestSupport
             appearance.applePayButtonType = settings.applePayText.sdk
             appearance.billingAddressMode = addressMode(settings.billingAddressMode)
             appearance.shippingAddressMode = addressMode(settings.shippingAddressMode)
+            appearance.billingAddressStyle = settings.billingAddressStyle == .full ? .full : .simple
+            appearance.shippingAddressStyle = settings.shippingAddressStyle == .full ? .full : .simple
             return appearance
         }
 
@@ -729,6 +733,13 @@ import SunbayCheckoutTestSupport
             case .full: return .full
             case .off: return .off
             }
+        }
+
+        /// A switch bound to "style is full" for one of the address-style settings.
+        private func fullFormBinding(_ keyPath: WritableKeyPath<DemoSettings, DemoSettings.DemoAddressStyle>) -> Binding<Bool> {
+            Binding(
+                get: { settings[keyPath: keyPath] == .full },
+                set: { settings[keyPath: keyPath] = $0 ? .full : .simple })
         }
 
         /// Maps a `CheckoutOutcome` to readable copy (contains no sensitive data).

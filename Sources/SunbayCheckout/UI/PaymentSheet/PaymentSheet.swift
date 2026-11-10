@@ -482,10 +482,10 @@
             let shippingEntryUsable = await controller.usableHostEntry(.shipping) != nil
             let billingFormShown = Appearance.AddressCollectionMode.resolveAddressMode(
                 appearance.billingAddressMode, collect: session.collectBillingAddress,
-                hasUsableEntry: billingEntryUsable) != .off
+                hasUsableEntry: billingEntryUsable, style: appearance.billingAddressStyle) != .off
             let shippingFormShown = Appearance.AddressCollectionMode.resolveAddressMode(
                 appearance.shippingAddressMode, collect: session.collectShippingAddress,
-                hasUsableEntry: shippingEntryUsable) != .off
+                hasUsableEntry: shippingEntryUsable, style: appearance.shippingAddressStyle) != .off
             await controller.evaluateHostEntries(
                 billingFormShown: billingFormShown, shippingFormShown: shippingFormShown)
 
@@ -654,6 +654,8 @@
                 saveCardByDefault: context.saveCardByDefault,
                 billingEntryUsable: context.billingEntryUsable,
                 shippingEntryUsable: context.shippingEntryUsable,
+                billingStyle: appearance.billingAddressStyle,
+                shippingStyle: appearance.shippingAddressStyle,
                 visibleEntries: context.visibleEntries
             )
             let containerVC = PaymentSheetContainerViewController(
