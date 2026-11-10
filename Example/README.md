@@ -154,8 +154,8 @@ maps into a `CheckoutConfiguration` (environment from Options > Backend, default
 
 Pay tab:
 
-- **Session** (top) - "Create session" creates an order through the session server using the Order
-  settings. Every payment action stays disabled until a session exists. Changing the order or backend
+- **Order** then **Session** - set the amount and the "requires address" flags first, then "Create session" creates an
+  order through the session server using them and the Backend settings (Options tab). Every payment action stays disabled until a session exists. Changing the order or backend
   settings discards it, and so does a payment that reaches a final state (succeeded, pending, unknown).
   A creation failure (invalid URL, server error) is shown as text.
 - **PaymentSheet (L1 black-box)** - "Pay (sheet)" constructs
