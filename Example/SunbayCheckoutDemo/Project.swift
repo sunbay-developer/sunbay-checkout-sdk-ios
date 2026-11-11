@@ -93,7 +93,12 @@ let project = Project(
             buildAction: .buildAction(targets: ["SunbayCheckoutDemo"]),
             runAction: .runAction(
                 configuration: .debug,
-                executable: "SunbayCheckoutDemo"
+                executable: "SunbayCheckoutDemo",
+                // Debug network logging (DEBUG build + .dev only; sensitive values are redacted).
+                // Untick it in Edit Scheme > Run > Arguments to silence it.
+                arguments: .arguments(launchArguments: [
+                    .launchArgument(name: "-SunbayNetworkLog", isEnabled: true),
+                ])
             )
         ),
     ]

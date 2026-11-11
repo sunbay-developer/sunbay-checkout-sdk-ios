@@ -116,9 +116,26 @@ struct SunbayAPIClient: Sendable {
 
     /// Performs the request; any transport failure becomes a generic network `CheckoutError`.
     private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        #if DEBUG
+        let logging = NetworkDebugLogger.isEnabled(environment: environment)
+        let started = Date()
+        if logging { NetworkDebugLogger.logRequest(request) }
+        #endif
         do {
-            return try await session.data(for: request)
+            let result = try await session.data(for: request)
+            #if DEBUG
+            if logging {
+                NetworkDebugLogger.logResponse(result.0, result.1, url: request.url,
+                                               elapsed: Date().timeIntervalSince(started))
+            }
+            #endif
+            return result
         } catch {
+            #if DEBUG
+            if logging {
+                NetworkDebugLogger.logFailure(url: request.url, elapsed: Date().timeIntervalSince(started))
+            }
+            #endif
             throw CheckoutError(code: "NETWORK_UNAVAILABLE", message: "The network request failed.",
                                 category: .network, traceId: nil)
         }
