@@ -136,7 +136,8 @@
         private func makeApplePayButton() -> UIView {
             #if canImport(PassKit)
                 let button = PKPaymentButton(
-                    paymentButtonType: appearance.applePayButtonType.pkType, paymentButtonStyle: .automatic)
+                    paymentButtonType: appearance.applePayButtonType.pkType,
+                    paymentButtonStyle: appearance.applePayButtonStyle.pkStyle)
                 button.cornerRadius = appearance.primaryButtonCornerRadius
                 button.addTarget(self, action: #selector(handleApplePayTap), for: .touchUpInside)
                 return button

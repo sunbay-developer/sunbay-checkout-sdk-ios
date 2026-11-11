@@ -40,6 +40,9 @@
         public var expressPosition: ExpressPosition = .top
         /// The wording on the Apple Pay button in the express row (default `.plain`, the logo only).
         public var applePayButtonType: ApplePayButtonType = .plain
+        /// The color of the Apple Pay button in the express row. Defaults to `.automatic`: it follows the
+        /// sheet's light/dark appearance (``colorScheme``).
+        public var applePayButtonStyle: ApplePayButtonStyle = .automatic
         /// Whether the billing address form may be shown. Defaults to `true`: whether it is actually
         /// shown follows the checkout session's `collectBillingAddress` flag. Set `false` to never show
         /// it; a billing address the host passes in is still sent. The host cannot force the form on
@@ -101,6 +104,16 @@
             case automatic
             /// Never show "Scan card".
             case disabled
+        }
+
+        /// The color of the sheet's Apple Pay button (Apple's official button styles).
+        public enum ApplePayButtonStyle: Sendable {
+            /// Follows the sheet's appearance: black on a light sheet, white on a dark sheet.
+            case automatic
+            /// Always black with white text.
+            case black
+            /// Always white with black text and a thin outline, so it stays visible on a light sheet.
+            case white
         }
 
         /// How an address form looks, independent of whether it is shown.

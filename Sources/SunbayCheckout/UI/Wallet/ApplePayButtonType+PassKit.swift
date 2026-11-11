@@ -24,4 +24,16 @@
             }
         }
     }
+
+    extension Appearance.ApplePayButtonStyle {
+        /// The PassKit style for this color. `.automatic` resolves against the button's own trait
+        /// collection, which inherits the sheet's `overrideUserInterfaceStyle`.
+        var pkStyle: PKPaymentButtonStyle {
+            switch self {
+            case .automatic: return .automatic
+            case .black: return .black
+            case .white: return .whiteOutline
+            }
+        }
+    }
 #endif

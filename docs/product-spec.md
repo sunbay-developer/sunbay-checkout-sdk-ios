@@ -184,6 +184,7 @@ public struct Appearance: Sendable, Equatable {
     public var density: Density = .comfortable
     public var expressPosition: ExpressPosition = .top
     public var applePayButtonType: ApplePayButtonType = .plain   // wording on the Apple Pay button (PassKit renders and localizes it)
+    public var applePayButtonStyle: ApplePayButtonStyle = .automatic // .automatic follows the sheet's light/dark mode; .black / .white (outlined) fix it
     public var billingAddressEnabled: Bool = true    // visibility follows the session's collectBillingAddress; false = never show the form
     public var shippingAddressEnabled: Bool = true   // same, for collectShippingAddress
     public var billingAddressStyle: AddressFormStyle = .simple   // form look when shown
