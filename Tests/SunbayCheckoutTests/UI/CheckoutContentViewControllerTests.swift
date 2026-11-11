@@ -1631,5 +1631,59 @@
             }
             XCTAssertEqual(paymentMethodId, "pm_1")
         }
+
+    }
+
+    extension CheckoutContentViewControllerTests {
+        // MARK: - Expired saved cards
+
+        private func expiredAndUsableCards() -> [SavedCard] {
+            [
+                SavedCard(id: "pm_old", brand: "visa", last4: "1111", expMonth: 1, expYear: 2020),
+                SavedCard(id: "pm_ok", brand: "mastercard", last4: "5454", expMonth: 12, expYear: 2099),
+            ]
+        }
+
+        func test_expiredSavedCard_isListedLast_andNotPreSelected() {
+            let vc = makeVC(savedCards: expiredAndUsableCards())
+            vc.loadViewIfNeeded()
+            XCTAssertEqual(vc.highlightedSavedCardIdForTest, "pm_ok")
+            XCTAssertEqual(vc.savedCardOrderForTest, ["pm_ok", "pm_old"])
+            XCTAssertTrue(vc.isConfirmButtonVisibleForTest)
+        }
+
+        func test_allSavedCardsExpired_nothingSelected_payHidden() {
+            let vc = makeVC(savedCards: [expiredAndUsableCards()[0]])
+            vc.loadViewIfNeeded()
+            let delegate = MockContentDelegate()
+            vc.delegate = delegate
+            XCTAssertNil(vc.highlightedSavedCardIdForTest)
+            XCTAssertFalse(vc.isConfirmButtonVisibleForTest)
+            vc.simulateTapPay()
+            XCTAssertNil(delegate.lastRequestedAction)
+        }
+
+        func test_expiredSavedCard_cannotBePickedFromFullList() {
+            let vc = makeVC(savedCards: expiredAndUsableCards())
+            vc.loadViewIfNeeded()
+            let delegate = MockContentDelegate()
+            vc.delegate = delegate
+            vc.tapViewMoreForTest()
+            vc.tapFullListRowForTest("pm_old")
+            XCTAssertEqual(vc.highlightedSavedCardIdForTest, "pm_ok")
+            vc.selectSavedCardForTest("pm_old")
+            vc.simulateTapPay()
+            XCTAssertNil(delegate.lastRequestedAction, "An expired card must never be submitted.")
+        }
+
+        func test_expiredSavedCardRow_showsExpiredLabel_andIsNotEnabled() {
+            let row = SavedCardRow(
+                appearance: .resolve(.default), card: expiredAndUsableCards()[0], expiredText: "sunbay.cof.expired")
+            XCTAssertEqual(row.expiryTextForTest, "sunbay.cof.expired")
+            XCTAssertTrue(row.accessibilityTraits.contains(.notEnabled))
+            let ok = SavedCardRow(appearance: .resolve(.default), card: expiredAndUsableCards()[1])
+            XCTAssertEqual(ok.expiryTextForTest, "12/99")
+            XCTAssertFalse(ok.accessibilityTraits.contains(.notEnabled))
+        }
     }
 #endif

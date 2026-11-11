@@ -42,6 +42,7 @@
 "sunbay.card.cvc.placeholder" = "123";
 "sunbay.cof.newPaymentMethod" = "新卡";
 "sunbay.cof.viewMore" = "查看更多";
+"sunbay.cof.expired" = "已过期";
 "sunbay.common.retry" = "重试";
 "sunbay.sheet.back" = "返回";
 "sunbay.sheet.close" = "关闭";

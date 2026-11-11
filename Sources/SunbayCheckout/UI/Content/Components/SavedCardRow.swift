@@ -39,12 +39,18 @@
         /// - Parameters:
         ///   - appearance: The resolved appearance providing colors, fonts, corner radius, border width.
         ///   - card: The saved card to display.
-        init(appearance: ResolvedAppearance, card: SavedCard) {
+        ///   - expiredText: The localized "Expired" label when the card is expired; nil for a usable card.
+        ///     An expired row is dimmed, shows this label instead of the expiry, and ignores taps.
+        init(appearance: ResolvedAppearance, card: SavedCard, expiredText: String? = nil) {
             self.appearance = appearance
             self.paymentMethodId = card.id
+            self.isExpired = expiredText != nil
             super.init(frame: .zero)
-            configureSubviews(card: card)
+            configureSubviews(card: card, expiredText: expiredText)
         }
+
+        /// Whether the card is expired (dimmed, not selectable).
+        let isExpired: Bool
 
         @available(*, unavailable)
         required init?(coder: NSCoder) {
@@ -59,7 +65,7 @@
             refreshBorder()
         }
 
-        private func configureSubviews(card: SavedCard) {
+        private func configureSubviews(card: SavedCard, expiredText: String?) {
             backgroundColor = appearance.componentBackground
             layer.cornerRadius = appearance.cornerRadius
 
@@ -75,9 +81,9 @@
             numberLabel.textColor = appearance.text
             numberLabel.translatesAutoresizingMaskIntoConstraints = false
 
-            expiryLabel.text = String(format: "%02d/%02d", card.expMonth, card.expYear % 100)
+            expiryLabel.text = expiredText ?? String(format: "%02d/%02d", card.expMonth, card.expYear % 100)
             expiryLabel.font = UIFont.preferredFont(forTextStyle: .footnote)
-            expiryLabel.textColor = appearance.textSecondary
+            expiryLabel.textColor = expiredText == nil ? appearance.textSecondary : appearance.danger
             expiryLabel.setContentHuggingPriority(.required, for: .horizontal)
             expiryLabel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -99,11 +105,18 @@
             ])
 
             isAccessibilityElement = true
-            accessibilityTraits = .button
             accessibilityLabel = "\(card.brand) \(card.last4)"
-
-            addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(handleTap)))
-            if let tap = gestureRecognizers?.last as? UITapGestureRecognizer { tapRecognizer = tap }
+            if let expiredText {
+                // Expired: dimmed, announced as not enabled, and no tap gesture at all.
+                brandBadge.alpha = 0.5
+                numberLabel.alpha = 0.5
+                accessibilityTraits = [.button, .notEnabled]
+                accessibilityValue = expiredText
+            } else {
+                accessibilityTraits = .button
+                addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(handleTap)))
+                if let tap = gestureRecognizers?.last as? UITapGestureRecognizer { tapRecognizer = tap }
+            }
             refreshBorder()
         }
 
@@ -116,7 +129,7 @@
                 tapRecognizer = nil
             }
             onTap = nil
-            accessibilityTraits = .staticText
+            accessibilityTraits = isExpired ? [.staticText, .notEnabled] : .staticText
         }
 
         /// Replaces the trailing expiry with a tappable "View more ›" affordance, used by the collapsed
@@ -182,5 +195,10 @@
         @objc private func handleTap() {
             onTap?()
         }
+
+        #if DEBUG
+            /// Test readout: the trailing expiry text (`MM/YY`, or the expired label).
+            var expiryTextForTest: String? { expiryLabel.text }
+        #endif
     }
 #endif

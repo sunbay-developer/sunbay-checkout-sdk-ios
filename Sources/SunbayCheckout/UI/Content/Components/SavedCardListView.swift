@@ -28,10 +28,12 @@
         /// - Parameters:
         ///   - appearance: The resolved appearance providing colors, fonts, corner radius, border width.
         ///   - cards: The saved cards to list.
-        init(appearance: ResolvedAppearance, cards: [SavedCard]) {
+        ///   - expiredText: Returns the localized "Expired" label for an expired card, or nil when the
+        ///     card is usable. Expired rows are dimmed and cannot be selected.
+        init(appearance: ResolvedAppearance, cards: [SavedCard], expiredText: (SavedCard) -> String? = { _ in nil }) {
             self.appearance = appearance
             super.init(frame: .zero)
-            configureSubviews(cards: cards)
+            configureSubviews(cards: cards, expiredText: expiredText)
         }
 
         @available(*, unavailable)
@@ -39,7 +41,7 @@
             fatalError("init(coder:) is not supported")
         }
 
-        private func configureSubviews(cards: [SavedCard]) {
+        private func configureSubviews(cards: [SavedCard], expiredText: (SavedCard) -> String?) {
             let stack = UIStackView()
             stack.axis = .vertical
             stack.spacing = 8
@@ -54,10 +56,12 @@
             ])
 
             for card in cards {
-                let row = SavedCardRow(appearance: appearance, card: card)
-                row.onTap = { [weak self] in
-                    self?.selectedPaymentMethodId = card.id
-                    self?.onSelect?(card.id)
+                let row = SavedCardRow(appearance: appearance, card: card, expiredText: expiredText(card))
+                if !row.isExpired {
+                    row.onTap = { [weak self] in
+                        self?.selectedPaymentMethodId = card.id
+                        self?.onSelect?(card.id)
+                    }
                 }
                 rows.append(row)
                 stack.addArrangedSubview(row)

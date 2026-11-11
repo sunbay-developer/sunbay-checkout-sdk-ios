@@ -259,3 +259,12 @@ empty, the matched brand while typing; design: `docs/superpowers/specs/2026-11-1
 - [ ] `CheckoutController.start` holds the secrets before `loadSession`, so a failed start leaves them held
       until the sheet is dismissed. Possible follow-up.
 - [ ] A server `failureReason` is shown as is (not localized). Mention in the release notes.
+
+## Saved-card expiry and API source (2026-11-11)
+
+- [x] Expired saved cards are detected locally from `expiryMonth` / `expiryYear` (valid through the end of
+      the expiry month): listed last, dimmed with an "Expired" label, never pre-selected, never submitted.
+      Replace with a backend card `status` once `card/list` returns one.
+- [ ] `docs/api/*.json` are local snapshots and are already behind the backend (for example the merchant
+      transaction query API added on 2026-11-09 is missing). Connect the API platform MCP and treat the live
+      definitions as the source of truth before wiring any new endpoint.

@@ -233,7 +233,8 @@
             self.walletContacts = walletContacts
             self.onWalletParamsInvalid = onWalletParamsInvalid
             self.session = session
-            self.savedCards = cardAvailable ? savedCards : []
+            // Usable cards first; expired ones stay visible (dimmed) at the end and are never selected.
+            self.savedCards = cardAvailable ? SavedCardExpiry.usableFirst(savedCards, at: Date()) : []
             self.appearance = appearance
             self.localize = localize
             self.localeCode = localeCode
@@ -572,6 +573,9 @@
             var isAllSavedCardsVisibleForTest: Bool { !allSavedCardsStack.isHidden }
 
             /// Test seam: taps the home "View more" affordance (opens the full saved-card list page).
+            /// Test readout: the saved-card ids in display order.
+            var savedCardOrderForTest: [String] { savedCards.map(\.id) }
+
             func tapViewMoreForTest() {
                 showAllSavedCards()
             }
@@ -624,6 +628,9 @@
 
         /// Pay with a selected saved card (COF; the user selected the card, then tapped Pay).
         private func handleConfirmSavedCard(paymentMethodId: String) {
+            // Never submit an expired (or unknown) saved card.
+            guard let card = savedCards.first(where: { $0.id == paymentMethodId }),
+                  expiredText(for: card) == nil else { return }
             guard beginProcessing() else { return }
             delegate?.content(self, didRequest: .confirmSavedCard(paymentMethodId: paymentMethodId))
         }
@@ -886,8 +893,8 @@
             }
 
             if !savedCards.isEmpty {
-                // Default selection: pre-select the first saved card so Pay is immediately available.
-                selectedSavedCardId = savedCards.first?.id
+                // Default selection: pre-select the first usable card so Pay is immediately available.
+                selectedSavedCardId = defaultSavedCardId
                 let summary = makeSavedCardSummary()
                 savedCardSummary = summary
                 homeStack.addArrangedSubview(summary)
@@ -947,10 +954,11 @@
             stack.axis = .vertical
             stack.spacing = 8
 
-            let selectedId = selectedSavedCardId ?? savedCards.first?.id
+            let selectedId = selectedSavedCardId ?? defaultSavedCardId
             if let card = savedCards.first(where: { $0.id == selectedId }) ?? savedCards.first {
-                let row = SavedCardRow(appearance: appearance, card: card)
-                row.setSelected(true)
+                let row = SavedCardRow(appearance: appearance, card: card, expiredText: expiredText(for: card))
+                // Every card expired: show the first one, dimmed and not selected (Pay stays hidden).
+                row.setSelected(!row.isExpired)
                 row.presentAsStaticSummary()
                 // With more than one saved card, the drill-in lives on the card row itself: the trailing
                 // expiry is replaced by a tappable "View more ›" that opens the full list. With a single
@@ -1363,7 +1371,7 @@
         private func showHome(animated: Bool = true) {
             guard !stateMachine.state.isLockedAgainstNewConfirm else { return }
             if !savedCards.isEmpty, selectedSavedCardId == nil {
-                selectedSavedCardId = savedCards.first?.id
+                selectedSavedCardId = defaultSavedCardId
             }
             rebuildSavedCardSummary()
             performPageSwitch(direction: .backward, animated: animated) {
@@ -1381,6 +1389,16 @@
             notice.hide()
             refreshConfirmButtonState()
             reportContentHeightIfChanged()
+        }
+
+        /// The first usable (non-expired) saved card, or nil when every card is expired.
+        private var defaultSavedCardId: String? {
+            savedCards.first { expiredText(for: $0) == nil }?.id
+        }
+
+        /// The localized "Expired" label for an expired card, or nil when the card is usable.
+        private func expiredText(for card: SavedCard) -> String? {
+            SavedCardExpiry.isExpired(card, at: Date()) ? localize("sunbay.cof.expired") : nil
         }
 
         /// Rebuilds the home saved-card summary in place so it reflects the current `selectedSavedCardId`
@@ -1428,7 +1446,9 @@
         /// Builds the full saved-card list for the "View more" page. Picking a row records the
         /// selection, refreshes the home summary, and returns home (picker flow); it never submits.
         private func makeFullSavedCardList() -> SavedCardListView {
-            let list = SavedCardListView(appearance: appearance, cards: savedCards)
+            let list = SavedCardListView(appearance: appearance, cards: savedCards) { [weak self] card in
+                self?.expiredText(for: card)
+            }
             list.onSelect = { [weak self] paymentMethodId in
                 guard let self else { return }
                 self.selectedSavedCardId = paymentMethodId

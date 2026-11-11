@@ -42,6 +42,7 @@
 "sunbay.card.cvc.placeholder" = "123";
 "sunbay.cof.newPaymentMethod" = "New card";
 "sunbay.cof.viewMore" = "More";
+"sunbay.cof.expired" = "Expired";
 "sunbay.common.retry" = "Retry";
 "sunbay.sheet.back" = "Back";
 "sunbay.sheet.close" = "Close";
