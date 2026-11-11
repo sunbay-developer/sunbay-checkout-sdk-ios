@@ -155,6 +155,25 @@ final class HTTPPaymentServiceTests: XCTestCase {
         XCTAssertNil(bodies[1]["customerEmail"])
     }
 
+    func testSubmitEncodesApplePayMerchantIdentifierOnlyForApplePay() async throws {
+        stub([result("S"), result("S"), result("S")])
+        let service = await makeService()
+        _ = try await service.submit(SubmitRequest(
+            sessionId: "s1", paymentMethod: "APPLE_PAY", attemptId: UUID(), walletToken: Data([1]),
+            sessionType: "sdk", walletMerchantIdentifier: "merchant.x"))
+        let wallet = bodies[0]["digitalWalletInfo"] as? [String: Any]
+        XCTAssertEqual((wallet?["applePay"] as? [String: String])?["merchantIdentifier"], "merchant.x")
+        // Not Apple Pay, or no / blank id: the key is omitted.
+        _ = try await service.submit(SubmitRequest(
+            sessionId: "s1", paymentMethod: "CARD", attemptId: UUID(), cardEncryptedData: "C",
+            sessionType: "sdk", walletMerchantIdentifier: "merchant.x"))
+        XCTAssertNil(bodies[1]["digitalWalletInfo"])
+        _ = try await service.submit(SubmitRequest(
+            sessionId: "s1", paymentMethod: "APPLE_PAY", attemptId: UUID(), walletToken: Data([1]),
+            sessionType: "sdk", walletMerchantIdentifier: "  "))
+        XCTAssertNil(bodies[2]["digitalWalletInfo"])
+    }
+
     func testSubmitOmitsEmptyAddresses() async throws {
         stub([result("S")])
         let service = await makeService()

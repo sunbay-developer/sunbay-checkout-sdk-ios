@@ -707,6 +707,11 @@ SubmitRequest(
   draft form value or the usable host entry for a card, the wallet's returned address (else the usable host
   entry) for Apple Pay, usable host entries only for a saved card.
 - The body also carries an optional `userDeviceInfo` (see `security-and-pci.md` §4.1).
+- Apple Pay: the body carries `digitalWalletInfo: { applePay: { merchantIdentifier } }` with the merchant id the
+  token was authorized with (`PKPaymentRequest.merchantIdentifier`, i.e. host `applePayMerchantId` first, then the
+  session). It is sent only for `APPLE_PAY` and omitted when blank. `docs/api/checkout-api.json` marks it optional
+  and "not consumed by decryption yet", but the dev backend rejects an Apple Pay submit without it
+  (`merchantIdentifier is required`), so the SDK always sends it.
 - A 5xx or lost response is ambiguous: at most one result query, then `unknown`. A non-network business
   error is a definite failure. The SDK never blindly resubmits.
 - Open: Apple Pay token wire format, `paymentMethod` for new cards (`CARD` vs brand), whether submit

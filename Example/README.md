@@ -24,9 +24,11 @@ node server.mjs
 The default server URL is `http://127.0.0.1:8095` (editable in the app). The Example enables
 `NSAllowsLocalNetworking` for this; the SDK itself needs no ATS exception.
 
-**Real device:** the phone cannot reach `127.0.0.1` on your Mac. Start the server with `HOST=0.0.0.0`
-(for example `HOST=0.0.0.0 node server.mjs`) and enter the Mac's LAN address as the server URL.
-Caution: `HOST=0.0.0.0` exposes an unauthenticated, credential-backed endpoint on your LAN (see `Example/DevServer/.env.example`); use it only on a trusted network.
+**Real device:** the phone cannot reach `127.0.0.1` on your Mac. The server binds `0.0.0.0` by default
+and prints its LAN URL on start (for example `http://10.0.0.5:8095`); enter that as the server URL.
+Caution: this exposes an unauthenticated, credential-backed endpoint on your LAN (see
+`Example/DevServer/.env.example`); use it only on a trusted network, or start with `HOST=127.0.0.1`
+to keep it on loopback (simulator only).
 
 **Production integration.** Your host app fetches the session from its own backend and hands it to the SDK:
 

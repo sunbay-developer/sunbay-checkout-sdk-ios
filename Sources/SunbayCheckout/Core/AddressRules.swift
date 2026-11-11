@@ -23,6 +23,9 @@ struct WalletAuthorization: Sendable {
     let billing: AddressInput?
     let shipping: AddressInput?
     let email: String?
+    /// The Apple Pay merchant id the token was authorized with (`PKPaymentRequest.merchantIdentifier`);
+    /// sent to the backend as `digitalWalletInfo.applePay.merchantIdentifier`. nil when unknown (staged tokens).
+    var merchantIdentifier: String? = nil
 }
 
 /// Pure address rules shared by every payment path (mirrors the JS `hostAddress` rules).

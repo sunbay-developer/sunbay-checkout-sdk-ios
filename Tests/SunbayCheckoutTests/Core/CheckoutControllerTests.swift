@@ -476,11 +476,13 @@ final class CheckoutControllerTests: XCTestCase {
         let controller = makeController(payment: payment)
         _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
 
-        _ = await controller.confirmWallet(WalletAuthorization(token: Data([0x01, 0x02]), billing: nil, shipping: nil, email: nil))
+        _ = await controller.confirmWallet(WalletAuthorization(
+            token: Data([0x01, 0x02]), billing: nil, shipping: nil, email: nil, merchantIdentifier: "merchant.x"))
 
         let req = try XCTUnwrap(payment.lastSubmitRequest)
         XCTAssertEqual(req.walletToken, Data([0x01, 0x02]))
         XCTAssertEqual(req.paymentMethod, "APPLE_PAY")
+        XCTAssertEqual(req.walletMerchantIdentifier, "merchant.x")
         XCTAssertNil(req.cardEncryptedData)
         XCTAssertNil(req.savedCardId)
     }

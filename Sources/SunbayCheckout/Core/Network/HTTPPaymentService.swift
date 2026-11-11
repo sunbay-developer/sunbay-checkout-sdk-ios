@@ -80,6 +80,21 @@ final class HTTPPaymentService: PaymentService, PaymentActionProviding, @uncheck
         let payerShippingAddress: AddressInfoWire?
         let customerName: String?
         let customerEmail: String?
+        let digitalWalletInfo: DigitalWalletInfoWire?
+    }
+
+    /// Wire `DigitalWalletInfo`: `{ "applePay": { "merchantIdentifier": ... } }`.
+    struct DigitalWalletInfoWire: Encodable, Sendable, Equatable {
+        struct ApplePay: Encodable, Sendable, Equatable { let merchantIdentifier: String }
+        let applePay: ApplePay
+
+        /// Built only for `APPLE_PAY` with a non-blank merchant id; nil otherwise (the key is then omitted).
+        static func make(paymentMethod: String, merchantIdentifier: String?) -> DigitalWalletInfoWire? {
+            guard paymentMethod == "APPLE_PAY",
+                  let id = merchantIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !id.isEmpty else { return nil }
+            return DigitalWalletInfoWire(applePay: ApplePay(merchantIdentifier: id))
+        }
     }
 
     // MARK: - PaymentService
@@ -112,7 +127,9 @@ final class HTTPPaymentService: PaymentService, PaymentActionProviding, @uncheck
             userDeviceInfo: deviceInfo(),
             payerBillingInfo: AddressInfoWire.make(req.billingAddress),
             payerShippingAddress: AddressInfoWire.make(req.shippingAddress),
-            customerName: req.customerName, customerEmail: req.customerEmail)
+            customerName: req.customerName, customerEmail: req.customerEmail,
+            digitalWalletInfo: DigitalWalletInfoWire.make(
+                paymentMethod: req.paymentMethod, merchantIdentifier: req.walletMerchantIdentifier))
         let wire: ContractDecoding.ResultWire = try await client.post(
             .submitPayment, body: body, timeout: 30)
         return try accept(wire, fallbackSessionId: req.sessionId)
