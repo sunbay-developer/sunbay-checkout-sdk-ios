@@ -109,24 +109,14 @@
             let cvv = (cvvField.text ?? "").trimmingCharacters(in: .whitespaces)
             let expiry = (expiryField.text ?? "").trimmingCharacters(in: .whitespaces)
 
-            guard !pan.isEmpty, !cvv.isEmpty, !expiry.isEmpty else { return nil }
-
-            // Expiry is shown as `MM/YY`; the backend contract wants the month and a 4-digit year
-            // separately. Reject malformed or already-expired values client-side.
-            guard let (month, year) = ExpiryFormatter.components(from: expiry),
-                ExpiryFormatter.isValid(month: month, year: year)
+            // Lenient client-side checks (contract principle 3): the impossible is rejected, the rest is
+            // left to the backend (see `CardValidation`).
+            guard CardValidation.firstIssue(pan: pan, expiry: expiry, cvv: cvv, rules: rules) == nil,
+                let (month, year) = ExpiryFormatter.components(from: expiry)
             else { return nil }
 
             // Strip the display-only PAN grouping spaces before handing plaintext upstream.
             let digitsOnlyPan = pan.filter { !$0.isWhitespace }
-
-            // Lenient client-side checks (contract principle 3): the impossible is rejected, the rest is
-            // left to the backend. No brand-length enforcement. The Luhn check applies to every card
-            // except UnionPay, whose numbers are not always Luhn-valid.
-            guard (12...19).contains(digitsOnlyPan.count), digitsOnlyPan.allSatisfy(\.isASCIIDigit),
-                (3...4).contains(cvv.count), cvv.allSatisfy(\.isASCIIDigit)
-            else { return nil }
-            if rules.scheme != "unionpay", !CardScanParser.luhnValid(digitsOnlyPan) { return nil }
 
             return CardInput(
                 cardNumber: digitsOnlyPan,
@@ -134,6 +124,30 @@
                 expiryYear: year,
                 cvv: cvv
             )
+        }
+
+        /// The first problem with the current entry, or `nil` when it can be submitted.
+        var validationIssue: CardValidationIssue? {
+            CardValidation.firstIssue(
+                pan: panField.text ?? "", expiry: expiryField.text ?? "", cvv: cvvField.text ?? "",
+                rules: rules)
+        }
+
+        /// Shows the specific message for the current entry's first problem and focuses the offending
+        /// field. Returns `false` (showing nothing) when the entry is fine.
+        @discardableResult
+        func showValidationIssue() -> Bool {
+            guard let issue = validationIssue else { return false }
+            let field: CardFormField
+            let target: FloatingLabelTextField
+            switch issue {
+            case .numberEmpty, .numberIncomplete, .numberInvalid: (field, target) = (.number, panField)
+            case .expiryEmpty, .expiryIncomplete, .expiryMonthInvalid, .expiryPast: (field, target) = (.expiry, expiryField)
+            case .cvcEmpty, .cvcIncomplete: (field, target) = (.cvc, cvvField)
+            }
+            showFieldError(field, message: localize(issue.messageKey))
+            target.becomeFirstResponder()
+            return true
         }
 
         /// Applies the scheme recognized by the backend (nil drops it, falling back to the local guess).
@@ -262,7 +276,7 @@
                 field.font = FloatingLabelMetrics.fieldFont(from: appearance.cardFieldFont)
                 field.textColor = appearance.text
                 field.delegate = self
-                KeyboardDismissal.installDoneAccessory(on: field)
+                KeyboardDismissal.installFormNavigation(on: field)
                 field.translatesAutoresizingMaskIntoConstraints = false
                 field.addTarget(self, action: #selector(handleEditingChanged), for: .editingChanged)
                 field.addTarget(self, action: #selector(handleEditingDidBegin), for: .editingDidBegin)
@@ -360,8 +374,8 @@
 
                 cvvIconView.centerYAnchor.constraint(equalTo: cvvField.centerYAnchor),
                 cvvIconView.trailingAnchor.constraint(equalTo: group.trailingAnchor, constant: -12),
-                cvvIconView.widthAnchor.constraint(equalToConstant: 34),
-                cvvIconView.heightAnchor.constraint(equalToConstant: 20),
+                cvvIconView.widthAnchor.constraint(equalToConstant: 41),
+                cvvIconView.heightAnchor.constraint(equalToConstant: 24),
 
                 // Error label below the group.
                 errorLabel.topAnchor.constraint(equalTo: group.bottomAnchor, constant: 6),
@@ -402,6 +416,8 @@
         // MARK: - Editing
 
         @objc private func handleEditingChanged() {
+            // The user is correcting the entry: drop the stale message.
+            if hasFieldError { showFieldError(.number, message: nil) }
             onEditingChanged?()
         }
 

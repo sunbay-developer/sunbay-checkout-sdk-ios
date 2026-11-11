@@ -15,6 +15,15 @@
 "sunbay.sheet.orPayUsing" = "或使用以下方式支付";
 "sunbay.notice.reconciling" = "我们正在确认您的支付结果。您可以关闭此页面，我们不会重复扣款。";
 "sunbay.card.invalid" = "请检查您的卡信息。";
+"sunbay.card.error.numberEmpty" = "请输入卡号。";
+"sunbay.card.error.numberIncomplete" = "卡号不完整。";
+"sunbay.card.error.numberInvalid" = "卡号无效，请检查后重新输入。";
+"sunbay.card.error.expiryEmpty" = "请输入有效期。";
+"sunbay.card.error.expiryIncomplete" = "有效期不完整。";
+"sunbay.card.error.expiryMonthInvalid" = "有效期的月份无效。";
+"sunbay.card.error.expiryPast" = "该银行卡已过期。";
+"sunbay.card.error.cvcEmpty" = "请输入安全码。";
+"sunbay.card.error.cvcIncomplete" = "安全码不完整。";
 "sunbay.card.scan" = "扫描银行卡";
 "sunbay.card.scan.hint" = "请将银行卡置于框内";
 "sunbay.card.scan.tip" = "请保持稳定，试试换个角度，或打开补光灯";

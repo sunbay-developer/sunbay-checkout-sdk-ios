@@ -110,7 +110,9 @@ enum ContractDecoding {
         let logoURL: String?
 
         private enum CodingKeys: String, CodingKey {
-            case method, type, ewalletParam, name, logoURL
+            case method, type, ewalletParam, name
+            /// The backend key is `logoUrl` (case-sensitive).
+            case logoURL = "logoUrl"
         }
 
         init(from decoder: Decoder) throws {

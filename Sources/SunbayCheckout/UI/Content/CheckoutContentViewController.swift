@@ -598,7 +598,9 @@
         /// Pay with the manually entered new card.
         private func handleConfirmNewCard() {
             guard let input = cardForm.cardInput else {
-                cardForm.showFieldError(.number, message: localize("sunbay.card.invalid"))
+                if !cardForm.showValidationIssue() {
+                    cardForm.showFieldError(.number, message: localize("sunbay.card.invalid"))
+                }
                 return
             }
             // Validate every shown address form (no short-circuit, so each shows its own error).
@@ -1191,6 +1193,10 @@
             let checkbox = CheckboxControl(appearance: appearance)
             checkbox.isOn = saveCardByDefault
             saveCardSwitch = checkbox
+            // Toggling is a deliberate step away from the fields: hide the keyboard (the background tap
+            // recognizer ignores controls, so the checkbox box would otherwise leave it up).
+            checkbox.addAction(
+                UIAction { [weak self] _ in self?.view.endEditing(true) }, for: .valueChanged)
 
             let label = UILabel()
             label.text = localize("sunbay.sheet.saveThisCard")
