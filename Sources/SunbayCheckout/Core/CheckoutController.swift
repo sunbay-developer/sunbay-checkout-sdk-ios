@@ -362,7 +362,8 @@ actor CheckoutController {
             billingAddress: billing,
             shippingAddress: shipping,
             customerName: AddressRules.customerName(billing: billing, shipping: shipping),
-            customerEmail: AddressRules.sanitize(AddressInput(email: authorization.email))?.email
+            customerEmail: AddressRules.sanitize(AddressInput(email: authorization.email))?.email,
+            walletMerchantIdentifier: authorization.merchantIdentifier
         )
         return await submitAndResolve(request)
     }

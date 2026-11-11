@@ -641,7 +641,8 @@
             delegate?.content(
                 self,
                 didRequest: .confirmWallet(
-                    WalletAuthorization(token: token, billing: nil, shipping: nil, email: nil),
+                    WalletAuthorization(token: token, billing: nil, shipping: nil, email: nil,
+                                        merchantIdentifier: walletMerchantId),
                     billingFormShown: billingAddressView != nil, shippingFormShown: shippingAddressView != nil))
         }
 

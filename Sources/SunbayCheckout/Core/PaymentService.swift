@@ -37,6 +37,9 @@ public struct SubmitRequest: Sendable, CustomStringConvertible, CustomDebugStrin
     public let customerName: String?
     /// Customer email from the wallet contact (PII; never printed or reflected); nil when unknown.
     public let customerEmail: String?
+    /// The Apple Pay merchant id the wallet token was authorized with; sent as
+    /// `digitalWalletInfo.applePay.merchantIdentifier` for `APPLE_PAY`, nil for other paths.
+    public let walletMerchantIdentifier: String?
 
     /// Creates a payment submission request.
     public init(
@@ -53,7 +56,8 @@ public struct SubmitRequest: Sendable, CustomStringConvertible, CustomDebugStrin
         billingAddress: AddressInput? = nil,
         shippingAddress: AddressInput? = nil,
         customerName: String? = nil,
-        customerEmail: String? = nil
+        customerEmail: String? = nil,
+        walletMerchantIdentifier: String? = nil
     ) {
         self.sessionId = sessionId
         self.paymentMethod = paymentMethod
@@ -69,6 +73,7 @@ public struct SubmitRequest: Sendable, CustomStringConvertible, CustomDebugStrin
         self.shippingAddress = shippingAddress
         self.customerName = customerName
         self.customerEmail = customerEmail
+        self.walletMerchantIdentifier = walletMerchantIdentifier
     }
 
     /// Redacted description: never prints secrets, tokens or ciphertext.

@@ -282,3 +282,13 @@ or Xcode. JSON values are redacted by key (secret, token, encrypt, cipher, cvv/c
 authorization, signature, card number, ...) at any depth, and non-JSON bodies print only their size.
 This is not a way to inspect secrets; use a proxy (Charles/Proxyman) for that. When a new sensitive
 wire field is added, extend `sensitiveKeyFragments` if its name is not already covered.
+
+## Apple Pay merchant identifier on submit (2026-11-11)
+
+Apple Pay submits now carry `digitalWalletInfo.applePay.merchantIdentifier` (the id the token was authorized with).
+
+- [ ] Backend: align `docs/api/checkout-api.json` (field marked optional, "not consumed yet") with the dev
+      behavior (submit rejected with `merchantIdentifier is required` when absent).
+- [ ] Real-device check: an Apple Pay payment with the internal merchant id succeeds end to end.
+- [ ] Ask backend how an integrator's own merchant id is registered with Sunbay (the request still sends whatever
+      the host configured).

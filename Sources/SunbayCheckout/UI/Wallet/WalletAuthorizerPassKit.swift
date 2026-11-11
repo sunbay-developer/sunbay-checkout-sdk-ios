@@ -202,7 +202,8 @@ struct WalletAuthorizer: WalletAuthorizing {
         try await withCheckedThrowingContinuation { continuation in
             Task { @MainActor in
                 let controller = PKPaymentAuthorizationController(paymentRequest: request)
-                let delegate = AuthorizationDelegate(continuation: continuation, confirm: confirm)
+                let delegate = AuthorizationDelegate(
+                    continuation: continuation, confirm: confirm, merchantIdentifier: request.merchantIdentifier)
                 controller.delegate = delegate
                 // `PKPaymentAuthorizationController.delegate` is WEAK, and this Task ends as soon as
                 // `present()` returns. Without an owner the delegate would be freed, `DidFinish` would
@@ -245,6 +246,8 @@ struct WalletAuthorizer: WalletAuthorizing {
     private final class AuthorizationDelegate: NSObject, PKPaymentAuthorizationControllerDelegate {
         private var continuation: CheckedContinuation<CheckoutOutcome, Error>?
         private let confirm: @Sendable (WalletAuthorization) async -> CheckoutOutcome
+        /// The merchant id of the presented request; attached to every authorization.
+        private let merchantIdentifier: String
         /// Holds the controller until the authorization flow ends, avoiding premature release.
         var retainController: PKPaymentAuthorizationController?
         /// Self-retention: PassKit holds the delegate weakly, so the delegate keeps itself alive
@@ -257,10 +260,12 @@ struct WalletAuthorizer: WalletAuthorizing {
 
         init(
             continuation: CheckedContinuation<CheckoutOutcome, Error>,
-            confirm: @escaping @Sendable (WalletAuthorization) async -> CheckoutOutcome
+            confirm: @escaping @Sendable (WalletAuthorization) async -> CheckoutOutcome,
+            merchantIdentifier: String
         ) {
             self.continuation = continuation
             self.confirm = confirm
+            self.merchantIdentifier = merchantIdentifier
         }
 
         /// Keeps this delegate alive for the duration of the PassKit flow.
@@ -295,7 +300,8 @@ struct WalletAuthorizer: WalletAuthorizing {
                 billing: WalletAuthorizer.address(from: payment.billingContact),
                 shipping: WalletAuthorizer.address(from: payment.shippingContact),
                 email: WalletAuthorizer.email(from: payment.shippingContact)
-                    ?? WalletAuthorizer.email(from: payment.billingContact))
+                    ?? WalletAuthorizer.email(from: payment.billingContact),
+                merchantIdentifier: merchantIdentifier)
             let confirm = confirm
             let task = Task { await confirm(authorization) }
             inFlightConfirm = task

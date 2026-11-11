@@ -61,6 +61,9 @@ optional with default `US`; `environment` is already returned.
      be decrypted, so please define how an integrator's Apple Pay merchant id and certificate are registered.
    - If you prefer to return the merchant id, add `merchantIdentifier` to `ewalletParam`; the SDK uses the host value
      first and falls back to the session value. A value not present in the app's entitlement cannot present the sheet.
+   - Outcome (2026-11-11): the backend chose to receive it on submit as
+     `digitalWalletInfo.applePay.merchantIdentifier` (`docs/api/checkout-api.json`); the SDK sends the merchant id the
+     token was authorized with.
 2. **Confirm the wallet token formats accepted in `cardEncryptedData`** (with `paymentMethod` `APPLE_PAY` or
    `GOOGLE_PAY`):
    - Apple Pay: `PKPaymentToken.paymentData` (JSON `Data`) converted to a UTF-8 string, unchanged. Not yet verified on a
