@@ -157,6 +157,24 @@ struct DemoSettings: Codable, Equatable {
         }
     }
 
+    // MARK: Apple Pay button color
+
+    /// The Apple Pay button color (maps to `Appearance.applePayButtonStyle` and `ApplePayButton(style:)`).
+    enum DemoApplePayStyle: String, Codable, CaseIterable, Identifiable {
+        case automatic, black, white
+
+        var id: String { rawValue }
+
+        /// A short display label.
+        var label: String {
+            switch self {
+            case .automatic: return "Automatic"
+            case .black: return "Black"
+            case .white: return "White"
+            }
+        }
+    }
+
     // MARK: Effects
 
     /// Shadow override (maps to `Appearance.shadow`); `theme` keeps the theme's own value.
@@ -298,6 +316,8 @@ struct DemoSettings: Codable, Equatable {
     var passHostShippingAddress: Bool = false
     /// The wording on the Apple Pay button, in the sheet's express row and the embedded button.
     var applePayText: DemoApplePayText = .plain
+    /// The Apple Pay button color, in the sheet's express row and the embedded button.
+    var applePayStyle: DemoApplePayStyle = .automatic
     /// Hide Apple Pay through `PaymentMethodFilter(hide:)`.
     var hideApplePay: Bool = false
     /// Hide the card methods (new card and saved cards) through `PaymentMethodFilter(hide:)`.

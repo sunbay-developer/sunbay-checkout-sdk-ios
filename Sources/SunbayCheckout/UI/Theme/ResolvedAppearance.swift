@@ -73,6 +73,8 @@
         let expressPosition: Appearance.ExpressPosition
         /// Wording on the Apple Pay button.
         let applePayButtonType: ApplePayButtonType
+        /// Color of the Apple Pay button.
+        let applePayButtonStyle: Appearance.ApplePayButtonStyle
         /// Bottom-sheet sizing policy (min height, max fraction, mode).
         let sheetSizing: Appearance.SheetSizing
         /// Whether in-sheet page switches animate.
@@ -156,6 +158,7 @@
                 density: appearance.density,
                 expressPosition: appearance.expressPosition,
                 applePayButtonType: appearance.applePayButtonType,
+                applePayButtonStyle: appearance.applePayButtonStyle,
                 sheetSizing: appearance.sheetSizing,
                 pageTransitionsEnabled: appearance.pageTransitionsEnabled,
                 primaryButtonBackground: primaryButtonBackground,

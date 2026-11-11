@@ -377,8 +377,14 @@ import SunbayCheckoutTestSupport
                     }
                 }
                 .pickerStyle(.menu)
+                Picker("Apple Pay button color", selection: $settings.applePayStyle) {
+                    ForEach(DemoSettings.DemoApplePayStyle.allCases) { style in
+                        Text(style.label).tag(style)
+                    }
+                }
+                .pickerStyle(.menu)
             } header: {
-                SectionHelp("Payment methods", "Hide maps to PaymentMethodFilter(hide:). Hiding Card also hides saved cards; hiding every method makes present() fail with NO_PAYMENT_METHOD_AVAILABLE. Apple Pay button text maps to Appearance.applePayButtonType (the sheet's express row) and ApplePayButton(type:) (the embedded button).")
+                SectionHelp("Payment methods", "Hide maps to PaymentMethodFilter(hide:). Hiding Card also hides saved cards; hiding every method makes present() fail with NO_PAYMENT_METHOD_AVAILABLE. Apple Pay button text maps to Appearance.applePayButtonType (the sheet's express row) and ApplePayButton(type:) (the embedded button). Apple Pay button color maps to Appearance.applePayButtonStyle (the sheet; Automatic follows the sheet's light/dark mode) and ApplePayButton(style:) (the embedded button; Automatic follows the system).")
             }
         }
 
@@ -465,6 +471,7 @@ import SunbayCheckoutTestSupport
                         checkout: makeCheckout(),
                         session: session,
                         type: settings.applePayText.sdk,
+                        style: settings.applePayStyle.sdkButton,
                         onResult: { handle($0, source: "Apple Pay") },
                         onAvailability: { log.add("Apple Pay button available: \($0)") }
                     )
@@ -738,6 +745,7 @@ import SunbayCheckoutTestSupport
             appearance.pageTransitionsEnabled = settings.pageTransitions
 
             appearance.applePayButtonType = settings.applePayText.sdk
+            appearance.applePayButtonStyle = settings.applePayStyle.sdkSheet
             appearance.billingAddressEnabled = !settings.disableBillingAddress
             appearance.shippingAddressEnabled = !settings.disableShippingAddress
             appearance.billingAddressStyle = settings.billingAddressStyle == .full ? .full : .simple
@@ -864,6 +872,7 @@ import SunbayCheckoutTestSupport
         let checkout: SunbayCheckout
         let session: DevSession?
         let type: ApplePayButtonType
+        let style: ApplePayButton.ApplePayButtonStyle
         let onResult: (CheckoutOutcome) -> Void
         let onAvailability: (Bool) -> Void
         @State private var available = false
@@ -879,13 +888,14 @@ import SunbayCheckoutTestSupport
                         sessionId: session.sessionId,
                         checkoutClientSecret: session.checkoutClientSecret,
                         type: type,
+                        style: style,
                         onResult: onResult,
                         onAvailabilityChange: {
                             available = $0
                             onAvailability($0)
                         }
                     )
-                    .id("\(session.sessionId)-\(type)")
+                    .id("\(session.sessionId)-\(type)-\(style)")
                     .frame(height: 48)
                 }
             } else {
@@ -915,6 +925,7 @@ import SunbayCheckoutTestSupport
         let sessionId: String
         let checkoutClientSecret: String
         let type: ApplePayButtonType
+        let style: ApplePayButton.ApplePayButtonStyle
         let onResult: (CheckoutOutcome) -> Void
         let onAvailabilityChange: (Bool) -> Void
 
@@ -922,7 +933,7 @@ import SunbayCheckoutTestSupport
             let button = ApplePayButton(
                 checkout: checkout,
                 sessionId: sessionId,
-                style: .automatic,
+                style: style,
                 type: type,
                 checkoutClientSecret: checkoutClientSecret
             )
@@ -950,6 +961,26 @@ import SunbayCheckoutTestSupport
             top = presented
         }
         return top
+    }
+
+    extension DemoSettings.DemoApplePayStyle {
+        /// The sheet's Apple Pay button color for this demo choice.
+        var sdkSheet: Appearance.ApplePayButtonStyle {
+            switch self {
+            case .automatic: return .automatic
+            case .black: return .black
+            case .white: return .white
+            }
+        }
+
+        /// The embedded `ApplePayButton` color for this demo choice.
+        var sdkButton: ApplePayButton.ApplePayButtonStyle {
+            switch self {
+            case .automatic: return .automatic
+            case .black: return .black
+            case .white: return .white
+            }
+        }
     }
 
     extension DemoSettings.DemoApplePayText {
