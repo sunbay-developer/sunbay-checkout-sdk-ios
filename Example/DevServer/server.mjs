@@ -38,6 +38,8 @@ function readBody(req) {
 function summarizeInput(input) {
     return {
         amount: input.amount,
+        taxAmount: input.taxAmount,
+        customerId: input.customerId,
         currency: input.currency,
         items: Array.isArray(input.items) ? input.items.length : undefined,
         collectBillingAddress: input.collectBillingAddress,

@@ -45,7 +45,7 @@ function toMinorUnits(major) {
 
 /**
  * Pure payload builder.
- * @param {object} input  { amount?, items?, description?, returnUrl?, currency?, collectBillingAddress?, collectShippingAddress? }
+ * @param {object} input  { amount?, taxAmount?, customerId?, items?, description?, returnUrl?, currency?, collectBillingAddress?, collectShippingAddress? }
  * @param {object} config { appId, merchantId, currency, customerId }
  * @param {number} now    epoch millis, used for request/order ids
  */
@@ -61,7 +61,8 @@ export function buildCreateSessionPayload(input, config, now) {
                   },
               ];
     const orderAmount = items.reduce((sum, i) => sum + Number(i.amount) * Number(i.num), 0);
-    const taxAmount = Math.round(orderAmount * 0.08);
+    // Tax is whatever the caller sends (major units, default 0); nothing is added automatically.
+    const taxAmount = toMinorUnits(input.taxAmount ?? 0);
     const id = `IOS${now}`;
 
     return {
@@ -69,7 +70,8 @@ export function buildCreateSessionPayload(input, config, now) {
         transactionRequestId: id,
         referenceOrderId: id,
         merchantId: config.merchantId,
-        customerId: config.customerId,
+        // The caller's user identifier (saved cards are scoped to it); falls back to the configured one.
+        customerId: (typeof input.customerId === 'string' && input.customerId.trim()) || config.customerId,
         amount: {
             orderAmount,
             taxAmount,

@@ -32,8 +32,9 @@ final class RealAPIPaymentTests: XCTestCase {
 
     func testLoadSessionAgainstDev() async throws {
         let url = try devServerURL()
-        // 1.05 major units -> orderAmount 105 minor, tax round(105 * 0.08) = 8, total 113 minor.
-        let dev = try await DevSessionClient(serverURL: url).createSession(amountMajorUnits: 1.05)
+        // 1.05 major units -> orderAmount 105 minor, tax 0.08 -> 8 minor, total 113 minor.
+        let dev = try await DevSessionClient(serverURL: url).createSession(
+            amountMajorUnits: 1.05, taxMajorUnits: 0.08)
         let credentials = CredentialStore()
         await credentials.hold(checkoutClientSecret: dev.checkoutClientSecret)
         let session = try await makeService(credentials: credentials).loadSession(dev.sessionId)

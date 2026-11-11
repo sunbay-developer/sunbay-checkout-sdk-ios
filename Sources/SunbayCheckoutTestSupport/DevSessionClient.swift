@@ -53,24 +53,30 @@ public struct DevSessionClient: Sendable {
     ///
     /// - Parameters:
     ///   - amountMajorUnits: Order amount in major units (for example dollars); the server converts to minor units.
+    ///   - taxMajorUnits: Tax in major units, added on top of the amount. Defaults to `0`.
     ///   - collectBillingAddress: Whether the session should collect a billing address.
     ///   - collectShippingAddress: Whether the session should collect a shipping address.
     ///   - supportStoreCard: Whether the session allows saved cards. Defaults to `true`.
+    ///   - customerId: The user identifier saved cards are scoped to; `nil` uses the server's configured one.
     /// - Returns: The created session.
     public func createSession(amountMajorUnits: Double = 0.01,
+                              taxMajorUnits: Double = 0,
                               collectBillingAddress: Bool = false,
                               collectShippingAddress: Bool = false,
-                              supportStoreCard: Bool = true) async throws -> DevSession {
+                              supportStoreCard: Bool = true,
+                              customerId: String? = nil) async throws -> DevSession {
         var request = URLRequest(url: serverURL.appendingPathComponent("api/create-session"))
         request.httpMethod = "POST"
         request.timeoutInterval = 30
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "amount": amountMajorUnits,
+            "taxAmount": taxMajorUnits,
             "collectBillingAddress": collectBillingAddress,
             "collectShippingAddress": collectShippingAddress,
             "supportStoreCard": supportStoreCard,
         ]
+        if let customerId, !customerId.isEmpty { body["customerId"] = customerId }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await session.data(for: request)
