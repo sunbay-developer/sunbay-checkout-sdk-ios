@@ -7,11 +7,23 @@
  */
 
 import { createServer } from 'node:http';
+import { networkInterfaces } from 'node:os';
 import { createSession, HAS_CREDENTIALS, DEV_WARNING } from './session.mjs';
 import { log } from './log.mjs';
 
-const HOST = process.env.HOST ?? '127.0.0.1';
+// Defaults to all interfaces so a real device on the same LAN can reach it. This exposes an
+// unauthenticated, credential-backed endpoint on the network: use a trusted network only, or set
+// HOST=127.0.0.1 to keep it on loopback.
+const HOST = process.env.HOST ?? '0.0.0.0';
 const PORT = Number(process.env.PORT ?? 8095);
+
+/** Non-internal IPv4 addresses of this machine, for printing the LAN URL. */
+function lanAddresses() {
+    return Object.values(networkInterfaces())
+        .flat()
+        .filter((a) => a && a.family === 'IPv4' && !a.internal)
+        .map((a) => a.address);
+}
 
 function readBody(req) {
     return new Promise((resolve, reject) => {
@@ -90,7 +102,13 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
     console.log(`\n\x1b[41m\x1b[97m ${DEV_WARNING} \x1b[0m\n`);
-    console.log(`  session: POST http://${HOST}:${PORT}/api/create-session`);
-    console.log(`  healthz: GET  http://${HOST}:${PORT}/healthz`);
+    const hosts = HOST === '0.0.0.0' ? ['127.0.0.1', ...lanAddresses()] : [HOST];
+    for (const host of hosts) {
+        console.log(`  session: POST http://${host}:${PORT}/api/create-session`);
+        console.log(`  healthz: GET  http://${host}:${PORT}/healthz`);
+    }
+    if (HOST === '0.0.0.0') {
+        console.log('  \x1b[33mListening on all interfaces (LAN-reachable). Trusted networks only; HOST=127.0.0.1 for loopback.\x1b[0m');
+    }
     console.log(`  credentials: ${HAS_CREDENTIALS ? 'present' : 'MISSING'}\n`);
 });

@@ -17,7 +17,9 @@ node --test "test/*.test.mjs"
 - `POST /api/create-session` body `{amount?, items?, currency?, collectBillingAddress?, collectShippingAddress?, supportStoreCard? (default true)}` (amount in major units) returns `{sessionId, checkoutClientSecret, customerAccessSecret|null}`.
 - `GET /healthz` returns `{ok, hasCredentials, warning}`.
 
-Binds `HOST` (default 127.0.0.1) and `PORT` (default 8095).
+Binds `HOST` (default `0.0.0.0`, LAN-reachable so a real device can connect) and `PORT` (default 8095).
+On start it prints the loopback and LAN URLs. This exposes an unauthenticated, credential-backed
+endpoint on the network: use a trusted network only, or set `HOST=127.0.0.1` to keep it on loopback.
 
 ## Logs
 
