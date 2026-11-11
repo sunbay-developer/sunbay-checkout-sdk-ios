@@ -8,14 +8,16 @@
     ///   nothing rotates.
     /// - Number non-empty: only the icon of the recognized brand; nothing when no brand is recognized or
     ///   the recognized brand is not among the session's brands.
-    /// - When no logo is available at all (no brands, or every load failed) the empty state falls back to
-    ///   the system card glyph.
+    /// - When no brand is available at all (no brands in the session) the empty state falls back to
+    ///   the system card glyph. A single logo that fails to load or decode becomes a text badge.
     ///
     /// Presentational only: it receives the scheme, never card digits.
     final class CardBrandIconsView: UIView {
-        private static let iconSize = CGSize(width: 32, height: 20)
-        private static let spacing: CGFloat = 4
-        private static let fallbackSize = CGSize(width: 24, height: 18)
+        /// Every brand gets the same fixed slot (logos aspect-fit inside), so a wide logo rotating in
+        /// never changes the row width or pushes the other icons.
+        private static let iconSize = CGSize(width: 30, height: 24)
+        private static let spacing: CGFloat = 2
+        private static let fallbackSize = CGSize(width: 28, height: 21)
 
         private let appearance: ResolvedAppearance
         private let loader: CardBrandLogoLoader
@@ -80,7 +82,9 @@
                 loader.image(for: item.logoURL) { [weak self] image in
                     guard let self, self.generation == mine else { return }
                     self.resolved.insert(item.scheme)
-                    if let image { self.images[item.scheme] = image }
+                    // A logo that cannot be fetched or decoded (for example an SVG, which UIKit cannot
+                    // decode) is replaced by a text badge, so the brand is never silently missing.
+                    self.images[item.scheme] = image ?? self.makeBadge(for: item)
                     self.render()
                 }
             }
@@ -168,6 +172,41 @@
                 view.widthAnchor.constraint(equalToConstant: Self.iconSize.width),
                 view.heightAnchor.constraint(equalToConstant: Self.iconSize.height),
             ])
+        }
+
+        private static let badgeLabels = [
+            "visa": "VISA", "mastercard": "MC", "amex": "AMEX", "discover": "DISC", "jcb": "JCB",
+            "unionpay": "UP", "dinersclub": "DINERS", "maestro": "MAESTRO",
+        ]
+
+        /// A small bordered text badge standing in for a logo that could not be loaded or decoded.
+        private func makeBadge(for item: CardBrandItem) -> UIImage {
+            let text = Self.badgeLabels[item.scheme] ?? String(item.scheme.prefix(5)).uppercased()
+            let size = Self.iconSize
+            let border = appearance.border
+            let color = appearance.textSecondary
+            let traits = traitCollection
+            return UIGraphicsImageRenderer(size: size).image { _ in
+                let rect = CGRect(origin: .zero, size: size).insetBy(dx: 0.5, dy: 0.5)
+                let path = UIBezierPath(roundedRect: rect, cornerRadius: 3)
+                path.lineWidth = 1
+                border.resolvedColor(with: traits).setStroke()
+                path.stroke()
+                var fontSize: CGFloat = 9
+                var attributes: [NSAttributedString.Key: Any] = [:]
+                var textSize = CGSize.zero
+                repeat {
+                    attributes = [
+                        .font: UIFont.systemFont(ofSize: fontSize, weight: .bold),
+                        .foregroundColor: color.resolvedColor(with: traits),
+                    ]
+                    textSize = (text as NSString).size(withAttributes: attributes)
+                    fontSize -= 0.5
+                } while textSize.width > size.width - 4 && fontSize > 4
+                (text as NSString).draw(
+                    at: CGPoint(x: (size.width - textSize.width) / 2, y: (size.height - textSize.height) / 2),
+                    withAttributes: attributes)
+            }
         }
 
         private func makeFallback() -> UIImageView {

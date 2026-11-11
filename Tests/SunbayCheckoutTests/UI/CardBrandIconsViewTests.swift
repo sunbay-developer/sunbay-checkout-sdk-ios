@@ -85,15 +85,15 @@
             XCTAssertEqual(view.visibleSchemesForTest, [])
         }
 
-        func test_allLogosFailShowsFallbackWhenEmpty() async {
+        func test_allLogosFailShowTextBadges() async {
             let view = await makeView([item("visa", fail: true), item("amex", fail: true)])
-            XCTAssertTrue(view.showsFallbackForTest)
-            XCTAssertEqual(view.visibleSchemesForTest, [])
+            XCTAssertFalse(view.showsFallbackForTest)
+            XCTAssertEqual(view.visibleSchemesForTest, ["visa", "amex"])
         }
 
-        func test_failedLogoIsSkipped() async {
+        func test_failedLogoFallsBackToBadgeInOrder() async {
             let view = await makeView([item("visa", fail: true), item("mastercard"), item("amex")])
-            XCTAssertEqual(view.visibleSchemesForTest, ["mastercard", "amex"])
+            XCTAssertEqual(view.visibleSchemesForTest, ["visa", "mastercard", "amex"])
         }
 
         func test_clearingBackToEmptyRestoresCarousel() async {

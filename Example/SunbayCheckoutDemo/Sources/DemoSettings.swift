@@ -236,8 +236,32 @@ struct DemoSettings: Codable, Equatable {
 
     /// Locale (drives SDK PaymentSheet localization).
     var locale: DemoLocale
-    /// The order amount in minor units of USD (for example cents). Sent to the dev server as major units.
-    var amountMinorUnits: Int64
+    /// The order amount in USD (major units, for example `1.05`), as typed.
+    var amount: String
+    /// The order tax in USD (major units), entered by hand. Default `0`.
+    var tax: String = "0"
+
+    /// Keeps a money entry to digits with at most one `.` and two decimals (`"1.234"` -> `"1.23"`).
+    static func sanitizeMoney(_ text: String) -> String {
+        var result = ""
+        var decimals: Int?
+        for character in text {
+            if character.isASCII, character.isNumber {
+                if let count = decimals {
+                    guard count < 2 else { continue }
+                    decimals = count + 1
+                }
+                result.append(character)
+            } else if character == "." || character == ",", decimals == nil {
+                result.append(result.isEmpty ? "0." : ".")
+                decimals = 0
+            }
+        }
+        return result
+    }
+
+    /// A money entry in major units; empty or malformed text counts as `0`.
+    static func majorUnits(_ text: String) -> Double { Double(text) ?? 0 }
     /// Disable card on file (maps to `!CardOnFileOptions.isEnabled`). Off by default: follow the session.
     var disableCardOnFile: Bool = false
     /// Pre-tick the "save card" checkbox (maps to `CardOnFileOptions.saveByDefault`). Default off.
@@ -266,6 +290,8 @@ struct DemoSettings: Codable, Equatable {
     var orderRequiresShippingAddress: Bool = false
     /// Ask the dev server to create sessions that allow saved cards (the session's card-on-file flag).
     var orderSupportsSavedCards: Bool = true
+    /// The user identifier (session `customerId`) saved cards belong to; sent only when saved cards are on.
+    var customerId: String = "sunbay-ios-dev-customer"
     /// Pass a fixed US test billing address to `PaymentSheet(billingAddress:)`.
     var passHostBillingAddress: Bool = false
     /// Pass a fixed, complete US test shipping address (with names and phone) to `PaymentSheet(shippingAddress:)`.
@@ -279,10 +305,10 @@ struct DemoSettings: Codable, Equatable {
     /// Base URL of the local dev session server.
     var devServerURL: String = "http://127.0.0.1:8095"
 
-    /// Default settings: 1.05 USD, COF on, automatic addresses, brand appearance.
+    /// Default settings: 1 USD, COF on, automatic addresses, brand appearance.
     static let `default` = DemoSettings(
         locale: .enUS,
-        amountMinorUnits: 105,
+        amount: "1",
         appearancePreset: .brandDefault,
         colorScheme: .automatic,
     )

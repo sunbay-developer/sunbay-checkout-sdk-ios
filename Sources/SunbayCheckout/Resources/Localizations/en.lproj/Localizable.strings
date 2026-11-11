@@ -15,6 +15,15 @@
 "sunbay.sheet.orPayUsing" = "Or pay using";
 "sunbay.notice.reconciling" = "We're confirming your payment. You can close this sheet; we won't charge you twice.";
 "sunbay.card.invalid" = "Please check your card details.";
+"sunbay.card.error.numberEmpty" = "Enter your card number.";
+"sunbay.card.error.numberIncomplete" = "Your card number is incomplete.";
+"sunbay.card.error.numberInvalid" = "Your card number is invalid.";
+"sunbay.card.error.expiryEmpty" = "Enter your card's expiry date.";
+"sunbay.card.error.expiryIncomplete" = "Your card's expiry date is incomplete.";
+"sunbay.card.error.expiryMonthInvalid" = "Your card's expiry month is invalid.";
+"sunbay.card.error.expiryPast" = "Your card has expired.";
+"sunbay.card.error.cvcEmpty" = "Enter your card's security code.";
+"sunbay.card.error.cvcIncomplete" = "Your card's security code is incomplete.";
 "sunbay.card.scan" = "Scan card";
 "sunbay.card.scan.hint" = "Position your card within the frame";
 "sunbay.card.scan.tip" = "Hold steady, try another angle, or turn on the light";

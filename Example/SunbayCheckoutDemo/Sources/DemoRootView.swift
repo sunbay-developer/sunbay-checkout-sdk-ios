@@ -214,9 +214,11 @@ import SunbayCheckoutTestSupport
 
         /// Everything a created session depends on; changing any of it invalidates the session.
         private var sessionInputs: [String] {
-            [settings.environment.rawValue, settings.devServerURL, String(settings.amountMinorUnits),
+            [settings.environment.rawValue, settings.devServerURL, settings.amount,
+             settings.tax,
              String(settings.orderRequiresBillingAddress), String(settings.orderRequiresShippingAddress),
-             String(settings.orderSupportsSavedCards)]
+             String(settings.orderSupportsSavedCards),
+             settings.orderSupportsSavedCards ? settings.customerId : ""]
         }
 
         /// One tab: its own navigation stack around a form, so each tab keeps its scroll position.
@@ -237,15 +239,32 @@ import SunbayCheckoutTestSupport
         private var orderSection: some View {
             Section {
                 HStack {
-                    Text("Amount (minor units, USD)")
+                    Text("Amount (USD)")
                     Spacer()
-                    TextField("105", text: amountText)
+                    TextField("1.00", text: amountText)
                         .multilineTextAlignment(.trailing)
-                        .keyboardType(.numberPad)
+                        .keyboardType(.decimalPad)
+                }
+                HStack {
+                    Text("Tax (USD)")
+                    Spacer()
+                    TextField("0", text: taxText)
+                        .multilineTextAlignment(.trailing)
+                        .keyboardType(.decimalPad)
                 }
                 Toggle("Requires billing address", isOn: $settings.orderRequiresBillingAddress)
                 Toggle("Requires shipping address", isOn: $settings.orderRequiresShippingAddress)
                 Toggle("Supports saved cards", isOn: $settings.orderSupportsSavedCards)
+                if settings.orderSupportsSavedCards {
+                    HStack {
+                        Text("User ID")
+                        Spacer()
+                        TextField("sunbay-ios-dev-customer", text: $settings.customerId)
+                            .multilineTextAlignment(.trailing)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled(true)
+                    }
+                }
                 DisclosureGroup("More") {
                     Picker("Environment", selection: $settings.environment) {
                         ForEach(DemoSettings.DemoEnvironment.allCases) { env in
@@ -254,7 +273,7 @@ import SunbayCheckoutTestSupport
                     }
                     .pickerStyle(.segmented)
                     HStack {
-                        Text("Server URL")
+                        Text("Merchant Server URL")
                         Spacer()
                         TextField("http://127.0.0.1:8095", text: $settings.devServerURL)
                             .multilineTextAlignment(.trailing)
@@ -264,7 +283,7 @@ import SunbayCheckoutTestSupport
                     }
                 }
             } header: {
-                SectionHelp("Order", "These values are sent to the session server when the session is created; changing any of them discards the current session. The server receives the amount in major units (minor units / 100). The \"Requires\" toggles set the session's collect flags and \"Supports saved cards\" sets the session's card-on-file flag (the host switch on the Options tab can only disable saved cards on top of it). More: Environment is the SDK's CheckoutConfiguration.environment (Dev by default); Server URL is the session server, which must hold credentials for the same environment.")
+                SectionHelp("Order", "These values are sent to the session server when the session is created; changing any of them discards the current session. Amount and tax are entered in dollars (up to two decimals); the session total is amount + tax (no tax is added automatically). The \"Requires\" toggles set the session's collect flags and \"Supports saved cards\" sets the session's card-on-file flag (the host switch on the Options tab can only disable saved cards on top of it). With saved cards on, User ID is the session customerId the saved cards belong to. More: Environment is the SDK's CheckoutConfiguration.environment (Dev by default); Server URL is the session server, which must hold credentials for the same environment.")
             }
         }
 
@@ -408,7 +427,7 @@ import SunbayCheckoutTestSupport
             sessionError = nil
             session = nil
             let request = sessionRequest
-            log.add("Create session: env=\(settings.environment.label) amount=\(settings.amountMinorUnits) billing=\(request.collectBillingAddress) shipping=\(request.collectShippingAddress) savedCards=\(request.supportStoreCard)")
+            log.add("Create session: env=\(settings.environment.label) amount=\(settings.amount) tax=\(settings.tax) billing=\(request.collectBillingAddress) shipping=\(request.collectShippingAddress) savedCards=\(request.supportStoreCard) user=\(request.customerId ?? "-")")
             Task { @MainActor in
                 defer { isCreatingSession = false }
                 do {
@@ -534,11 +553,19 @@ import SunbayCheckoutTestSupport
 
         // MARK: - Bindings
 
-        /// Binds the amount (Int64) as editable text, ignoring non-numeric input.
+        /// Binds the amount (USD) as editable text, keeping digits and up to two decimals.
         private var amountText: Binding<String> {
             Binding(
-                get: { String(settings.amountMinorUnits) },
-                set: { settings.amountMinorUnits = Int64($0.filter(\.isNumber)) ?? 0 }
+                get: { settings.amount },
+                set: { settings.amount = DemoSettings.sanitizeMoney($0) }
+            )
+        }
+
+        /// Binds the tax (USD) as editable text, keeping digits and up to two decimals.
+        private var taxText: Binding<String> {
+            Binding(
+                get: { settings.tax },
+                set: { settings.tax = DemoSettings.sanitizeMoney($0) }
             )
         }
 
@@ -548,10 +575,13 @@ import SunbayCheckoutTestSupport
         private var sessionRequest: DevSessionRequest {
             DevSessionRequest(
                 serverURL: URL(string: settings.devServerURL),
-                amountMajorUnits: Double(settings.amountMinorUnits) / 100,
+                amountMajorUnits: DemoSettings.majorUnits(settings.amount),
+                taxMajorUnits: DemoSettings.majorUnits(settings.tax),
                 collectBillingAddress: settings.orderRequiresBillingAddress,
                 collectShippingAddress: settings.orderRequiresShippingAddress,
                 supportStoreCard: settings.orderSupportsSavedCards,
+                customerId: settings.orderSupportsSavedCards
+                    ? settings.customerId.trimmingCharacters(in: .whitespaces) : nil,
                 hostBillingAddress: settings.passHostBillingAddress ? Self.testBillingAddress : nil,
                 hostShippingAddress: settings.passHostShippingAddress ? Self.testShippingAddress : nil
             )
@@ -763,10 +793,13 @@ import SunbayCheckoutTestSupport
     struct DevSessionRequest {
         let serverURL: URL?
         let amountMajorUnits: Double
+        let taxMajorUnits: Double
         let collectBillingAddress: Bool
         let collectShippingAddress: Bool
         /// Whether the session allows saved cards (the session's card-on-file flag).
         let supportStoreCard: Bool
+        /// The user identifier saved cards are scoped to (nil: the dev server's configured one).
+        let customerId: String?
         /// Host-provided billing address for `PaymentSheet(billingAddress:)` (nil: let the form collect it).
         let hostBillingAddress: AddressInput?
         /// Host-provided shipping address for `PaymentSheet(shippingAddress:)` (nil: let the form collect it).
@@ -777,9 +810,11 @@ import SunbayCheckoutTestSupport
             guard let serverURL else { throw InvalidServerURL() }
             return try await DevSessionClient(serverURL: serverURL).createSession(
                 amountMajorUnits: amountMajorUnits,
+                taxMajorUnits: taxMajorUnits,
                 collectBillingAddress: collectBillingAddress,
                 collectShippingAddress: collectShippingAddress,
-                supportStoreCard: supportStoreCard
+                supportStoreCard: supportStoreCard,
+                customerId: customerId
             )
         }
     }

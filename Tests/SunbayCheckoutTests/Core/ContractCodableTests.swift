@@ -289,7 +289,7 @@ final class ContractCodableTests: XCTestCase {
             {"sessionId":"s1","currency":"USD","totalAmount":"1.00","expiresAt":"2026-10-26T12:30:00Z",
              "merchantName":"A","supportStoreCard":false,
              "paymentMethods":[
-               {"method":"GOOGLE_PAY","type":"E_WALLET","name":"Google Pay","logoURL":"https://x/g.png"},
+               {"method":"GOOGLE_PAY","type":"E_WALLET","name":"Google Pay","logoUrl":"https://x/g.png"},
                {"method":"VISA","type":"CARD","name":"Visa"},
                {"method":"APPLE_PAY","type":"E_WALLET"}]}
             """
@@ -378,5 +378,25 @@ final class ContractCodableTests: XCTestCase {
 
         XCTAssertEqual(envelope.snapshot.status, .requiresAction)
         XCTAssertEqual(envelope.action, .qrCode)
+    }
+
+    func test_decodeSession_readsLogoUrlKeyIntoBrandItems() throws {
+        let json = """
+            {
+              "sessionId": "s", "sessionType": "sdk", "currency": "USD", "totalAmount": "1.13",
+              "expiresAt": "2026-11-11 06:53:36", "merchantName": "M", "rsaPublicKey": "k",
+              "paymentMethods": [
+                { "method": "UNIONPAY", "type": "CARD", "name": "UnionPay",
+                  "logoUrl": "https://res.sunbay-dev.com/a/b.png?inline=1" },
+                { "method": "VISA", "type": "CARD", "name": "Visa",
+                  "logoUrl": "https://res.sunbay-dev.com/c/d.jpg?inline=1" },
+                { "method": "APPLE_PAY", "type": "E_WALLET", "name": "Apple Pay",
+                  "logoUrl": "https://res.sunbay-dev.com/e/f.png?inline=1" }
+              ]
+            }
+            """
+        let session = try ContractDecoding.decodeSession(from: Data(json.utf8))
+        XCTAssertEqual(session.methodEntries.first?.logoURL, "https://res.sunbay-dev.com/a/b.png?inline=1")
+        XCTAssertEqual(CardBrandItem.items(from: session.methodEntries).map(\.scheme), ["unionpay", "visa"])
     }
 }

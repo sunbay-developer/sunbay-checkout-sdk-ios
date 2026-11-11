@@ -11,12 +11,24 @@ test('builds an sdk session payload with COF enabled', () => {
     assert.equal(p.customerId, 'cust-1');
     assert.equal(p.supportStoreCard, true);
     assert.equal(p.amount.orderAmount, 999);
-    assert.equal(p.amount.taxAmount, Math.round(999 * 0.08));
+    assert.equal(p.amount.taxAmount, 0, 'no tax unless requested');
     assert.equal(p.productList[0].amount, 999);
     assert.equal(p.productList[0].num, 1);
     assert.equal(p.collectBillingAddress, false);
     assert.ok(p.transactionRequestId.startsWith('IOS'));
     assert.ok(p.referenceOrderId.startsWith('IOS'));
+});
+
+test('taxAmount is sent as given, in major units', () => {
+    const p = buildCreateSessionPayload({ amount: 1, taxAmount: 0.08 }, config, NOW);
+    assert.equal(p.amount.orderAmount, 100);
+    assert.equal(p.amount.taxAmount, 8);
+});
+
+test('customerId comes from the request, else the configured one', () => {
+    assert.equal(buildCreateSessionPayload({ customerId: 'user-42' }, config, NOW).customerId, 'user-42');
+    assert.equal(buildCreateSessionPayload({ customerId: '  ' }, config, NOW).customerId, 'cust-1');
+    assert.equal(buildCreateSessionPayload({}, config, NOW).customerId, 'cust-1');
 });
 
 test('explicit items win over amount', () => {

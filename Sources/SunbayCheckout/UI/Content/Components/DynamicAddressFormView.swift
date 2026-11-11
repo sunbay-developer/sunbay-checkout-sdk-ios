@@ -292,7 +292,7 @@
             textField.keyboardType = .phonePad
             textField.textContentType = .telephoneNumber
             textField.translatesAutoresizingMaskIntoConstraints = false
-            KeyboardDismissal.installDoneAccessory(on: textField)
+            KeyboardDismissal.installFormNavigation(on: textField)
             phoneField = textField
             return FieldContainerView(appearance: appearance, control: textField)
         }
@@ -339,8 +339,8 @@
             textField.translatesAutoresizingMaskIntoConstraints = false
             if field.type == .postalCode {
                 textField.keyboardType = .numbersAndPunctuation
-                KeyboardDismissal.installDoneAccessory(on: textField)
             }
+            KeyboardDismissal.installFormNavigation(on: textField)
             textFields[field.type] = textField
             let container = FieldContainerView(appearance: appearance, control: textField)
             guard field.type == .postalCode else { return container }
