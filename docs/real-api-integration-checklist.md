@@ -268,3 +268,17 @@ empty, the matched brand while typing; design: `docs/superpowers/specs/2026-11-1
 - [ ] `docs/api/*.json` are local snapshots and are already behind the backend (for example the merchant
       transaction query API added on 2026-11-09 is missing). Connect the API platform MCP and treat the live
       definitions as the source of truth before wiring any new endpoint.
+
+## Debug network logging (2026-11-11)
+
+`SunbayAPIClient.send` can log request/response messages for debugging. All gates must pass:
+
+- Compiled only in `DEBUG` builds (`NetworkDebugLogger`); absent from a host's Release build.
+- Only for the `.dev` environment.
+- Only when the app is launched with the `-SunbayNetworkLog` argument (Xcode scheme > Arguments).
+
+Output goes to `os.Logger` (subsystem `com.sunbay.checkout`, category `network`); filter in Console.app
+or Xcode. JSON values are redacted by key (secret, token, encrypt, cipher, cvv/cvc, password,
+authorization, signature, card number, ...) at any depth, and non-JSON bodies print only their size.
+This is not a way to inspect secrets; use a proxy (Charles/Proxyman) for that. When a new sensitive
+wire field is added, extend `sensitiveKeyFragments` if its name is not already covered.
