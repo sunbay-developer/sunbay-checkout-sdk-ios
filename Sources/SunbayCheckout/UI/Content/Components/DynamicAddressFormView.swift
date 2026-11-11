@@ -17,11 +17,13 @@
     /// ## States
     /// While fetching it shows a loading skeleton; on failure it shows an error message plus a retry
     /// button (matching the web `AddressForm.tsx` behavior); on success it shows the resolved rows. The
-    /// state field is a subdivisions dropdown. `validate()` checks only the postal code, driven by the
-    /// selected country's `postalCode` field config (required / `pattern`) via `PostalCodeValidator`; it
-    /// returns false while metadata is loading (the tap is ignored), and never blocks after a load failure
-    /// or when the country has no postal field. No
-    /// other field is validated here, and there is no Google autocomplete or postal→state lookup.
+    /// state field is a subdivisions dropdown. `validate()` checks every rendered field against the
+    /// selected country's config: a `required` field must not be empty, and the postal code also goes
+    /// through `PostalCodeValidator` (`pattern`). Each failing field shows its message inline below it. It
+    /// returns false while metadata is loading (the tap is ignored) and never blocks after a load failure.
+    /// The phone row is optional. There is no Google autocomplete or postal→state lookup.
+    ///
+    /// Field titles use the backend `label`; the `placeholder` is the in-field hint once the title floats.
     ///
     /// iOS-only: gated by `#if canImport(UIKit)`; does not compile under the macOS host (`swift test`).
     final class DynamicAddressFormView: UIView {
@@ -54,10 +56,10 @@
         private let errorContainer = UIView()
         private let errorLabel = UILabel()
         private let retryButton = UIButton(type: .system)
-        /// The localization key of the postal error currently shown, if any.
-        private var postalErrorKey: String?
-        /// The postal error label of the current render (rebuilt with the fields).
-        private var postalErrorLabel: UILabel?
+        /// The error message currently shown per field (localized); a rebuild re-validates.
+        private var fieldErrors: [AddressFieldType: String] = [:]
+        /// The inline error label of each rendered field (rebuilt with the fields).
+        private var errorLabels: [AddressFieldType: UILabel] = [:]
 
         // Field controls keyed by type (rebuilt on each render).
         private var textFields: [AddressFieldType: UITextField] = [:]
@@ -114,43 +116,94 @@
             return input
         }
 
-        /// Validates the postal code against the selected country's config and shows the error inline.
+        /// Validates every rendered field against the selected country's config and shows the errors inline.
         ///
         /// - Returns: `false` while the metadata is still loading (the skeleton is visible, so no message is
-        ///   shown and the Pay tap is simply ignored), or when the postal field is rendered and its value is
-        ///   required-but-empty or does not match the country pattern. Returns `true` after a load failure
-        ///   (full-mode exemption), when the country has no postal field, or when the postal field is not visible.
+        ///   shown and the Pay tap is simply ignored), or when a rendered field is required-but-empty or the
+        ///   postal code does not match the country pattern. Returns `true` after a load failure (exemption).
         func validate() -> Bool {
             if loadState == .loading { return false }
-            guard loadState == .loaded, let postalConfig = config?.fields[.postalCode],
-                textFields[.postalCode] != nil
-            else {
-                setPostalError(nil)
+            guard loadState == .loaded, let config else {
+                clearErrors()
                 return true
             }
             captureFieldValues()
-            switch PostalCodeValidator.validate(model.postalCode, config: postalConfig) {
-            case .valid:
-                setPostalError(nil)
-                return true
-            case .required:
-                setPostalError("sunbay.address.postalCode.required")
-                return false
-            case .invalidFormat:
-                setPostalError("sunbay.address.postalCode.invalid")
-                return false
+            var errors: [AddressFieldType: String] = [:]
+            for type in renderedTypes {
+                guard let field = config.fields[type] else { continue }
+                if type == .postalCode {
+                    switch PostalCodeValidator.validate(model.postalCode, config: field) {
+                    case .valid: break
+                    case .required: errors[type] = localize("sunbay.address.postalCode.required")
+                    case .invalidFormat: errors[type] = localize("sunbay.address.postalCode.invalid")
+                    }
+                } else if field.required, Self.isBlank(value(of: type)) {
+                    errors[type] = requiredMessage(for: field)
+                }
+            }
+            fieldErrors = errors
+            for type in errorLabels.keys { applyError(for: type) }
+            return errors.isEmpty
+        }
+
+        /// Moves focus to the first text field (in on-screen order) showing an error. Returns `false`
+        /// when no text field is in error.
+        @discardableResult
+        func focusFirstError() -> Bool {
+            guard let type = renderedTypes.first(where: { fieldErrors[$0] != nil && textFields[$0] != nil })
+            else { return false }
+            return textFields[type]?.becomeFirstResponder() ?? false
+        }
+
+        /// The rendered field types in on-screen (layout) order, country excluded.
+        private var renderedTypes: [AddressFieldType] {
+            guard let config else { return [] }
+            return config.layout.flatMap { $0 }.filter {
+                textFields[$0] != nil || ($0 == .state && stateButton != nil)
             }
         }
 
-        private func setPostalError(_ key: String?) {
-            postalErrorKey = key
-            postalErrorLabel?.text = key.map(localize)
-            postalErrorLabel?.isHidden = key == nil
-            (textFields[.postalCode] as? FloatingLabelTextField)?.setErrorActive(key != nil)
+        private func value(of type: AddressFieldType) -> String? {
+            switch type {
+            case .country: return model.country
+            case .line1: return model.line1
+            case .line2: return model.line2
+            case .city: return model.city
+            case .state: return model.state
+            case .postalCode: return model.postalCode
+            case .district: return model.district
+            case .firstName: return model.firstName
+            case .lastName: return model.lastName
+            }
         }
 
-        @objc private func handlePostalEditingChanged() {
-            if postalErrorKey != nil { setPostalError(nil) }
+        private static func isBlank(_ text: String?) -> Bool {
+            (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+
+        /// "<label> is required." in the current language (the label comes from the backend config).
+        private func requiredMessage(for field: AddressFieldConfig) -> String {
+            let format = localize("sunbay.address.error.requiredFormat")
+            let name = field.label.isEmpty ? field.placeholder : field.label
+            return format.contains("%@") ? String(format: format, name) : format
+        }
+
+        private func applyError(for type: AddressFieldType) {
+            let message = fieldErrors[type]
+            errorLabels[type]?.text = message
+            errorLabels[type]?.isHidden = message == nil
+            (textFields[type] as? FloatingLabelTextField)?.setErrorActive(message != nil)
+        }
+
+        private func clearError(for type: AddressFieldType) {
+            guard fieldErrors[type] != nil else { return }
+            fieldErrors[type] = nil
+            applyError(for: type)
+        }
+
+        private func clearErrors() {
+            fieldErrors = [:]
+            for type in errorLabels.keys { applyError(for: type) }
         }
 
         /// Refetches with a new locale and rebuilds, preserving already-entered values (§7.3).
@@ -248,11 +301,11 @@
 
         /// Rebuilds the field controls from the current config, then re-applies stored values.
         private func rebuildFields() {
-            let hadPostalError = postalErrorKey != nil
+            let hadErrors = !fieldErrors.isEmpty
             contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
             textFields.removeAll()
-            postalErrorLabel = nil
-            postalErrorKey = nil
+            errorLabels.removeAll()
+            fieldErrors = [:]
             countryButton = nil
             stateButton = nil
             phoneField = nil
@@ -279,8 +332,8 @@
 
             applyStoredValues()
 
-            // After a country change / rebuild, re-check a typed or previously flagged postal code.
-            if hadPostalError || !(textFields[.postalCode]?.text ?? "").isEmpty {
+            // After a country change / rebuild, re-check previously shown errors or a typed postal code.
+            if hadErrors || !(textFields[.postalCode]?.text ?? "").isEmpty {
                 _ = validate()
             }
         }
@@ -334,7 +387,10 @@
                 return makeStateRow(field, subdivisions: config.subdivisions)
             }
             let textField = FloatingLabelTextField(appearance: appearance)
-            textField.title = field.placeholder
+            textField.title = field.label.isEmpty ? field.placeholder : field.label
+            if !field.placeholder.isEmpty, field.placeholder != field.label {
+                textField.floatedPlaceholder = field.placeholder
+            }
             textField.autocorrectionType = .no
             textField.translatesAutoresizingMaskIntoConstraints = false
             if field.type == .postalCode {
@@ -342,17 +398,19 @@
             }
             KeyboardDismissal.installFormNavigation(on: textField)
             textFields[field.type] = textField
-            let container = FieldContainerView(appearance: appearance, control: textField)
-            guard field.type == .postalCode else { return container }
+            let type = field.type
+            textField.addAction(UIAction { [weak self] _ in self?.clearError(for: type) }, for: .editingChanged)
+            return makeCell(type, FieldContainerView(appearance: appearance, control: textField))
+        }
 
-            // Postal cell: the field box with its inline error label below (CardFormView style).
-            textField.addTarget(self, action: #selector(handlePostalEditingChanged), for: .editingChanged)
+        /// A field cell: the field box with its inline error label below (CardFormView style).
+        private func makeCell(_ type: AddressFieldType, _ container: UIView) -> UIView {
             let label = UILabel()
             label.font = UIFont.preferredFont(forTextStyle: .caption1)
             label.textColor = appearance.danger
             label.numberOfLines = 0
             label.isHidden = true
-            postalErrorLabel = label
+            errorLabels[type] = label
             let cell = UIStackView(arrangedSubviews: [container, label])
             cell.axis = .vertical
             cell.spacing = 4
@@ -360,12 +418,14 @@
         }
 
         private func makeStateRow(_ field: AddressFieldConfig, subdivisions: [AddressSubdivision]) -> UIView {
-            let menuField = FloatingLabelMenuField(appearance: appearance, title: field.placeholder)
+            let menuField = FloatingLabelMenuField(
+                appearance: appearance, title: field.label.isEmpty ? field.placeholder : field.label)
 
             let actions = subdivisions.map { subdivision in
                 UIAction(title: subdivision.name) { [weak self] _ in
                     self?.model.state = subdivision.code
                     menuField.setSelected(title: subdivision.name)
+                    self?.clearError(for: .state)
                 }
             }
             menuField.setMenu(UIMenu(children: actions))
@@ -373,7 +433,7 @@
                 menuField.setSelected(title: name)
             }
             stateButton = menuField
-            return FieldContainerView(appearance: appearance, control: menuField)
+            return makeCell(.state, FieldContainerView(appearance: appearance, control: menuField))
         }
 
         // MARK: - Value capture / restore (code-based, §7.3)
@@ -391,6 +451,8 @@
                 case .district: model.district = stored
                 case .firstName: model.firstName = stored
                 case .lastName: model.lastName = stored
+                // Free-text state (a country without a subdivision list); the menu captures its own code.
+                case .state: model.state = stored
                 default: break
                 }
             }
@@ -398,7 +460,7 @@
                 let value = (phoneField.text ?? "").trimmingCharacters(in: .whitespaces)
                 model.phone = value.isEmpty ? nil : value
             }
-            // country / state are captured eagerly in their menu actions.
+            // country (and a menu-picked state) are captured eagerly in their menu actions.
         }
 
         /// Re-applies stored model values to the freshly rebuilt controls.
@@ -410,6 +472,7 @@
             textFields[.district]?.text = model.district
             textFields[.firstName]?.text = model.firstName
             textFields[.lastName]?.text = model.lastName
+            textFields[.state]?.text = model.state
             phoneField?.text = model.phone
         }
 
@@ -490,9 +553,17 @@
         var renderedFieldTypesForTest: Set<AddressFieldType> { Set(textFields.keys) }
 
         /// The postal error message currently shown (the localized text), or nil when none is shown.
-        var postalErrorMessageForTest: String? {
-            guard let label = postalErrorLabel, !label.isHidden else { return nil }
+        var postalErrorMessageForTest: String? { errorMessageForTest(.postalCode) }
+
+        /// The error message currently shown below a field, or nil when none is shown.
+        func errorMessageForTest(_ type: AddressFieldType) -> String? {
+            guard let label = errorLabels[type], !label.isHidden else { return nil }
             return label.text
+        }
+
+        /// The title of a rendered text field.
+        func titleForTest(_ type: AddressFieldType) -> String? {
+            (textFields[type] as? FloatingLabelTextField)?.title
         }
 
         /// Whether the first / last name row is collected.

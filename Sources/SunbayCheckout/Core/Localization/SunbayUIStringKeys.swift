@@ -49,6 +49,7 @@ enum SunbayUIStringKeys {
         "sunbay.address.line1",
         "sunbay.address.postalCode",
         "sunbay.address.phone",
+        "sunbay.address.error.requiredFormat",
         "sunbay.address.loadError",
         // COF
         "sunbay.cof.newPaymentMethod",

@@ -12,7 +12,7 @@ import Foundation
 /// A non-empty inner result is passed through unchanged.
 ///
 /// The fallback country list is built from `Locale.isoRegionCodes`, sorted by localized name. The
-/// fallback config is a minimal form: first/last name (optional), address line 1 (optional) and
+/// fallback config is a minimal form: first/last name (optional), address line 1 (required) and
 /// postal code (required, no pattern), with labels supplied by the caller.
 ///
 /// - Note: Used by simple mode only. Full mode keeps its failed state and retry, and must not wrap
@@ -65,7 +65,7 @@ struct FallbackAddressMetadataService: AddressMetadataService {
             fields: [
                 .firstName: field(.firstName, required: false, text: labels.firstName),
                 .lastName: field(.lastName, required: false, text: labels.lastName),
-                .line1: field(.line1, required: false, text: labels.line1),
+                .line1: field(.line1, required: true, text: labels.line1),
                 .postalCode: field(.postalCode, required: true, text: labels.postalCode)
             ],
             layout: [[.firstName, .lastName], [.line1], [.postalCode]],

@@ -78,7 +78,7 @@ final class FallbackAddressMetadataServiceTests: XCTestCase {
         XCTAssertEqual(config.subdivisions, [])
         XCTAssertEqual(config.fields[.postalCode]?.required, true)
         XCTAssertNil(config.fields[.postalCode]?.pattern)
-        XCTAssertEqual(config.fields[.line1]?.required, false)
+        XCTAssertEqual(config.fields[.line1]?.required, true)
         XCTAssertEqual(config.fields[.firstName]?.required, false)
         XCTAssertEqual(config.fields[.lastName]?.required, false)
         XCTAssertEqual(config.fields[.firstName]?.label, "First")

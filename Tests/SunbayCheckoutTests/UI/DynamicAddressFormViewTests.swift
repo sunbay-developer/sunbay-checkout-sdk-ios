@@ -98,6 +98,13 @@
             return v
         }
 
+        /// Fills the PostalMockService's required non-postal text fields (line1 / city / state).
+        private func fillRequired(_ v: DynamicAddressFormView) {
+            v.setTextForTest(.line1, "1 Main St")
+            v.setTextForTest(.city, "San Francisco")
+            v.setTextForTest(.state, "CA")
+        }
+
         func test_visibleFields_filtersRows() {
             let v = makeForm(visibleFields: [.country, .line1, .postalCode])
             XCTAssertEqual(v.renderedFieldTypesForTest, [.line1, .postalCode])
@@ -128,6 +135,7 @@
 
         func test_validate_validPostal_returnsTrue_andClearsError() {
             let v = makeForm()
+            fillRequired(v)
             v.setPostalCodeForTest("1234")
             XCTAssertFalse(v.validate())
             v.setPostalCodeForTest("94103")
@@ -137,6 +145,7 @@
 
         func test_countryChange_revalidatesTypedPostal() {
             let v = makeForm()
+            fillRequired(v)
             v.setPostalCodeForTest("94103")
             XCTAssertTrue(v.validate())
             XCTAssertNil(v.postalErrorMessageForTest)
@@ -147,6 +156,7 @@
 
         func test_countryWithoutPostalField_noError_andNoStalePostalInInput() {
             let v = makeForm()
+            fillRequired(v)
             v.setPostalCodeForTest("94103")
             v.selectCountryForTest("HK")
             v.waitForLoadForTest()
@@ -167,6 +177,43 @@
         func test_validate_returnsTrue_afterLoadFailure() {
             let v = makeForm(service: FailingAddressService())
             XCTAssertTrue(v.validate())
+        }
+
+        func test_validate_emptyRequiredFields_showRequiredMessages() {
+            let v = DynamicAddressFormView(
+                appearance: .resolve(.default),
+                localize: { $0 == "sunbay.address.error.requiredFormat" ? "%@ is required." : $0 },
+                service: PostalMockService(), locale: "en-US")
+            v.waitForLoadForTest()
+            v.setPostalCodeForTest("94103")
+            XCTAssertFalse(v.validate())
+            XCTAssertEqual(v.errorMessageForTest(.line1), "line1 is required.")
+            XCTAssertEqual(v.errorMessageForTest(.city), "city is required.")
+            XCTAssertNil(v.postalErrorMessageForTest)
+        }
+
+        func test_simpleMode_emptyLine1_blocks_thenFilledPasses() {
+            let v = makeForm(visibleFields: [.country, .line1, .postalCode])
+            v.setPostalCodeForTest("94103")
+            XCTAssertFalse(v.validate())
+            XCTAssertNotNil(v.errorMessageForTest(.line1))
+            // Fields hidden in simple mode (city / state) are never validated.
+            XCTAssertNil(v.errorMessageForTest(.city))
+            v.setTextForTest(.line1, "1 Main St")
+            XCTAssertTrue(v.validate())
+            XCTAssertNil(v.errorMessageForTest(.line1))
+        }
+
+        func test_optionalField_emptyPasses() {
+            let v = makeForm(service: OptionalLine2Service())
+            v.setTextForTest(.line1, "1 Main St")
+            XCTAssertTrue(v.validate())
+        }
+
+        func test_fieldTitleUsesLabel() {
+            let v = makeForm(service: OptionalLine2Service())
+            XCTAssertEqual(v.titleForTest(.line1), "Address Line 1")
+            XCTAssertEqual(v.titleForTest(.line2), "Address Line 2")
         }
     }
 
@@ -240,6 +287,27 @@
     }
 
     /// US (^[0-9]{5}$, required), CA (Canadian pattern, required) and HK (no postal field).
+    /// A US-like config: required line1 (label differs from placeholder), optional line2, no postal field.
+    private struct OptionalLine2Service: AddressMetadataService {
+        func countries(locale: String?) async throws -> AddressCountryList {
+            AddressCountryList(countries: [AddressCountry(code: "US", name: "United States")], detectedCountry: "US")
+        }
+
+        func countryConfig(countryCode: String, locale: String?) async throws -> AddressCountryConfig {
+            AddressCountryConfig(
+                code: countryCode,
+                fields: [
+                    .line1: AddressFieldConfig(
+                        type: .line1, required: true, pattern: nil, label: "Address Line 1",
+                        placeholder: "Street, P.O. box, company"),
+                    .line2: AddressFieldConfig(
+                        type: .line2, required: false, pattern: nil, label: "Address Line 2",
+                        placeholder: "Apt, suite, unit, floor"),
+                ],
+                layout: [[.country], [.line1], [.line2]], subdivisions: [])
+        }
+    }
+
     private struct PostalMockService: AddressMetadataService {
         func countries(locale: String?) async throws -> AddressCountryList {
             AddressCountryList(

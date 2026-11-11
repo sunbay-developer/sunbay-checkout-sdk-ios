@@ -40,6 +40,7 @@
 "sunbay.address.postalCode.placeholder" = "518000";
 "sunbay.address.postalCode.required" = "请输入邮政编码。";
 "sunbay.address.postalCode.invalid" = "请输入有效的邮政编码。";
+"sunbay.address.error.requiredFormat" = "请填写%@。";
 "sunbay.address.loadError" = "无法加载地址选项。";
 "sunbay.card.informationTitle" = "卡信息";
 "sunbay.card.number" = "卡号";
