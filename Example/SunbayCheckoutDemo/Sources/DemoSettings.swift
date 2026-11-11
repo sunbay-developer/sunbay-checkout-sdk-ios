@@ -291,7 +291,7 @@ struct DemoSettings: Codable, Equatable {
     /// Ask the dev server to create sessions that allow saved cards (the session's card-on-file flag).
     var orderSupportsSavedCards: Bool = true
     /// The user identifier (session `customerId`) saved cards belong to; sent only when saved cards are on.
-    var customerId: String = "sunbay-ios-dev-customer"
+    var customerId: String = "example-user@sunbay.us"
     /// Pass a fixed US test billing address to `PaymentSheet(billingAddress:)`.
     var passHostBillingAddress: Bool = false
     /// Pass a fixed, complete US test shipping address (with names and phone) to `PaymentSheet(shippingAddress:)`.

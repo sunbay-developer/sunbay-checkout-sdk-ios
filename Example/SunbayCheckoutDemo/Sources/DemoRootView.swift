@@ -259,7 +259,7 @@ import SunbayCheckoutTestSupport
                     HStack {
                         Text("User ID")
                         Spacer()
-                        TextField("sunbay-ios-dev-customer", text: $settings.customerId)
+                        TextField("", text: $settings.customerId)
                             .multilineTextAlignment(.trailing)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled(true)
