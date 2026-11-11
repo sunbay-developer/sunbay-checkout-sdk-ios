@@ -11,13 +11,13 @@
       "post": {
         "summary": "加载 Checkout 会话",
         "deprecated": false,
-        "description": "<p>\n此接口用于前端支付页面加载会话信息，\n返回渲染页面所需的所有信息（如商品信息、支持的支付方式等）",
+        "description": "<p>\n返回渲染支付页面所需的全部信息（商品信息、支持的支付方式、商户信息等）。\nEmbedded / SDK 场景须在请求体中携带 checkoutClientSecret，服务端校验后返回；\nHPP 场景不传 checkoutClientSecret，服务端跳过令牌校验。",
         "tags": [],
         "parameters": [
           {
             "name": "sessionId",
             "in": "path",
-            "description": "HPP 会话 ID",
+            "description": "会话 ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -29,7 +29,7 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/LoadSessionReq",
-                "description": ""
+                "description": "请求体（Embedded / SDK 场景携带 checkoutClientSecret）"
               }
             }
           }
@@ -41,7 +41,7 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ResultLoadSessionResp",
-                  "description": "会话信息"
+                  "description": "会话信息（含商品、金额、支付方式列表、商户信息）"
                 }
               }
             }
@@ -54,13 +54,13 @@
       "post": {
         "summary": "加载 Pay By Link 会话",
         "deprecated": false,
-        "description": "<p>\n此接口用于 Pay By Link 加载前端页面，\n返回渲染页面所需的所有信息（如商品信息、支持的支付方式等）",
+        "description": "<p>\n通过支付链接 ID 加载对应会话，返回渲染支付页面所需的全部信息。\nPay By Link 场景无需令牌，服务端直接返回会话信息。",
         "tags": [],
         "parameters": [
           {
             "name": "linkId",
             "in": "path",
-            "description": "链接 ID",
+            "description": "支付链接 ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -84,7 +84,7 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ResultLoadSessionResp",
-                  "description": "会话信息"
+                  "description": "会话信息（含商品、金额、支付方式列表、商户信息）"
                 }
               }
             }
@@ -97,7 +97,7 @@
       "post": {
         "summary": "提交支付",
         "deprecated": false,
-        "description": "<p>\n此接口用于前端提交支付信息：验证 Session 有效性、验证地址采集配置、\n调用交易系统创建订单、更新 Session 状态、返回支付结果",
+        "description": "<p>\n支持新卡支付（CARD / GOOGLE_PAY / APPLE_PAY）和已存卡支付（TOKEN）两种路径。\n新卡支付须携带加密卡数据；TOKEN 支付须携带 savedCardId 和 customerAccessSecret。\nEmbedded / SDK 场景新卡支付须额外携带 checkoutClientSecret。\n<p>\n支付状态说明：S - 成功；F - 失败；R - 需要后续操作（见 action 字段）。",
         "tags": [],
         "parameters": [],
         "requestBody": {
@@ -117,7 +117,7 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ResultSubmitSessionPaymentResp",
-                  "description": "支付结果"
+                  "description": "支付结果（含 txnId、txnStatus，状态为 R 时含 action）"
                 }
               }
             }
@@ -130,13 +130,13 @@
       "post": {
         "summary": "查询支付结果",
         "deprecated": false,
-        "description": "<p>\n此接口用于前端查询支付结果，主要用于轮询或异步获取支付状态",
+        "description": "<p>\n用于前端轮询或异步获取支付状态。支付状态为终态（S / F）前可持续轮询，\n状态为 R 时表示需要等待后续操作完成。",
         "tags": [],
         "parameters": [
           {
             "name": "sessionId",
             "in": "path",
-            "description": "会话ID",
+            "description": "会话 ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -160,7 +160,7 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ResultSubmitSessionPaymentResp",
-                  "description": "支付结果"
+                  "description": "支付结果（含 txnId、txnStatus）"
                 }
               }
             }
@@ -173,7 +173,7 @@
       "post": {
         "summary": "列出已保存卡片（Card on File）",
         "deprecated": false,
-        "description": "<p>\niOS SDK 携带有效的 customerAccessSecret（含 card:list scope）调用本接口，\n返回当前 Customer 在本商户下已保存的卡片列表。\n响应中使用不透明的 savedCardId，不暴露真实 tokenId。",
+        "description": "<p>\nSDK 携带有效的 customerAccessSecret 调用本接口，查询当前 Customer 在本商户下已保存的卡片列表。\n响应中使用不透明的 savedCardId 替代真实 tokenId，防止令牌泄露；\n用卡支付时将 savedCardId 传入 submitPayment 接口。",
         "tags": [],
         "parameters": [],
         "requestBody": {
@@ -193,7 +193,40 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ResultCardListResp",
-                  "description": "卡片列表"
+                  "description": "卡片列表（含 savedCardId、脱敏卡号、卡品牌、过期日）"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/checkout/web/card/bin/recognize": {
+      "post": {
+        "summary": "识别卡BIN",
+        "deprecated": false,
+        "description": "<p>\n前端传入卡BIN（6~9 位数字），服务端调用内部卡BIN服务识别其卡品牌、卡类型等信息。\n识别失败（未命中）时返回字段为空的响应。",
+        "tags": [],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CardBinRecognizeReq",
+                "description": "卡BIN识别请求（含 bin）"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultCardBinRecognizeResp",
+                  "description": "卡品牌识别结果（含 cardScheme、cardType 等）"
                 }
               }
             }
@@ -226,6 +259,100 @@
           }
         }
       },
+      "LoadSessionResp": {
+        "type": "object",
+        "properties": {
+          "linkId": {
+            "type": "string",
+            "description": "链接ID"
+          },
+          "sessionId": {
+            "type": "string",
+            "description": "会话ID"
+          },
+          "rsaPublicKey": {
+            "type": "string",
+            "description": "手输卡号加密key"
+          },
+          "sessionType": {
+            "type": "string",
+            "description": "会话类型"
+          },
+          "currency": {
+            "type": "string",
+            "description": "货币类型"
+          },
+          "totalAmount": {
+            "type": "number",
+            "description": "支付总金额（用户全部支付金额）"
+          },
+          "productAmount": {
+            "type": "number",
+            "description": "商品小计（major units，不含税费）"
+          },
+          "productList": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Product",
+              "description": "com.sunmi.common.facade.entity.transaction.Product"
+            },
+            "description": "商品列表"
+          },
+          "taxAmount": {
+            "type": "number",
+            "description": "税费金额"
+          },
+          "surchargeAmount": {
+            "type": "number",
+            "description": "附加费金额"
+          },
+          "tipAmount": {
+            "type": "number",
+            "description": "小费金额"
+          },
+          "description": {
+            "type": "string",
+            "description": "订单描述"
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "过期时间"
+          },
+          "collectBillingAddress": {
+            "type": "boolean",
+            "description": "是否采集账单地址"
+          },
+          "collectShippingAddress": {
+            "type": "boolean",
+            "description": "是否采集邮寄地址"
+          },
+          "supportStoreCard": {
+            "type": "boolean",
+            "description": "本次会话是否支持保存卡片（Store Card / Card on File），前端据此回显是否展示\"保存卡片\"选项。\n同时随会话写入缓存，支付提交时据此决定是否允许 storeCard 生效。",
+            "default": false
+          },
+          "paymentMethods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PaymentMethodInfo",
+              "description": "支付方式信息"
+            },
+            "description": "支持的支付方式列表（根据用户国家或商户国家返回）"
+          },
+          "merchantName": {
+            "type": "string",
+            "description": "商户名称"
+          },
+          "merchantLogoUrl": {
+            "type": "string",
+            "description": "商户 Logo URL"
+          },
+          "merchantReturnUrl": {
+            "type": "string",
+            "description": "商户返回 URL"
+          }
+        }
+      },
       "QrData": {
         "type": "object",
         "properties": {
@@ -236,6 +363,15 @@
           "qrUrl": {
             "type": "string",
             "description": ""
+          }
+        }
+      },
+      "LoadSessionReq": {
+        "type": "object",
+        "properties": {
+          "checkoutClientSecret": {
+            "type": "string",
+            "description": "SDK 场景下携带；HPP 场景不传，服务端跳过校验"
           }
         }
       },
@@ -324,6 +460,10 @@
             "type": "string",
             "description": "名字"
           },
+          "middleName": {
+            "type": "string",
+            "description": "中间名 - 可选"
+          },
           "lastName": {
             "type": "string",
             "description": "姓氏"
@@ -407,148 +547,21 @@
           }
         }
       },
-      "LoadSessionResp": {
+      "ApplePayInfo": {
         "type": "object",
         "properties": {
-          "linkId": {
+          "merchantIdentifier": {
             "type": "string",
-            "description": "链接ID"
-          },
-          "sessionId": {
-            "type": "string",
-            "description": "会话ID"
-          },
-          "rsaPublicKey": {
-            "type": "string",
-            "description": "手输卡号加密key"
-          },
-          "sessionType": {
-            "type": "string",
-            "description": "会话类型"
-          },
-          "currency": {
-            "type": "string",
-            "description": "货币类型"
-          },
-          "totalAmount": {
-            "type": "number",
-            "description": "支付总金额（用户全部支付金额）"
-          },
-          "productAmount": {
-            "type": "number",
-            "description": "商品小计（major units，不含税费）"
-          },
-          "productList": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Product",
-              "description": "com.sunmi.common.facade.entity.transaction.Product"
-            },
-            "description": "商品列表"
-          },
-          "taxAmount": {
-            "type": "number",
-            "description": "税费金额"
-          },
-          "surchargeAmount": {
-            "type": "number",
-            "description": "附加费金额"
-          },
-          "tipAmount": {
-            "type": "number",
-            "description": "小费金额"
-          },
-          "description": {
-            "type": "string",
-            "description": "订单描述"
-          },
-          "expiresAt": {
-            "type": "string",
-            "description": "过期时间"
-          },
-          "collectBillingAddress": {
-            "type": "boolean",
-            "description": "是否采集账单地址"
-          },
-          "collectShippingAddress": {
-            "type": "boolean",
-            "description": "是否采集邮寄地址"
-          },
-          "storeCard": {
-            "type": "boolean",
-            "description": "是否保存该卡片（Store Card / Card on File），用于后续交易复用",
-            "default": false
-          },
-          "paymentMethods": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PaymentMethodInfo",
-              "description": "支付方式信息"
-            },
-            "description": "支持的支付方式列表（根据用户国家或商户国家返回）"
-          },
-          "merchantName": {
-            "type": "string",
-            "description": "商户名称"
-          },
-          "merchantLogoUrl": {
-            "type": "string",
-            "description": "商户 Logo URL"
-          },
-          "merchantReturnUrl": {
-            "type": "string",
-            "description": "商户返回 URL"
+            "description": "钱包侧商户标识（Apple merchantIdentifier），由客户端从 Apple 获取。\n可选；当前解密侧使用服务端配置的 platformIntegratorId，暂不消费本字段。"
           }
         }
       },
-      "ResultLoadSessionResp": {
+      "DigitalWalletInfo": {
         "type": "object",
         "properties": {
-          "code": {
-            "type": "string",
-            "description": ""
-          },
-          "msg": {
-            "type": "string",
-            "description": ""
-          },
-          "data": {
-            "$ref": "#/components/schemas/LoadSessionResp",
-            "description": ""
-          },
-          "traceId": {
-            "type": "string",
-            "description": ""
-          }
-        }
-      },
-      "LoadSessionReq": {
-        "type": "object",
-        "properties": {
-          "checkoutClientSecret": {
-            "type": "string",
-            "description": "SDK 场景下携带；HPP 场景不传，服务端跳过校验"
-          }
-        }
-      },
-      "ResultSubmitSessionPaymentResp": {
-        "type": "object",
-        "properties": {
-          "code": {
-            "type": "string",
-            "description": ""
-          },
-          "msg": {
-            "type": "string",
-            "description": ""
-          },
-          "data": {
-            "$ref": "#/components/schemas/SubmitSessionPaymentResp",
-            "description": ""
-          },
-          "traceId": {
-            "type": "string",
-            "description": ""
+          "applePay": {
+            "$ref": "#/components/schemas/ApplePayInfo",
+            "description": "Apple Pay 相关信息"
           }
         }
       },
@@ -608,6 +621,10 @@
           "checkoutClientSecret": {
             "type": "string",
             "description": "Checkout 客户端密钥，新卡支付 SDK 场景携带；HPP 不传则跳过校验"
+          },
+          "digitalWalletInfo": {
+            "$ref": "#/components/schemas/DigitalWalletInfo",
+            "description": "数字钱包信息，paymentMethod = GOOGLE_PAY / APPLE_PAY 时使用（可选，当前解密侧暂不消费）"
           }
         },
         "required": [
@@ -615,6 +632,104 @@
           "sessionType",
           "paymentMethod"
         ]
+      },
+      "CardBinRecognizeResp": {
+        "type": "object",
+        "properties": {
+          "cardScheme": {
+            "type": "string",
+            "description": "卡品牌：VISA / MASTERCARD / AMEX / DISCOVER / JCB / DINERSCLUB / UNIONPAY"
+          },
+          "cardType": {
+            "type": "string",
+            "description": "卡类型（借记卡 / 信用卡等）"
+          },
+          "issuerName": {
+            "type": "string",
+            "description": "发卡行名称"
+          }
+        }
+      },
+      "ResultCardBinRecognizeResp": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": ""
+          },
+          "msg": {
+            "type": "string",
+            "description": ""
+          },
+          "data": {
+            "$ref": "#/components/schemas/CardBinRecognizeResp",
+            "description": ""
+          },
+          "traceId": {
+            "type": "string",
+            "description": ""
+          }
+        }
+      },
+      "CardBinRecognizeReq": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "description": "关联的 Session ID（必填）\n<p>\n仅 Embedded / SDK 场景调用，须关联一个有效 Session。"
+          },
+          "bin": {
+            "type": "string",
+            "description": "卡BIN，6~9 位数字（必填）",
+            "pattern": "^\\d{6,9}$"
+          }
+        },
+        "required": [
+          "sessionId",
+          "bin"
+        ]
+      },
+      "ResultLoadSessionResp": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": ""
+          },
+          "msg": {
+            "type": "string",
+            "description": ""
+          },
+          "data": {
+            "$ref": "#/components/schemas/LoadSessionResp",
+            "description": ""
+          },
+          "traceId": {
+            "type": "string",
+            "description": ""
+          }
+        }
+      },
+      "ResultSubmitSessionPaymentResp": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": ""
+          },
+          "msg": {
+            "type": "string",
+            "description": ""
+          },
+          "data": {
+            "$ref": "#/components/schemas/SubmitSessionPaymentResp",
+            "description": ""
+          },
+          "traceId": {
+            "type": "string",
+            "description": ""
+          }
+        }
       },
       "ResultCardListResp": {
         "type": "object",
