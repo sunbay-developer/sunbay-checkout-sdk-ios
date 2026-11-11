@@ -40,6 +40,7 @@
 "sunbay.address.postalCode.placeholder" = "94103";
 "sunbay.address.postalCode.required" = "Enter a postal code.";
 "sunbay.address.postalCode.invalid" = "Enter a valid postal code.";
+"sunbay.address.error.requiredFormat" = "%@ is required.";
 "sunbay.address.loadError" = "Couldn't load address options.";
 "sunbay.card.informationTitle" = "Card information";
 "sunbay.card.number" = "Card number";

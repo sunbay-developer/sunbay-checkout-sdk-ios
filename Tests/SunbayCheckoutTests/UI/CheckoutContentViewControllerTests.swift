@@ -1465,8 +1465,9 @@
                 service: NameLayoutAddressService(postalRequired: false))
             let billingForm = vc.billingAddressViewForTest as? DynamicAddressFormView
             XCTAssertNotNil(billingForm)
-            // Pay from the loaded state: the postal field is optional, so an empty form passes validation.
+            // Pay from the loaded state: the postal field is optional, so only the required line1 is filled.
             billingForm?.waitForLoadForTest()
+            billingForm?.setTextForTest(.line1, "1 Main St")
             vc.fillCardForTest()
             vc.sendTouchOnPayButtonForTest()
             guard case let .confirmNewCard(_, _, _, _, billingShown, shippingShown)? = delegate.action else {
@@ -1541,6 +1542,7 @@
             let (vc, delegate) = makeVC(billing: .simple, shipping: .off, service: UsPostalAddressService())
             let billing = vc.billingAddressViewForTest as? DynamicAddressFormView
             billing?.waitForLoadForTest()
+            billing?.setTextForTest(.line1, "1 Main St")
             billing?.setPostalCodeForTest("94103")
             vc.fillCardForTest()
             vc.sendTouchOnPayButtonForTest()
@@ -1559,6 +1561,7 @@
             XCTAssertEqual(vc.currentViewState, .editing)
 
             billing?.waitForLoadForTest()
+            billing?.setTextForTest(.line1, "1 Main St")
             billing?.setPostalCodeForTest("94103")
             vc.sendTouchOnPayButtonForTest()
             guard case let .confirmNewCard(_, _, billingInput, _, _, _)? = delegate.action else {
@@ -1592,6 +1595,7 @@
             XCTAssertNil(delegate.action)
             XCTAssertEqual(billing?.postalErrorMessageForTest, "sunbay.address.postalCode.required")
 
+            billing?.setTextForTest(.line1, "1 Main St")
             billing?.setPostalCodeForTest("12345")
             vc.sendTouchOnPayButtonForTest()
             guard case let .confirmNewCard(_, _, billingInput, _, _, _)? = delegate.action else {

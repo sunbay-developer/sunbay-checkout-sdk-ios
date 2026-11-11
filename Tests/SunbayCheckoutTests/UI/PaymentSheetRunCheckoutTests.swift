@@ -568,9 +568,11 @@
             content.loadViewIfNeeded()
             content.openNewCardForTest()
             content.fillCardForTest()
-            // The fallback address config requires a postal code, so fill the loaded forms before Pay.
-            (content.billingAddressViewForTest as? DynamicAddressFormView)?.setPostalCodeForTest("94103")
-            (content.shippingAddressViewForTest as? DynamicAddressFormView)?.setPostalCodeForTest("94103")
+            // The fallback address config requires line1 and a postal code, so fill the loaded forms before Pay.
+            for form in [content.billingAddressViewForTest, content.shippingAddressViewForTest] {
+                (form as? DynamicAddressFormView)?.setTextForTest(.line1, "1 Main St")
+                (form as? DynamicAddressFormView)?.setPostalCodeForTest("94103")
+            }
             content.simulateTapPay()
 
             XCTAssertEqual(observed, .processing)

@@ -606,7 +606,11 @@
             // Validate every shown address form (no short-circuit, so each shows its own error).
             let addressViews = [billingAddressView, shippingAddressView].compactMap { $0 as? DynamicAddressFormView }
             let addressResults = addressViews.map { $0.validate() }
-            guard addressResults.allSatisfy({ $0 }) else { return }
+            guard addressResults.allSatisfy({ $0 }) else {
+                // Bring the first offending address field up (billing before shipping).
+                _ = addressViews.first(where: { $0.focusFirstError() })
+                return
+            }
             let save = saveCardSwitch?.isOn ?? false
             let billing = formAddress(from: billingAddressView)
             // The shipping form's own values; nil when there is no shipping section.
