@@ -257,12 +257,12 @@
             XCTAssertNil(delegate.lastRequestedAction)
         }
 
-        /// "View more" is shown only when there are 2+ saved cards; a single saved card is shown
-        /// (pre-selected) with no "View more".
-        func test_viewMore_visibleOnlyForMultipleCards() {
+        /// "View more" is shown for any number of saved cards (the full list is where cards are managed);
+        /// a single saved card is pre-selected and still has "View more".
+        func test_viewMore_visibleForAnySavedCards() {
             let one = makeVC(savedCards: [sampleSavedCards()[0]])
             one.loadViewIfNeeded()
-            XCTAssertFalse(one.isViewMoreVisibleForTest)
+            XCTAssertTrue(one.isViewMoreVisibleForTest)
             XCTAssertEqual(one.highlightedSavedCardIdForTest, "pm_1")
 
             let many = makeVC(savedCards: sampleSavedCards())

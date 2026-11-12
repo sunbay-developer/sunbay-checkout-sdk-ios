@@ -52,6 +52,9 @@
         /// Forwards the coarse presentation state to `PaymentSheet.onStateChange`.
         var onStateChange: ((CheckoutPresentationState) -> Void)?
 
+        /// Performs a saved-card delete (wired by `PaymentSheet` to `CheckoutController`).
+        var onDeleteSavedCard: (@Sendable (String) async -> Result<Void, CheckoutError>)?
+
         // MARK: - Injected
 
         private let content: CheckoutContentViewController
@@ -222,6 +225,17 @@
         func content(_ content: CheckoutContentViewController, didChangeState state: CheckoutPresentationState) {
             isSucceeded = (state == .succeeded)
             onStateChange?(state)
+        }
+
+        func content(
+            _ content: CheckoutContentViewController, didRequestDeleteSavedCard id: String,
+            completion: @escaping @MainActor (Result<Void, CheckoutError>) -> Void
+        ) {
+            let delete = onDeleteSavedCard
+            Task { @MainActor in
+                let result = await delete?(id) ?? .failure(CheckoutErrors.cardDeleteUnsupported())
+                completion(result)
+            }
         }
 
         // MARK: - Finish

@@ -16,11 +16,14 @@
         var onBack: (() -> Void)?
         /// Invoked when the close button is tapped.
         var onClose: (() -> Void)?
+        /// Invoked when the trailing text action (for example "Manage" / "Done") is tapped.
+        var onAction: (() -> Void)?
 
         private let appearance: ResolvedAppearance
 
         private let backButton = UIButton(type: .system)
         private let closeButton = UIButton(type: .system)
+        private let actionButton = UIButton(type: .system)
         private let titleLabel = UILabel()
 
         /// Creates the header with resolved appearance tokens and a localization closure.
@@ -45,6 +48,26 @@
         func setTitle(_ title: String) {
             titleLabel.text = title
         }
+
+        /// Sets the trailing text action (it takes the close button's slot); nil hides it.
+        ///
+        /// - Parameter title: The localized title, or nil to hide the action.
+        func setActionTitle(_ title: String?) {
+            actionButton.setTitle(title, for: .normal)
+            actionButton.accessibilityLabel = title
+            actionButton.isHidden = title == nil
+        }
+
+        /// Enables or disables the trailing text action (locked while a confirm is in flight).
+        func setActionEnabled(_ enabled: Bool) {
+            actionButton.isEnabled = enabled
+            actionButton.alpha = enabled ? 1.0 : 0.4
+        }
+
+        #if DEBUG
+            /// Test readout: the visible action title, or nil when hidden.
+            var actionTitleForTest: String? { actionButton.isHidden ? nil : actionButton.title(for: .normal) }
+        #endif
 
         /// Enables or disables the back button (locked while a confirm is in flight).
         ///
@@ -119,6 +142,13 @@
             closeButton.translatesAutoresizingMaskIntoConstraints = false
             closeButton.addTarget(self, action: #selector(handleClose), for: .touchUpInside)
 
+            actionButton.titleLabel?.font = appearance.cardFieldFont
+            actionButton.setTitleColor(appearance.text, for: .normal)
+            actionButton.contentHorizontalAlignment = .trailing
+            actionButton.isHidden = true
+            actionButton.translatesAutoresizingMaskIntoConstraints = false
+            actionButton.addTarget(self, action: #selector(handleAction), for: .touchUpInside)
+
             titleLabel.font = appearance.titleFont
             titleLabel.textColor = appearance.text
             titleLabel.textAlignment = .center
@@ -128,6 +158,7 @@
             addSubview(backButton)
             addSubview(titleLabel)
             addSubview(closeButton)
+            addSubview(actionButton)
 
             NSLayoutConstraint.activate([
                 // Back / close / title share one row: all vertically centered and aligned with each other.
@@ -143,6 +174,12 @@
                 closeButton.widthAnchor.constraint(equalToConstant: 28),
                 closeButton.heightAnchor.constraint(equalToConstant: 28),
 
+                actionButton.trailingAnchor.constraint(equalTo: trailingAnchor),
+                actionButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+                actionButton.heightAnchor.constraint(equalToConstant: 28),
+                actionButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
+                titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: actionButton.leadingAnchor, constant: -8),
+
                 titleLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
                 titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
                 titleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: backButton.trailingAnchor, constant: 8),
@@ -156,6 +193,16 @@
 
         @objc private func handleBack() {
             onBack?()
+        }
+
+        /// Extends the touch area vertically by 8 pt each side so the 28 pt-high header buttons reach the
+        /// 44 pt minimum target.
+        override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+            bounds.insetBy(dx: 0, dy: -8).contains(point)
+        }
+
+        @objc private func handleAction() {
+            onAction?()
         }
 
         @objc private func handleClose() {

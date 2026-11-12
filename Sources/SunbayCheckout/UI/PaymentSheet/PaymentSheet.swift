@@ -309,7 +309,8 @@
                 onWalletParamsInvalid: { [controller] missing in
                     Task { await controller.reportWalletParamsInvalid(missing: missing) }
                 },
-                onStateChange: { [weak self] state in self?.onStateChange?(state) }
+                onStateChange: { [weak self] state in self?.onStateChange?(state) },
+                deleteSavedCard: { [controller] id in await controller.deleteSavedCard(id: id) }
             )
 
             // Drive attempts until the content finishes (success auto-close / cancel) or the sheet is
@@ -571,6 +572,7 @@
         private let walletContacts: @Sendable (Bool, Bool) async -> WalletContactRequest
         private let onWalletParamsInvalid: @Sendable ([String]) -> Void
         private let onStateChange: (CheckoutPresentationState) -> Void
+        private let deleteSavedCard: @Sendable (String) async -> Result<Void, CheckoutError>
 
         /// At most ONE user action that arrived while no one was suspended on `awaitEvent` (e.g. a Pay tap
         /// in the unlock window after a `.failed`, while the loop is still reloading the session). It is
@@ -602,8 +604,10 @@
             walletMerchantId: String?,
             walletContacts: @escaping @Sendable (Bool, Bool) async -> WalletContactRequest,
             onWalletParamsInvalid: @escaping @Sendable ([String]) -> Void,
-            onStateChange: @escaping (CheckoutPresentationState) -> Void
+            onStateChange: @escaping (CheckoutPresentationState) -> Void,
+            deleteSavedCard: @escaping @Sendable (String) async -> Result<Void, CheckoutError>
         ) {
+            self.deleteSavedCard = deleteSavedCard
             self.presenter = presenter
             self.appearance = appearance
             self.localize = localize
@@ -687,6 +691,7 @@
             containerVC.onStateChange = { [weak self] state in
                 self?.onStateChange(state)
             }
+            containerVC.onDeleteSavedCard = deleteSavedCard
 
             content = contentVC
             container = containerVC
