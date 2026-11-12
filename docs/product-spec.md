@@ -264,6 +264,12 @@ UI 层拆成两层,单向依赖 `Container → Content → Theme`:
 - **Content 层**——host-agnostic、可复用的支付 UI(`CheckoutContentViewController` + 各组件),
   只通过 `CheckoutContentDelegate` 回报,不依赖容器。这正是 **L2 内嵌零返工**的接缝:将来加一个
   内嵌容器复用同一 Content 即可。
+- **Session layer (Core, UI-agnostic)** — `Core/Session/`: `CheckoutSessionDriver` (session load, payment-method
+  filtering, COF listing, host-address resolution, confirm dispatch, close-outcome policy), `UserActionChannel`
+  (user-action hand-off: at most one buffered action, first wins, cancel always wins), `SavedCardSelection`
+  (saved-card order / selection / default / expiry / delete state) and the shared types `CheckoutUserAction`,
+  `CheckoutSessionContext` and friends. `PaymentSheet` owns one driver and keeps its own retry loop (sheet
+  policy); the future `EmbeddedPaymentElement` and `FlowController` reuse the same driver.
 
 #### Address collection (visibility and style)
 
