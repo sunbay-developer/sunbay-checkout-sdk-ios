@@ -747,6 +747,18 @@ Field mapping to `SavedCard`: `savedCardId` -> `id` (the value passed to `confir
 `expMonth`, `expiryYear` (two digits expanded to four) -> `expYear`. `cardholderName` is not displayed.
 An item with an invalid required field is skipped. `data: {}` and `cards: []` both mean no saved cards.
 
+`logoUrl` (optional, not yet returned by the backend) -> `SavedCard.logoUrl`: only a valid http(s) URL is kept; an
+invalid or missing value never drops the card.
+
+Saved-card UI: each row shows the brand logo (loaded with an in-memory-only loader; the text brand name is the
+fallback when there is no logo or it fails to load). The home summary always offers "More" (one or more cards), which
+opens the full list. The full list's header has "Manage" / "Done": in manage mode every row (including expired
+ones) shows a delete button instead of the expiry and rows are not selectable. Delete asks for confirmation, then
+calls `CofService.deleteCard` (through `CheckoutController`); on success the row is removed (a deleted selected card
+clears the selection; removing the last card returns home), on failure the card stays and a notice is shown.
+`CofService.deleteCard` has a default implementation that throws `CARD_DELETE_UNSUPPORTED`, and
+`HTTPCofService.deleteCard` is a stub until the backend endpoint exists (see the integration checklist).
+
 Errors (HTTP 200 with a business code): a wrong secret returns `S06` (Unauthorized); a missing secret
 returns `C16`. The scope is derived from the credentials; the client never sends a customer id.
 

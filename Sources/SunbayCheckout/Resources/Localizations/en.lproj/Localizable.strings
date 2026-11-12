@@ -53,6 +53,12 @@
 "sunbay.cof.newPaymentMethod" = "New card";
 "sunbay.cof.viewMore" = "More";
 "sunbay.cof.expired" = "Expired";
+"sunbay.cof.manage" = "Manage";
+"sunbay.cof.done" = "Done";
+"sunbay.cof.delete" = "Delete";
+"sunbay.cof.deleteConfirmTitle" = "Delete this card?";
+"sunbay.cof.deleteConfirmMessage" = "%@ will be removed from your saved cards.";
+"sunbay.cof.deleteFailed" = "Couldn't delete the card. Please try again.";
 "sunbay.common.retry" = "Retry";
 "sunbay.sheet.back" = "Back";
 "sunbay.sheet.close" = "Close";

@@ -15,6 +15,8 @@ public struct SavedCard: Sendable, Equatable {
     public let expMonth: Int
     /// Expiry year.
     public let expYear: Int
+    /// URL of the card brand's logo, when the backend provides one (nil otherwise).
+    public let logoUrl: URL?
 
     /// Creates saved card display information.
     ///
@@ -24,11 +26,13 @@ public struct SavedCard: Sendable, Equatable {
     ///   - last4: Last four digits of the card number.
     ///   - expMonth: Expiry month.
     ///   - expYear: Expiry year.
-    public init(id: String, brand: String, last4: String, expMonth: Int, expYear: Int) {
+    ///   - logoUrl: URL of the card brand's logo, if any.
+    public init(id: String, brand: String, last4: String, expMonth: Int, expYear: Int, logoUrl: URL? = nil) {
         self.id = id
         self.brand = brand
         self.last4 = last4
         self.expMonth = expMonth
         self.expYear = expYear
+        self.logoUrl = logoUrl
     }
 }

@@ -47,6 +47,16 @@ enum CheckoutErrors {
         )
     }
 
+    /// Deleting a saved card is not supported by this `CofService`.
+    static func cardDeleteUnsupported() -> CheckoutError {
+        CheckoutError(
+            code: "CARD_DELETE_UNSUPPORTED",
+            message: "Deleting a saved card is not supported.",
+            category: .runtime,
+            traceId: nil
+        )
+    }
+
     /// Network unavailable / submit or query failed.
     static func networkUnavailable() -> CheckoutError {
         CheckoutError(
@@ -246,6 +256,29 @@ actor CheckoutController {
                     traceId: nil)
             reporter?.error(reported, sessionId: session.id)
             return []
+        }
+    }
+
+    /// Deletes a saved card (COF management).
+    ///
+    /// Requires an effective COF decision and a held credential, otherwise fails with
+    /// `CARD_ON_FILE_UNAVAILABLE`. Failures are reported (no secret) and returned; this never throws.
+    func deleteSavedCard(id: String) async -> Result<Void, CheckoutError> {
+        guard let session, cofEffective, let secret = await credentials.current() else {
+            return .failure(CheckoutErrors.cardOnFileUnavailable())
+        }
+        do {
+            try await cofService.deleteCard(savedCardId: id, customerAccessSecret: secret, sessionId: session.id)
+            return .success(())
+        } catch {
+            let reported = (error as? CheckoutError)
+                ?? CheckoutError(
+                    code: "SAVED_CARD_DELETE_FAILED",
+                    message: "The saved card could not be deleted.",
+                    category: .network,
+                    traceId: nil)
+            reporter?.error(reported, sessionId: session.id)
+            return .failure(reported)
         }
     }
 

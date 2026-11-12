@@ -19,4 +19,21 @@ public protocol CofService: Sendable {
     ///   - sessionId: Session identifier.
     /// - Returns: A list of saved card display information.
     func listPaymentMethods(customerAccessSecret: String, sessionId: String) async throws -> [SavedCard]
+
+    /// Deletes (unbinds) a saved card.
+    ///
+    /// The default implementation throws a "not supported" `CheckoutError`, so existing host
+    /// implementations keep compiling.
+    ///
+    /// - Parameters:
+    ///   - savedCardId: Identifier of the saved card to delete.
+    ///   - customerAccessSecret: Customer Grant credential (held in memory only, see §7.6).
+    ///   - sessionId: Session identifier.
+    func deleteCard(savedCardId: String, customerAccessSecret: String, sessionId: String) async throws
+}
+
+public extension CofService {
+    func deleteCard(savedCardId: String, customerAccessSecret: String, sessionId: String) async throws {
+        throw CheckoutErrors.cardDeleteUnsupported()
+    }
 }

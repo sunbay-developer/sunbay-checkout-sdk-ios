@@ -70,5 +70,27 @@
         ///   - content: The reporting content view controller.
         ///   - state: The new public presentation state.
         func content(_ content: CheckoutContentViewController, didChangeState state: CheckoutPresentationState)
+
+        /// The user confirmed deleting a saved card.
+        ///
+        /// The delegate performs the delete (through `CheckoutController`) and calls `completion` on the
+        /// main actor with the result. The default implementation fails with "not supported".
+        ///
+        /// - Parameters:
+        ///   - content: The reporting content view controller.
+        ///   - id: The saved card identifier.
+        ///   - completion: Delivers success or the failure to the content.
+        func content(
+            _ content: CheckoutContentViewController, didRequestDeleteSavedCard id: String,
+            completion: @escaping @MainActor (Result<Void, CheckoutError>) -> Void)
+    }
+
+    extension CheckoutContentDelegate {
+        func content(
+            _ content: CheckoutContentViewController, didRequestDeleteSavedCard id: String,
+            completion: @escaping @MainActor (Result<Void, CheckoutError>) -> Void
+        ) {
+            completion(.failure(CheckoutErrors.cardDeleteUnsupported()))
+        }
     }
 #endif

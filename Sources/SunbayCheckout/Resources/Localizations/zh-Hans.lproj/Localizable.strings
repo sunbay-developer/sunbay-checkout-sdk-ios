@@ -53,6 +53,12 @@
 "sunbay.cof.newPaymentMethod" = "新卡";
 "sunbay.cof.viewMore" = "查看更多";
 "sunbay.cof.expired" = "已过期";
+"sunbay.cof.manage" = "管理";
+"sunbay.cof.done" = "完成";
+"sunbay.cof.delete" = "删除";
+"sunbay.cof.deleteConfirmTitle" = "删除这张卡？";
+"sunbay.cof.deleteConfirmMessage" = "%@ 将从已保存的卡片中移除。";
+"sunbay.cof.deleteFailed" = "删除失败，请重试。";
 "sunbay.common.retry" = "重试";
 "sunbay.sheet.back" = "返回";
 "sunbay.sheet.close" = "关闭";

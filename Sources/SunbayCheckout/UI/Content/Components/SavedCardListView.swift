@@ -22,6 +22,12 @@
 
         private let appearance: ResolvedAppearance
         private var rows: [SavedCardRow] = []
+        private let stack = UIStackView()
+        private let logoLoader: CardBrandLogoLoader?
+        private let deleteLabel: String
+
+        /// Invoked with the card id when a row's delete button (manage mode) is tapped.
+        var onDelete: ((String) -> Void)?
 
         /// Creates the saved-card list.
         ///
@@ -30,7 +36,12 @@
         ///   - cards: The saved cards to list.
         ///   - expiredText: Returns the localized "Expired" label for an expired card, or nil when the
         ///     card is usable. Expired rows are dimmed and cannot be selected.
-        init(appearance: ResolvedAppearance, cards: [SavedCard], expiredText: (SavedCard) -> String? = { _ in nil }) {
+        init(
+            appearance: ResolvedAppearance, cards: [SavedCard], logoLoader: CardBrandLogoLoader? = nil,
+            deleteLabel: String = "", expiredText: (SavedCard) -> String? = { _ in nil }
+        ) {
+            self.logoLoader = logoLoader
+            self.deleteLabel = deleteLabel
             self.appearance = appearance
             super.init(frame: .zero)
             configureSubviews(cards: cards, expiredText: expiredText)
@@ -42,7 +53,6 @@
         }
 
         private func configureSubviews(cards: [SavedCard], expiredText: (SavedCard) -> String?) {
-            let stack = UIStackView()
             stack.axis = .vertical
             stack.spacing = 8
             stack.translatesAutoresizingMaskIntoConstraints = false
@@ -56,7 +66,10 @@
             ])
 
             for card in cards {
-                let row = SavedCardRow(appearance: appearance, card: card, expiredText: expiredText(card))
+                let row = SavedCardRow(
+                    appearance: appearance, card: card, expiredText: expiredText(card),
+                    logoLoader: logoLoader, deleteLabel: deleteLabel)
+                row.onDelete = { [weak self] in self?.onDelete?(card.id) }
                 if !row.isExpired {
                     row.onTap = { [weak self] in
                         self?.selectedPaymentMethodId = card.id
@@ -66,6 +79,24 @@
                 rows.append(row)
                 stack.addArrangedSubview(row)
             }
+        }
+
+        /// Enters or leaves manage mode for every row.
+        func setManaging(_ managing: Bool) {
+            rows.forEach { $0.setManaging(managing) }
+        }
+
+        /// Shows or clears the in-flight delete state of one row.
+        func setDeleting(_ id: String, _ busy: Bool) {
+            rows.first { $0.paymentMethodId == id }?.setDeleting(busy)
+        }
+
+        /// Removes one card's row.
+        func removeCard(_ id: String) {
+            guard let index = rows.firstIndex(where: { $0.paymentMethodId == id }) else { return }
+            let row = rows.remove(at: index)
+            stack.removeArrangedSubview(row)
+            row.removeFromSuperview()
         }
 
         #if DEBUG

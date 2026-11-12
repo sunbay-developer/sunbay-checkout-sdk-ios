@@ -12,10 +12,13 @@ final class MockCofService: CofService, @unchecked Sendable {
 
     private var _cards: [SavedCard] = []
     private var _error: Error?
+    private var _deleteError: Error?
 
     private(set) var listCallCount = 0
     private(set) var lastCustomerAccessSecret: String?
     private(set) var lastSessionId: String?
+    private(set) var deleteCallCount = 0
+    private(set) var lastDeletedCardId: String?
 
     init() {}
 
@@ -27,6 +30,21 @@ final class MockCofService: CofService, @unchecked Sendable {
     func stubError(_ error: Error) {
         lock.lock(); defer { lock.unlock() }
         _error = error
+    }
+
+    func stubDeleteError(_ error: Error) {
+        lock.lock(); defer { lock.unlock() }
+        _deleteError = error
+    }
+
+    func deleteCard(savedCardId: String, customerAccessSecret: String, sessionId: String) async throws {
+        let error: Error? = {
+            lock.lock(); defer { lock.unlock() }
+            deleteCallCount += 1
+            lastDeletedCardId = savedCardId
+            return _deleteError
+        }()
+        if let error { throw error }
     }
 
     func listPaymentMethods(

@@ -136,6 +136,13 @@ Open verification items:
       (the UI checkbox still reads as consent).
 - [x] Card list via the real adapter (`HTTPCofService`, `POST card/list`, verified 2026-11-09): a wrong
       `customerAccessSecret` returns `S06`; a missing one returns `C16`. Listing failures degrade to "no saved cards".
+- [ ] Delete saved card: the endpoint, request/response shape and error codes are not provided yet.
+      `HTTPCofService.deleteCard` is a stub that makes no request and throws `CARD_DELETE_UNSUPPORTED`; the UI
+      (Manage mode, confirmation, remove-on-success, failure notice) is built against it. Wire the real call,
+      then map its error codes. Until then every delete attempt fails with the "Couldn't delete" notice, so
+      decide before release whether to hide the Manage action (release blocker).
+- [ ] `card/list` returns `logoUrl` per card: confirm the field name, URL format (http(s), image type/size) and
+      CDN reachability from the app. Until then rows show the text brand name.
 - [ ] Does a `storeCard: true` new-card submit also need `customerAccessSecret` to bind the card to the
       customer? The `C01` requirement is resolved by sending `payerBillingInfo` (the SDK now does). Whether
       `customerAccessSecret` is needed on store-card submit is still unanswered until a store-card channel exists.

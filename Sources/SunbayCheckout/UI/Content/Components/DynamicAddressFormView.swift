@@ -395,6 +395,7 @@
             textField.translatesAutoresizingMaskIntoConstraints = false
             if field.type == .postalCode {
                 textField.keyboardType = .numbersAndPunctuation
+                textField.delegate = self
             }
             KeyboardDismissal.installFormNavigation(on: textField)
             textFields[field.type] = textField
@@ -616,6 +617,19 @@
         func selectCountryForTest(_ code: String) {
             let title = countries.first(where: { $0.code == code })?.name ?? code
             selectCountry(code, title: title, field: countryButton)
+        }
+    }
+
+    // MARK: - Postal code input limit
+
+    extension DynamicAddressFormView: UITextFieldDelegate {
+        /// Caps the postal code field at `PostalCodeInputLimit.maxLength` (typing and paste).
+        func textField(
+            _ textField: UITextField,
+            shouldChangeCharactersIn range: NSRange,
+            replacementString string: String
+        ) -> Bool {
+            PostalCodeInputLimit.allows(current: textField.text ?? "", range: range, replacement: string)
         }
     }
 #endif

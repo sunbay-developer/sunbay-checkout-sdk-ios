@@ -8,6 +8,7 @@ struct CardItemWire: Decodable, Sendable {
     let cardBrand: String?
     let expiryMonth: String?
     let expiryYear: String?
+    let logoUrl: String?
 }
 
 /// Wire shape of the `card/list` `data` object. A missing `cards` decodes as an empty list.
@@ -55,6 +56,12 @@ struct HTTPCofService: CofService {
         return wire.cards.compactMap(Self.map)
     }
 
+    /// Deleting a saved card is not available yet: the backend endpoint has not been provided.
+    /// Makes no request. Tracked in `docs/real-api-integration-checklist.md`.
+    func deleteCard(savedCardId: String, customerAccessSecret: String, sessionId: String) async throws {
+        throw CheckoutErrors.cardDeleteUnsupported()
+    }
+
     /// Maps a wire item to a `SavedCard`, or nil when any required field is invalid.
     static func map(_ item: CardItemWire) -> SavedCard? {
         guard let id = item.savedCardId, !id.isEmpty,
@@ -72,7 +79,16 @@ struct HTTPCofService: CofService {
         case 4: year = yearValue
         default: return nil
         }
-        return SavedCard(id: id, brand: brand.lowercased(), last4: last4, expMonth: month, expYear: year)
+        return SavedCard(id: id, brand: brand.lowercased(), last4: last4, expMonth: month, expYear: year,
+                         logoUrl: logoURL(item.logoUrl))
+    }
+
+    /// Parses a logo URL; anything that is not a valid http(s) URL is nil (a bad logo never drops the card).
+    static func logoURL(_ raw: String?) -> URL? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
+              let url = URL(string: raw), let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https", url.host != nil else { return nil }
+        return url
     }
 
     private static func asciiInt(_ text: String) -> Int? {

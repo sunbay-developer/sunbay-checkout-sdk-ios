@@ -43,7 +43,17 @@
         // MARK: - Injected dependencies
 
         private let session: CheckoutSession
-        private let savedCards: [SavedCard]
+        private var savedCards: [SavedCard]
+        /// Whether the full saved-card list is in manage mode (delete buttons shown).
+        private var isManagingSavedCards = false
+        /// Cards with a delete request in flight (a second request for the same card is ignored).
+        private var deletingCardIds: Set<String> = []
+        /// Shared brand-logo loader (in-memory cache) for saved-card rows.
+        private let logoLoader = CardBrandLogoLoader()
+        #if DEBUG
+            /// The card id staged by the test seam for `confirmDeleteForTest()`.
+            private var pendingDeleteCardId: String?
+        #endif
         /// Whether the (filtered) session offers a card; no card → no new-card row and no saved cards.
         private let cardAvailable: Bool
         /// The card brands (with session logos) shown in the card-number field.
@@ -111,7 +121,7 @@
         private var savedCardList: SavedCardListView?
         /// The home-page collapsed saved-card summary (one `SavedCardRow` + optional "View more").
         private var savedCardSummary: UIView?
-        /// The home-page "View more" affordance (present only when there are 2+ saved cards).
+        /// The home-page "View more" affordance (present whenever there is at least one saved card).
         private var viewMoreAffordance: UIView?
         private var expressView: ExpressCheckoutView?
         private var newCardEntryRow: UIView?
@@ -576,6 +586,15 @@
             /// Test readout: the saved-card ids in display order.
             var savedCardOrderForTest: [String] { savedCards.map(\.id) }
 
+            /// Test readouts / seams for saved-card management.
+            var isManagingForTest: Bool { isManagingSavedCards }
+            var headerActionTitleForTest: String? { header.actionTitleForTest }
+            func tapManageForTest() { header.onAction?() }
+            func tapDeleteForTest(_ id: String) { pendingDeleteCardId = id }
+            func confirmDeleteForTest() {
+                if let id = pendingDeleteCardId { performDelete(id) }
+            }
+
             func tapViewMoreForTest() {
                 showAllSavedCards()
             }
@@ -636,7 +655,7 @@
         private func handleConfirmSavedCard(paymentMethodId: String) {
             // Never submit an expired (or unknown) saved card.
             guard let card = savedCards.first(where: { $0.id == paymentMethodId }),
-                  expiredText(for: card) == nil else { return }
+                  expiredText(for: card) == nil, !deletingCardIds.contains(paymentMethodId) else { return }
             guard beginProcessing() else { return }
             delegate?.content(self, didRequest: .confirmSavedCard(paymentMethodId: paymentMethodId))
         }
@@ -737,6 +756,7 @@
             homeStack.isUserInteractionEnabled = enabled
             header.setBackEnabled(enabled)
             header.setCloseEnabled(enabled)
+            header.setActionEnabled(enabled)
             savedCardList?.isUserInteractionEnabled = enabled
             expressView?.isUserInteractionEnabled = enabled
             saveCardSwitch?.isEnabled = enabled
@@ -950,9 +970,8 @@
         // MARK: - Component factories
 
         /// Builds the collapsed home saved-card summary: a single `SavedCardRow` for the currently
-        /// selected card (border-highlighted), plus a trailing "View more" affordance when there are
-        /// 2+ saved cards (so the full list is one tap away). With exactly one saved card, no "View
-        /// more" is shown (there is nothing more to see).
+        /// selected card (border-highlighted), plus a trailing "View more" affordance (so the full list,
+        /// where cards can be managed, is one tap away).
         ///
         /// Tapping the summary card itself does nothing (it is already the selected card); only the
         /// explicit "View more" affordance opens the full list page.
@@ -963,21 +982,18 @@
 
             let selectedId = selectedSavedCardId ?? defaultSavedCardId
             if let card = savedCards.first(where: { $0.id == selectedId }) ?? savedCards.first {
-                let row = SavedCardRow(appearance: appearance, card: card, expiredText: expiredText(for: card))
+                let row = SavedCardRow(
+                    appearance: appearance, card: card, expiredText: expiredText(for: card),
+                    logoLoader: logoLoader, deleteLabel: localize("sunbay.cof.delete"))
                 // Every card expired: show the first one, dimmed and not selected (Pay stays hidden).
                 row.setSelected(!row.isExpired)
                 row.presentAsStaticSummary()
-                // With more than one saved card, the drill-in lives on the card row itself: the trailing
-                // expiry is replaced by a tappable "View more ›" that opens the full list. With a single
-                // card there is nothing more to see, so the expiry stays.
-                if savedCards.count > 1 {
-                    row.showViewMoreInsteadOfExpiry(title: localize("sunbay.cof.viewMore")) { [weak self] in
-                        self?.showAllSavedCards()
-                    }
-                    viewMoreAffordance = row.viewMoreControl
-                } else {
-                    viewMoreAffordance = nil
+                // The drill-in lives on the card row itself: the trailing expiry is replaced by a
+                // tappable "View more ›" that opens the full list (shown for any number of cards).
+                row.showViewMoreInsteadOfExpiry(title: localize("sunbay.cof.viewMore")) { [weak self] in
+                    self?.showAllSavedCards()
                 }
+                viewMoreAffordance = row.viewMoreControl
                 stack.addArrangedSubview(row)
             } else {
                 viewMoreAffordance = nil
@@ -1368,6 +1384,9 @@
             header.onBack = { [weak self] in
                 self?.showHome()
             }
+            header.onAction = { [weak self] in
+                self?.toggleManageMode()
+            }
         }
 
         private func configureInitialNavigation() {
@@ -1384,6 +1403,7 @@
             if !savedCards.isEmpty, selectedSavedCardId == nil {
                 selectedSavedCardId = defaultSavedCardId
             }
+            exitManageMode()
             rebuildSavedCardSummary()
             performPageSwitch(direction: .backward, animated: animated) {
                 isShowingNewCard = false
@@ -1395,6 +1415,7 @@
             performHeaderSwitch(animated: animated) {
                 self.header.setBackVisible(false)
                 self.header.setCloseVisible(true)
+                self.header.setActionTitle(nil)
                 self.applyHomeHeaderCopy()
             }
             notice.hide()
@@ -1413,9 +1434,16 @@
         }
 
         /// Rebuilds the home saved-card summary in place so it reflects the current `selectedSavedCardId`
-        /// (and the correct "View more" visibility). No-op when there are no saved cards.
+        /// ; when no saved cards remain the summary is removed.
         private func rebuildSavedCardSummary() {
-            guard !savedCards.isEmpty, let old = savedCardSummary else { return }
+            guard let old = savedCardSummary else { return }
+            if savedCards.isEmpty {
+                homeStack.removeArrangedSubview(old)
+                old.removeFromSuperview()
+                savedCardSummary = nil
+                viewMoreAffordance = nil
+                return
+            }
             let fresh = makeSavedCardSummary()
             savedCardSummary = fresh
             if let index = homeStack.arrangedSubviews.firstIndex(of: old) {
@@ -1448,6 +1476,7 @@
                 self.header.setBackVisible(true)
                 self.header.setCloseVisible(false)
                 self.header.setTitle(self.localize("sunbay.sheet.savedCards"))
+                self.header.setActionTitle(self.localize("sunbay.cof.manage"))
             }
             notice.hide()
             refreshConfirmButtonState()
@@ -1457,8 +1486,14 @@
         /// Builds the full saved-card list for the "View more" page. Picking a row records the
         /// selection, refreshes the home summary, and returns home (picker flow); it never submits.
         private func makeFullSavedCardList() -> SavedCardListView {
-            let list = SavedCardListView(appearance: appearance, cards: savedCards) { [weak self] card in
+            let list = SavedCardListView(
+                appearance: appearance, cards: savedCards, logoLoader: logoLoader,
+                deleteLabel: localize("sunbay.cof.delete")
+            ) { [weak self] card in
                 self?.expiredText(for: card)
+            }
+            list.onDelete = { [weak self] id in
+                self?.confirmDelete(id)
             }
             list.onSelect = { [weak self] paymentMethodId in
                 guard let self else { return }
@@ -1468,6 +1503,108 @@
                 self.showHome()
             }
             return list
+        }
+
+        // MARK: - Saved-card management
+
+        /// Toggles manage mode on the full saved-card list page ("Manage" <-> "Done").
+        private func toggleManageMode() {
+            guard isShowingAllSavedCards, !stateMachine.state.isLockedAgainstNewConfirm else { return }
+            isManagingSavedCards.toggle()
+            savedCardList?.setManaging(isManagingSavedCards)
+            header.setActionTitle(localize(isManagingSavedCards ? "sunbay.cof.done" : "sunbay.cof.manage"))
+            reportContentHeightIfChanged()
+        }
+
+        private func exitManageMode() {
+            isManagingSavedCards = false
+            savedCardList?.setManaging(false)
+        }
+
+        /// Asks the user to confirm deleting a saved card.
+        private func confirmDelete(_ id: String) {
+            guard !stateMachine.state.isLockedAgainstNewConfirm, !deletingCardIds.contains(id),
+                  presentedViewController == nil,
+                  let card = savedCards.first(where: { $0.id == id }) else { return }
+            let description = "\(card.brand.uppercased()) •••• \(card.last4)"
+            let alert = UIAlertController(
+                title: localize("sunbay.cof.deleteConfirmTitle"),
+                message: localize("sunbay.cof.deleteConfirmMessage").replacingOccurrences(of: "%@", with: description),
+                preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: localize("sunbay.sheet.cancel"), style: .cancel))
+            alert.addAction(UIAlertAction(title: localize("sunbay.cof.delete"), style: .destructive) { [weak self] _ in
+                self?.performDelete(id)
+            })
+            present(alert, animated: true)
+        }
+
+        /// Requests the delete through the delegate; removes the card on success, keeps it and shows a
+        /// notice on failure.
+        private func performDelete(_ id: String) {
+            guard !deletingCardIds.contains(id), savedCards.contains(where: { $0.id == id }) else { return }
+            deletingCardIds.insert(id)
+            savedCardList?.setDeleting(id, true)
+            header.setBackEnabled(false)
+            header.setActionEnabled(false)
+            guard let delegate else {
+                finishDelete(id, result: .failure(CheckoutErrors.cardDeleteUnsupported()))
+                return
+            }
+            delegate.content(self, didRequestDeleteSavedCard: id) { [weak self] result in
+                self?.finishDelete(id, result: result)
+            }
+        }
+
+        private func finishDelete(_ id: String, result: Result<Void, CheckoutError>) {
+            deletingCardIds.remove(id)
+            if deletingCardIds.isEmpty, !stateMachine.state.isLockedAgainstNewConfirm {
+                header.setBackEnabled(true)
+                header.setActionEnabled(true)
+            }
+            switch result {
+            case .success:
+                removeSavedCard(id)
+            case .failure:
+                savedCardList?.setDeleting(id, false)
+                // Only on the list page: if the user already left, a delete error would be out of context.
+                if isShowingAllSavedCards {
+                    ToastView.show(
+                        localize("sunbay.cof.deleteFailed"), appearance: appearance, in: view, above: bottomBar)
+                }
+            }
+        }
+
+        /// Drops a deleted card from the model and the UI; clears the selection if it was selected and
+        /// returns home when no cards remain.
+        private func removeSavedCard(_ id: String) {
+            savedCards.removeAll { $0.id == id }
+            savedCardList?.removeCard(id)
+            if selectedSavedCardId == id {
+                selectedSavedCardId = nil
+                savedCardList?.selectedPaymentMethodId = nil
+            }
+            if savedCards.isEmpty, let list = savedCardList {
+                allSavedCardsStack.removeArrangedSubview(list)
+                list.removeFromSuperview()
+                savedCardList = nil
+            }
+            if isShowingAllSavedCards {
+                if savedCards.isEmpty {
+                    showHome()
+                } else {
+                    refreshConfirmButtonState()
+                    reportContentHeightIfChanged()
+                }
+            } else {
+                // The user left the list while the delete was in flight: keep the home summary and the
+                // default selection consistent without navigating (the new-card page keeps no selection).
+                if !isShowingNewCard, selectedSavedCardId == nil {
+                    selectedSavedCardId = defaultSavedCardId
+                }
+                rebuildSavedCardSummary()
+                refreshConfirmButtonState()
+                reportContentHeightIfChanged()
+            }
         }
 
         /// Applies the home-page header title: the custom title, or the localized default. Only the
@@ -1507,12 +1644,14 @@
                 newCardStack.isHidden = false
                 allSavedCardsStack.isHidden = true
             }
+            exitManageMode()
             // Clear the selection while on the subpage; `showHome()` re-applies the first-card default.
             selectedSavedCardId = nil
             performHeaderSwitch(animated: animated) {
                 self.header.setBackVisible(true)
                 self.header.setCloseVisible(false)
                 self.header.setTitle(self.localize("sunbay.sheet.newCard"))
+                self.header.setActionTitle(nil)
             }
             notice.hide()
             refreshConfirmButtonState()
