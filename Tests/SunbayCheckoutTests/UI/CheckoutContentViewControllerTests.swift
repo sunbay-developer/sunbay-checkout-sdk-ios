@@ -70,6 +70,103 @@
             }
         }
 
+        // MARK: - Saved-card management (delete)
+
+        /// A delegate that answers delete requests immediately with `result`, or holds the completion
+        /// (`deferred`) so a test can finish the delete later.
+        private final class DeleteDelegate: CheckoutContentDelegate {
+            var result: Result<Void, CheckoutError> = .success(())
+            var deferred = false
+            var pending: (@MainActor (Result<Void, CheckoutError>) -> Void)?
+            var deleted: [String] = []
+            func content(_ content: CheckoutContentViewController, didRequest action: PaymentSheet.UserAction) {}
+            func contentDidRequestCancel(_ content: CheckoutContentViewController) {}
+            func content(_ content: CheckoutContentViewController, didFinishWith outcome: CheckoutOutcome) {}
+            func content(_ content: CheckoutContentViewController, didChangeProcessing isProcessing: Bool) {}
+            func content(_ content: CheckoutContentViewController, didUpdateContentHeight height: CGFloat) {}
+            func content(_ content: CheckoutContentViewController, didChangeState state: CheckoutPresentationState) {}
+            func content(
+                _ content: CheckoutContentViewController, didRequestDeleteSavedCard id: String,
+                completion: @escaping @MainActor (Result<Void, CheckoutError>) -> Void
+            ) {
+                deleted.append(id)
+                if deferred { pending = completion } else { completion(result) }
+            }
+        }
+
+        /// Manage mode: a failed delete keeps the card; a successful one removes it and clears the
+        /// selection; deleting the last card returns home with no summary row left.
+        func test_manageDelete_failureKeeps_successRemoves_lastReturnsHome() {
+            let vc = makeVC(savedCards: sampleSavedCards())
+            vc.loadViewIfNeeded()
+            let delegate = DeleteDelegate()
+            vc.delegate = delegate
+            vc.tapViewMoreForTest()
+            vc.tapManageForTest()
+            XCTAssertTrue(vc.isManagingForTest)
+
+            delegate.result = .failure(CheckoutErrors.cardDeleteUnsupported())
+            vc.tapDeleteForTest("pm_1"); vc.confirmDeleteForTest()
+            XCTAssertEqual(vc.savedCardOrderForTest, ["pm_1", "pm_2"], "A failed delete keeps the card.")
+            XCTAssertTrue(vc.isManagingForTest, "A failed delete stays in manage mode.")
+
+            delegate.result = .success(())
+            vc.tapDeleteForTest("pm_1"); vc.confirmDeleteForTest()
+            XCTAssertEqual(vc.savedCardOrderForTest, ["pm_2"])
+            XCTAssertTrue(vc.isAllSavedCardsVisibleForTest)
+
+            vc.tapDeleteForTest("pm_2"); vc.confirmDeleteForTest()
+            XCTAssertEqual(vc.savedCardOrderForTest, [])
+            XCTAssertTrue(vc.isHomeVisibleForTest)
+            XCTAssertFalse(vc.isManagingForTest)
+            XCTAssertNil(vc.savedCardListViewForTest, "No summary row is left once the last card is gone.")
+            XCTAssertFalse(vc.isConfirmButtonVisibleForTest)
+        }
+
+        /// A delete that completes after the user already left the list must not leave the deleted card
+        /// on the home summary.
+        func test_deleteCompletingAfterLeavingList_updatesHomeSummary() {
+            let vc = makeVC(savedCards: sampleSavedCards())
+            vc.loadViewIfNeeded()
+            let delegate = DeleteDelegate()
+            delegate.deferred = true
+            vc.delegate = delegate
+            vc.tapViewMoreForTest()
+            vc.tapDeleteForTest("pm_1"); vc.confirmDeleteForTest()
+            vc.tapBackForTest()
+            delegate.pending?(.success(()))
+            XCTAssertEqual(vc.savedCardOrderForTest, ["pm_2"])
+            XCTAssertEqual(vc.highlightedSavedCardIdForTest, "pm_2", "The home summary must not show the deleted card.")
+            XCTAssertTrue(vc.isConfirmButtonVisibleForTest)
+        }
+
+        func test_deleteCompletingAfterLeavingList_lastCard_removesSummary() {
+            let vc = makeVC(savedCards: [sampleSavedCards()[0]])
+            vc.loadViewIfNeeded()
+            let delegate = DeleteDelegate()
+            delegate.deferred = true
+            vc.delegate = delegate
+            vc.tapViewMoreForTest()
+            vc.tapDeleteForTest("pm_1"); vc.confirmDeleteForTest()
+            vc.tapBackForTest()
+            delegate.pending?(.success(()))
+            XCTAssertNil(vc.savedCardListViewForTest)
+            XCTAssertFalse(vc.isConfirmButtonVisibleForTest)
+        }
+
+        /// While a delete is in flight, a second delete request for the same card is ignored.
+        func test_deleteInFlight_secondRequestIgnored() {
+            let vc = makeVC(savedCards: sampleSavedCards())
+            vc.loadViewIfNeeded()
+            let delegate = DeleteDelegate()
+            delegate.deferred = true
+            vc.delegate = delegate
+            vc.tapViewMoreForTest()
+            vc.tapDeleteForTest("pm_1"); vc.confirmDeleteForTest()
+            vc.confirmDeleteForTest()
+            XCTAssertEqual(delegate.deleted, ["pm_1"])
+        }
+
         private func makeSession(methods: Set<PaymentMethodKind> = [.card], cofEnabled: Bool = false) -> CheckoutSession {
             CheckoutSession(
                 id: "sess_1",

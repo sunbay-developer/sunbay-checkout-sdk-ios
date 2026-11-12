@@ -43,11 +43,13 @@
         // MARK: - Injected dependencies
 
         private let session: CheckoutSession
-        private var savedCards: [SavedCard]
+        /// The saved-card list state (order, selection, default, expiry, deletes in flight).
+        private var selection: SavedCardSelection
+        private var savedCards: [SavedCard] { selection.cards }
         /// Whether the full saved-card list is in manage mode (delete buttons shown).
         private var isManagingSavedCards = false
         /// Cards with a delete request in flight (a second request for the same card is ignored).
-        private var deletingCardIds: Set<String> = []
+        private var deletingCardIds: Set<String> { selection.deletingIds }
         /// Shared brand-logo loader (in-memory cache) for saved-card rows.
         private let logoLoader = CardBrandLogoLoader()
         #if DEBUG
@@ -166,7 +168,10 @@
 
         /// The saved card the user has selected on the home page (nil = none selected). Selecting a
         /// row does NOT submit; the user must tap the Pay button (which this enables).
-        private var selectedSavedCardId: String?
+        private var selectedSavedCardId: String? {
+            get { selection.selectedId }
+            set { selection.setSelectedId(newValue) }
+        }
 
         private var lastReportedHeight: CGFloat = 0
 
@@ -244,7 +249,7 @@
             self.onWalletParamsInvalid = onWalletParamsInvalid
             self.session = session
             // Usable cards first; expired ones stay visible (dimmed) at the end and are never selected.
-            self.savedCards = cardAvailable ? SavedCardExpiry.usableFirst(savedCards, at: Date()) : []
+            self.selection = SavedCardSelection(cards: cardAvailable ? savedCards : [])
             self.appearance = appearance
             self.localize = localize
             self.localeCode = localeCode
@@ -1424,13 +1429,11 @@
         }
 
         /// The first usable (non-expired) saved card, or nil when every card is expired.
-        private var defaultSavedCardId: String? {
-            savedCards.first { expiredText(for: $0) == nil }?.id
-        }
+        private var defaultSavedCardId: String? { selection.defaultId }
 
         /// The localized "Expired" label for an expired card, or nil when the card is usable.
         private func expiredText(for card: SavedCard) -> String? {
-            SavedCardExpiry.isExpired(card, at: Date()) ? localize("sunbay.cof.expired") : nil
+            selection.isExpired(card) ? localize("sunbay.cof.expired") : nil
         }
 
         /// Rebuilds the home saved-card summary in place so it reflects the current `selectedSavedCardId`
@@ -1541,8 +1544,7 @@
         /// Requests the delete through the delegate; removes the card on success, keeps it and shows a
         /// notice on failure.
         private func performDelete(_ id: String) {
-            guard !deletingCardIds.contains(id), savedCards.contains(where: { $0.id == id }) else { return }
-            deletingCardIds.insert(id)
+            guard selection.beginDelete(id) else { return }
             savedCardList?.setDeleting(id, true)
             header.setBackEnabled(false)
             header.setActionEnabled(false)
@@ -1556,7 +1558,7 @@
         }
 
         private func finishDelete(_ id: String, result: Result<Void, CheckoutError>) {
-            deletingCardIds.remove(id)
+            selection.endDelete(id)
             if deletingCardIds.isEmpty, !stateMachine.state.isLockedAgainstNewConfirm {
                 header.setBackEnabled(true)
                 header.setActionEnabled(true)
@@ -1577,10 +1579,10 @@
         /// Drops a deleted card from the model and the UI; clears the selection if it was selected and
         /// returns home when no cards remain.
         private func removeSavedCard(_ id: String) {
-            savedCards.removeAll { $0.id == id }
+            let wasSelected = selectedSavedCardId == id
+            selection.remove(id)
             savedCardList?.removeCard(id)
-            if selectedSavedCardId == id {
-                selectedSavedCardId = nil
+            if wasSelected {
                 savedCardList?.selectedPaymentMethodId = nil
             }
             if savedCards.isEmpty, let list = savedCardList {

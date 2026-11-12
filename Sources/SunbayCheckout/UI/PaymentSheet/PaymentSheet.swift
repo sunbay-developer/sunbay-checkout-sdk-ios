@@ -47,51 +47,14 @@
     ///
     /// iOS-only: the whole thing is `#if canImport(UIKit)`; it does not compile under the macOS host (Core stays independent of UIKit).
     public final class PaymentSheet {
-        /// The actions the user can select during one checkout presentation (produced by the VC / test seam).
-        ///
-        /// internal: used only to pass user intent between the shell and the testable logic/tests, not exposed externally.
-        enum UserAction: Sendable {
-            /// Confirm a new card (optionally checked to save + consent).
-            ///
-            /// `billingFormShown` / `shippingFormShown` say whether the SDK showed a form for that kind.
-            case confirmNewCard(
-                CardInput, save: Bool, billing: AddressInput? = nil, shipping: AddressInput? = nil,
-                billingFormShown: Bool = false, shippingFormShown: Bool = false)
-            /// Pay with a selected saved card (COF; the user selects a card then taps Pay).
-            case confirmSavedCard(paymentMethodId: String)
-            /// The Apple Pay wallet token has been obtained; confirm the wallet payment.
-            case confirmWallet(WalletAuthorization, billingFormShown: Bool = false, shippingFormShown: Bool = false)
-            /// The user canceled.
-            case cancel
-        }
-
-        /// What one pass of the retry loop produced.
-        enum AttemptResult: Sendable, Equatable {
-            /// The session (re)load failed before any confirm was attempted. NOT a payment outcome.
-            case startFailed(CheckoutOutcome)
-            /// A confirm (or a cancel) produced this outcome.
-            case outcome(CheckoutOutcome)
-        }
-
-        /// The context passed to the seam: the loaded session and the (per COF decision) listed saved cards.
-        ///
-        /// internal: the VC / tests render options from it and return a `UserAction`.
-        struct CheckoutContext: Sendable {
-            /// The loaded session, validated as not expired.
-            let session: CheckoutSession
-            /// The listed saved cards; empty when COF is unavailable (no secret / off).
-            let savedCards: [SavedCard]
-            /// The effective card-on-file decision (session && host option && secret).
-            let cardOnFileEnabled: Bool
-            /// Whether the save-card checkbox starts ticked.
-            let saveCardByDefault: Bool
-            /// Whether the host supplied a complete billing address the session collects.
-            var billingEntryUsable: Bool = false
-            /// Whether the host supplied a complete shipping address the session collects.
-            var shippingEntryUsable: Bool = false
-            /// The session's method entries after the host filter (what the UI may offer).
-            var visibleEntries: [MethodEntry] = []
-        }
+        /// The actions the user can select during one checkout presentation (see `CheckoutUserAction`).
+        typealias UserAction = CheckoutUserAction
+        /// What one pass of the retry loop produced (see `CheckoutAttemptResult`).
+        typealias AttemptResult = CheckoutAttemptResult
+        /// The context passed to the seam (see `CheckoutSessionContext`).
+        typealias CheckoutContext = CheckoutSessionContext
+        /// What `loadContext()` produced (see `CheckoutContextResult`).
+        typealias ContextResult = CheckoutContextResult
 
         // MARK: - Dependencies
 
@@ -99,15 +62,9 @@
         /// `SunbayCheckout.makeController`; the internal init injects it directly (a real actor
         /// assembled from a mock backend for unit tests).
         private let controller: CheckoutController
-        private let sessionId: String
-        /// COF credential (optional); held in memory only and passed to `CheckoutController.start`, never logged/returned (§5).
-        private let customerAccessSecret: String?
-        /// Client secret issued by the host backend with the session (optional); memory only, never logged/returned.
-        private let checkoutClientSecret: String?
-        /// Host-provided addresses (PII; memory only, never logged). They take precedence over the SDK
-        /// forms: the controller merges `host ?? form` per kind at submit time.
-        private let billingAddress: AddressInput?
-        private let shippingAddress: AddressInput?
+        /// The presentation-independent checkout logic (session load, method filtering, COF, host
+        /// addresses, confirm dispatch). Holds the session id, credentials and host addresses.
+        private let driver: CheckoutSessionDriver
         /// Localized-string provider handed to the content VC so its copy renders in the configured
         /// locale. Built from a `LocalizationResolver`; maps a `sunbay.*` key to its localized
         /// string. Core stays UI-agnostic — the resolver lives in Core, the closure is consumed only
@@ -136,8 +93,6 @@
         private let walletAuthorizer: any WalletAuthorizing
         /// The resolved Apple Pay merchant id (host configuration first); nil hides the Apple Pay row.
         private let walletMerchantId: String?
-        /// The host's hide / order filter for payment methods.
-        private let paymentMethodFilter: PaymentMethodFilter
         /// Screen metrics snapshot shared with the checkout's default payment service; recorded in `present`.
         private let screenMetrics: ScreenMetricsStore?
         // MARK: - Public observation
@@ -243,21 +198,43 @@
             screenMetrics: ScreenMetricsStore? = nil,
             paymentMethodFilter: PaymentMethodFilter = PaymentMethodFilter()
         ) {
-            self.paymentMethodFilter = paymentMethodFilter
             self.screenMetrics = screenMetrics
             self.walletAuthorizer = walletAuthorizer
             self.walletMerchantId = walletMerchantId
             self.controller = controller
-            self.sessionId = sessionId
-            self.customerAccessSecret = customerAccessSecret
-            self.checkoutClientSecret = checkoutClientSecret
-            self.billingAddress = billingAddress
-            self.shippingAddress = shippingAddress
             self.localize = localize
             self.localeCode = localeCode
             self.appearance = appearance
             self.paymentSheetTitle = paymentSheetTitle
             self.addressMetadataService = addressMetadataService
+            // The address forms the UI will show depend on UIKit-gated appearance types, so the shell
+            // computes them and hands the driver only the result.
+            let billingEnabled = appearance.billingAddressEnabled
+            let shippingEnabled = appearance.shippingAddressEnabled
+            let billingStyle = appearance.billingAddressStyle
+            let shippingStyle = appearance.shippingAddressStyle
+            self.driver = CheckoutSessionDriver(
+                controller: controller,
+                sessionId: sessionId,
+                customerAccessSecret: customerAccessSecret,
+                checkoutClientSecret: checkoutClientSecret,
+                billingAddress: billingAddress,
+                shippingAddress: shippingAddress,
+                options: DriverOptions(
+                    expressOff: appearance.expressPosition == .off,
+                    addressFormsShown: { session, billingUsable, shippingUsable in
+                        (
+                            AddressCollectionMode.resolveAddressMode(
+                                .from(enabled: billingEnabled), collect: session.collectBillingAddress,
+                                hasUsableEntry: billingUsable, style: billingStyle) != .off,
+                            AddressCollectionMode.resolveAddressMode(
+                                .from(enabled: shippingEnabled), collect: session.collectShippingAddress,
+                                hasUsableEntry: shippingUsable, style: shippingStyle) != .off
+                        )
+                    }),
+                walletAuthorizer: walletAuthorizer,
+                walletMerchantId: walletMerchantId,
+                paymentMethodFilter: paymentMethodFilter)
         }
 
         // MARK: - Public API
@@ -361,25 +338,12 @@
 
         /// Whether `outcome` is an unsettled `.pending` / `.unknown` (a payment may be in flight).
         static func isUnresolved(_ outcome: CheckoutOutcome) -> Bool {
-            switch outcome {
-            case .pending, .unknown: return true
-            case .succeeded, .failed, .canceled: return false
-            }
+            CheckoutSessionDriver.isUnresolved(outcome)
         }
 
-        /// The outcome `present()` reports when the user closes the sheet.
-        ///
-        /// - Parameter lastKnown: The outcome of the most recent attempt in this presentation
-        ///   (`.canceled` if none was made).
-        /// - Returns: `lastKnown` when it is `.pending` / `.unknown` (an unsettled payment the host must
-        ///   reconcile with `retrievePayment()`); otherwise `.canceled`.
+        /// The outcome `present()` reports when the user closes the sheet (see `CheckoutSessionDriver.outcomeOnClose`).
         static func outcomeOnClose(lastKnown: CheckoutOutcome) -> CheckoutOutcome {
-            switch lastKnown {
-            case .pending, .unknown:
-                return lastKnown
-            case .succeeded, .failed, .canceled:
-                return .canceled
-            }
+            CheckoutSessionDriver.outcomeOnClose(lastKnown: lastKnown)
         }
 
         /// A UI-independent result lookup (crash/kill recovery, §2.2 / §4.3). Delegates to the controller.
@@ -387,7 +351,7 @@
         /// - Returns: The latest `PaymentSnapshot`.
         /// - Throws: Propagates a lookup failure.
         public func retrievePayment() async throws -> PaymentSnapshot {
-            try await controller.retrievePayment(sessionId: sessionId)
+            try await driver.retrievePayment()
         }
 
         // MARK: - Internal testable logic (controller-driven)
@@ -430,109 +394,15 @@
             }
         }
 
-        /// What `loadContext()` produced.
-        enum ContextResult {
-            /// The session loaded and at least one payment method is available.
-            case ready(CheckoutContext)
-            /// The session load (or method availability) failed before any confirm. NOT a payment outcome.
-            case startFailed(CheckoutOutcome)
-        }
-
         /// Steps 1–2 of the checkout: load the session, apply the host filter and provider availability,
         /// decide COF and list saved cards. `present()` calls it once per presentation.
         func loadContext() async -> ContextResult {
-            // 1. Load the session.
-            let session: CheckoutSession
-            do {
-                session = try await controller.start(
-                    sessionId: sessionId,
-                    customerAccessSecret: customerAccessSecret,
-                    checkoutClientSecret: checkoutClientSecret,
-                    billingAddress: billingAddress,
-                    shippingAddress: shippingAddress
-                )
-            } catch let error as CheckoutError {
-                return .startFailed(.failed(txnId: nil, error: error))
-            } catch {
-                return .startFailed(.unknown(sessionId: sessionId))
-            }
-
-            // Host filter + provider availability, before any UI. Nothing available → terminal failure.
-            let filtered = PaymentMethodModel.apply(paymentMethodFilter, to: session.methodEntries)
-            await controller.reportFilterIgnored(filtered.ignored)
-            let expressOff = appearance.expressPosition == .off
-            var walletMissing: [String] = []
-            let available = PaymentProviderRegistry.available(entries: filtered.entries) { provider in
-                guard provider.key == "APPLE_PAY" else { return true }
-                guard !expressOff else { return false }
-                let availability = ApplePayAvailability.evaluate(
-                    session: session, hiddenByFilter: false, authorizer: walletAuthorizer,
-                    merchantId: walletMerchantId)
-                walletMissing = availability.missing
-                return availability.available
-            }
-            // The entry survived the filter (this closure only runs for visible entries), so unusable wallet
-            // parameters are reported once (deduplicated by the reporter), even when nothing else is available.
-            await controller.reportWalletParamsInvalid(missing: walletMissing)
-            guard !available.isEmpty else {
-                await controller.dismiss()
-                return .startFailed(.failed(
-                    txnId: nil,
-                    error: CheckoutError(
-                        code: "NO_PAYMENT_METHOD_AVAILABLE",
-                        message: "No payment method is available for this checkout.",
-                        category: .configuration, traceId: nil)))
-            }
-            let cardAvailable = available.contains { $0.key == "CARD" }
-
-            // 2. Automatic COF inclusion decision (§2.2): has secret and the backend has COF on → list cards; otherwise do not.
-            // A hidden / absent CARD hides saved cards too and skips the list request.
-            let cardOnFileEnabled = await controller.isCardOnFileEnabled && cardAvailable
-            let saveCardByDefault = await controller.cardOnFileSaveByDefault
-            let savedCards: [SavedCard]
-            if cardOnFileEnabled {
-                savedCards = await controller.listSavedCards()
-            } else {
-                savedCards = []
-            }
-
-            // Host address entries: report incomplete ones once, and tell the UI which are usable (so
-            // `.automatic` shows no form for them).
-            let billingEntryUsable = await controller.usableHostEntry(.billing) != nil
-            let shippingEntryUsable = await controller.usableHostEntry(.shipping) != nil
-            let billingFormShown = AddressCollectionMode.resolveAddressMode(
-                .from(enabled: appearance.billingAddressEnabled), collect: session.collectBillingAddress,
-                hasUsableEntry: billingEntryUsable, style: appearance.billingAddressStyle) != .off
-            let shippingFormShown = AddressCollectionMode.resolveAddressMode(
-                .from(enabled: appearance.shippingAddressEnabled), collect: session.collectShippingAddress,
-                hasUsableEntry: shippingEntryUsable, style: appearance.shippingAddressStyle) != .off
-            await controller.evaluateHostEntries(
-                billingFormShown: billingFormShown, shippingFormShown: shippingFormShown)
-
-            return .ready(CheckoutContext(
-                session: session, savedCards: savedCards,
-                cardOnFileEnabled: cardOnFileEnabled, saveCardByDefault: saveCardByDefault,
-                billingEntryUsable: billingEntryUsable, shippingEntryUsable: shippingEntryUsable,
-                visibleEntries: filtered.entries))
+            await driver.loadContext()
         }
 
         /// Drives the `controller.confirm*` call (or cancel) for a user action.
         func execute(_ action: UserAction) async -> AttemptResult {
-            switch action {
-            case let .confirmNewCard(input, save, billing, shipping, billingFormShown, shippingFormShown):
-                // `save` maps to `storeCard` in the controller (sent only when the checkbox is on and COF is effective: session `supportStoreCard`, host `cardOnFile.isEnabled`, and a `customerAccessSecret`).
-                return .outcome(await controller.confirmNewCard(
-                    input, save: save, billingAddress: billing, shippingAddress: shipping,
-                    billingFormShown: billingFormShown, shippingFormShown: shippingFormShown))
-            case let .confirmSavedCard(paymentMethodId):
-                return .outcome(await controller.confirmSavedCard(paymentMethodId: paymentMethodId))
-            case let .confirmWallet(authorization, billingFormShown, shippingFormShown):
-                return .outcome(await controller.confirmWallet(
-                    authorization, billingFormShown: billingFormShown, shippingFormShown: shippingFormShown))
-            case .cancel:
-                await controller.dismiss()
-                return .outcome(.canceled)
-            }
+            await driver.execute(action)
         }
     }
 
@@ -574,22 +444,19 @@
         private let onStateChange: (CheckoutPresentationState) -> Void
         private let deleteSavedCard: @Sendable (String) async -> Result<Void, CheckoutError>
 
-        /// At most ONE user action that arrived while no one was suspended on `awaitEvent` (e.g. a Pay tap
-        /// in the unlock window after a `.failed`, while the loop is still reloading the session). It is
-        /// delivered to the next `awaitEvent`, so no user action is ever lost and the content (already in
-        /// `.processing`) cannot get stuck. A close/cancel still wins over it.
-        private var bufferedUserAction: PaymentSheet.UserAction?
+        /// Hands user actions from the content to the retry loop. It buffers at most one action that arrives
+        /// while nobody is waiting (so none is lost, e.g. a Pay tap during the unlock window after a
+        /// `.failed`); a close/cancel always wins (see `UserActionChannel`).
+        private let channel = UserActionChannel()
 
         private var content: CheckoutContentViewController?
         private var container: PaymentSheetContainerViewController?
 
-        /// The continuation awaiting the next user action (set while a seam call is suspended).
-        private var actionContinuation: CheckedContinuation<PaymentSheet.UserAction, Never>?
         /// The continuation awaiting a content-driven finish (success auto-close), when applicable.
         private var finishContinuation: CheckedContinuation<Void, Never>?
 
         /// Set once the user canceled / pulled the sheet down; `present()` reads it to end the loop.
-        private(set) var wasCanceled = false
+        var wasCanceled: Bool { channel.wasCanceled }
         /// Whether the sheet has already been presented (so later attempts reuse it).
         private var isPresented = false
 
@@ -637,19 +504,7 @@
         /// Suspends until the next event for the loop: a user action or a cancel. A cancel wins over a
         /// buffered action (the closed sheet resolves with the outcome known at close time).
         func awaitEvent() async -> PaymentSheet.UserAction {
-            await withCheckedContinuation { continuation in
-                if wasCanceled {
-                    bufferedUserAction = nil
-                    continuation.resume(returning: .cancel)
-                    return
-                }
-                if let action = bufferedUserAction {
-                    bufferedUserAction = nil
-                    continuation.resume(returning: action)
-                    return
-                }
-                actionContinuation = continuation
-            }
+            await channel.next()
         }
 
         /// Builds the content VC + container and presents it modally.
@@ -683,7 +538,7 @@
                 colorScheme: appearance.colorScheme
             )
             containerVC.onUserAction = { [weak self] action in
-                self?.resumeAction(action)
+                self?.channel.post(action)
             }
             containerVC.onFinish = { [weak self] outcome in
                 self?.handleContainerFinish(outcome)
@@ -699,30 +554,11 @@
 
             guard let presenter else {
                 // No presenter (abnormal): treat as cancel so the loop ends instead of hanging.
-                wasCanceled = true
-                resumeAction(.cancel)
+                channel.cancel()
                 return
             }
             PaymentSheet.resignFirstResponder(in: presenter)
             presenter.present(containerVC, animated: true)
-        }
-
-        /// Resumes the suspended seam with a user action (guards against a double resume).
-        ///
-        /// When nobody is suspended (the loop is between awaits, e.g. reloading the session after a
-        /// `.failed`), the action is buffered (at most one; a later `.cancel` replaces it, otherwise the
-        /// first wins) and delivered by the next `awaitEvent` instead of being silently dropped.
-        private func resumeAction(_ action: PaymentSheet.UserAction) {
-            guard let continuation = actionContinuation else {
-                if case .cancel = action {
-                    bufferedUserAction = action
-                } else if bufferedUserAction == nil {
-                    bufferedUserAction = action
-                }
-                return
-            }
-            actionContinuation = nil
-            continuation.resume(returning: action)
         }
 
         /// Handles a container-reported finish (success auto-close or cancel / pull-down).
@@ -733,9 +569,8 @@
         private func handleContainerFinish(_ outcome: CheckoutOutcome) {
             switch outcome {
             case .canceled:
-                wasCanceled = true
                 // Unblock a suspended seam (user pulled down before confirming).
-                resumeAction(.cancel)
+                channel.cancel()
             default:
                 break
             }
