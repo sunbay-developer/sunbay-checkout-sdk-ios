@@ -132,29 +132,23 @@
             billingAddress: AddressInput? = nil,
             shippingAddress: AddressInput? = nil
         ) {
-            let controller = checkout.makeController(
-                credentials: CredentialStore(),
-                actionHandler: ActionHandler(webAuthOpener: WebAuthOpener())
-            )
+            let wiring = checkout.makeUIWiring()
             self.init(
-                controller: controller,
+                controller: wiring.controller,
                 sessionId: sessionId,
                 customerAccessSecret: customerAccessSecret,
                 checkoutClientSecret: checkoutClientSecret,
                 billingAddress: billingAddress,
                 shippingAddress: shippingAddress,
-                localize: LocalizationResolver(explicitLocale: checkout.configuration.locale).localizedNoComment,
-                localeCode: checkout.configuration.locale,
-                appearance: checkout.configuration.appearance ?? .default,
-                paymentSheetTitle: checkout.configuration.paymentSheetTitle,
-                addressMetadataService: checkout.addressMetadataService,
-                walletAuthorizer: WalletAuthorizer(),
-                walletMerchantId: resolveMerchantId(
-                    configured: checkout.configuration.applePayMerchantId,
-                    sessionProvided: nil
-                ),
-                screenMetrics: checkout.screenMetrics,
-                paymentMethodFilter: checkout.configuration.paymentMethodFilter
+                localize: wiring.localize,
+                localeCode: wiring.localeCode,
+                appearance: wiring.appearance,
+                paymentSheetTitle: wiring.paymentSheetTitle,
+                addressMetadataService: wiring.addressMetadataService,
+                walletAuthorizer: wiring.walletAuthorizer,
+                walletMerchantId: wiring.walletMerchantId,
+                screenMetrics: wiring.screenMetrics,
+                paymentMethodFilter: wiring.paymentMethodFilter
             )
         }
 
@@ -207,12 +201,6 @@
             self.appearance = appearance
             self.paymentSheetTitle = paymentSheetTitle
             self.addressMetadataService = addressMetadataService
-            // The address forms the UI will show depend on UIKit-gated appearance types, so the shell
-            // computes them and hands the driver only the result.
-            let billingEnabled = appearance.billingAddressEnabled
-            let shippingEnabled = appearance.shippingAddressEnabled
-            let billingStyle = appearance.billingAddressStyle
-            let shippingStyle = appearance.shippingAddressStyle
             self.driver = CheckoutSessionDriver(
                 controller: controller,
                 sessionId: sessionId,
@@ -220,18 +208,7 @@
                 checkoutClientSecret: checkoutClientSecret,
                 billingAddress: billingAddress,
                 shippingAddress: shippingAddress,
-                options: DriverOptions(
-                    expressOff: appearance.expressPosition == .off,
-                    addressFormsShown: { session, billingUsable, shippingUsable in
-                        (
-                            AddressCollectionMode.resolveAddressMode(
-                                .from(enabled: billingEnabled), collect: session.collectBillingAddress,
-                                hasUsableEntry: billingUsable, style: billingStyle) != .off,
-                            AddressCollectionMode.resolveAddressMode(
-                                .from(enabled: shippingEnabled), collect: session.collectShippingAddress,
-                                hasUsableEntry: shippingUsable, style: shippingStyle) != .off
-                        )
-                    }),
+                options: .forUI(appearance: appearance, failsWhenNoMethodAvailable: true),
                 walletAuthorizer: walletAuthorizer,
                 walletMerchantId: walletMerchantId,
                 paymentMethodFilter: paymentMethodFilter)

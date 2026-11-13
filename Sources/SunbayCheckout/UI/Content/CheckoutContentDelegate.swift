@@ -8,14 +8,14 @@
     /// address forms, express row, and confirm button, owns the visible `CheckoutStateMachine`, and
     /// talks to the outside world **only** through this delegate. It never references the container
     /// (`PaymentSheetContainerViewController`, Task 9) or `CheckoutController` directly — that is what
-    /// lets the same content VC drop into the future L2 embedded container with zero rework.
+    /// keeps the content VC host-agnostic: today it is hosted by the L1 bottom-sheet container.
     ///
     /// The container implements this delegate: it bridges a requested `PaymentSheet.UserAction` into
     /// the existing `PaymentSheet.runCheckout` seam, drives `CheckoutController`, and feeds the
     /// resulting `CheckoutOutcome` back via `applyOutcome(_:)`. `didChangeProcessing` lets it block
     /// dismissal, and `didChangeState` is mapped to the public `CheckoutPresentationState` surfaced on
     /// `PaymentSheet.onStateChange`. `didUpdateContentHeight` drives the custom bottom sheet's height and is
-    /// the zero-rework seam for the L2 embedded height animation.
+    /// the seam any host uses to follow the content height.
     ///
     /// `@MainActor`: every callback is invoked on the main actor (UIKit affinity).
     ///

@@ -4,6 +4,9 @@
 > session in YOUR backend; never put the API key in an app. Credentials live in a git-ignored
 > `.env.local` and must never reach an app or this repository.
 
+> A Chinese explainer for compliance / product / business readers is maintained as a DingTalk doc
+> (see `AGENTS.md` section 6). Update both when security-relevant behavior changes.
+
 > Status: discussion draft (feeds a dedicated security review meeting)
 > Date: 2026-10-26
 > Scope: Native SDK security & PCI compliance — **unified, platform-agnostic**. iOS and Android
@@ -160,3 +163,49 @@
 **可以实施。** 纯 Native 的卡数据接触面是"已知、可控、可留痕"的,不存在"做出来才发现无法合规"的硬
 阻断。前提:第 3 节 SDK 硬约束全部落实 + 第 6 节 P0 决策逐条关闭。PCI 档位会上升但不致命,最终以收单行/
 QSA 裁定为准。
+
+---
+
+## 9. Elements: inline card fields in the merchant's view hierarchy
+
+`CardElement` (part of `CheckoutElements`) renders the card fields as real views inside the **merchant's own** view
+hierarchy, unlike `PaymentSheet`, which presents them in a separate SDK-owned container.
+
+### 9.1 Exposure and PCI scope
+
+- Merchant code running in the same process can traverse the view hierarchy (`subviews`) and read a text field's text.
+  An in-process merchant could therefore read what the user types.
+- The SDK exposes **no read API**: no public property, callback or description carries card values
+  (`ElementsPublicSurfaceTests` is a best-effort regression check: it walks the Swift-reflectable object graph, excluding UIKit objects and closure captures, so it is not proof of absence), and the existing field hardening stays (autocorrection /
+  spell checking / smart features off, no `textContentType` on the CVC, no persistence, no logs).
+- Because the fields live in the host's hierarchy, this exposure is **part of the host app's PCI scope**. The host
+  must not read, log, screenshot or otherwise capture the card fields.
+
+### 9.2 Cleanup list
+
+Typed values are released and cleared (not erased from memory) at each of:
+
+1. any terminal state of the element: a successful payment, an unsettled (`.pending` / `.unknown`) outcome,
+   `CheckoutElements.close()` and session expiry (the form is cleared and disabled; a failed attempt is NOT terminal and
+   keeps the form so the merchant can retry);
+2. deinit of the `CheckoutElements` group (the controller is dismissed even if the host never calls `close()`).
+   Exception: if the host still retains a `CardElement` after releasing the group, that element is not locked or
+   cleared by the group's deinit (no payment path exists without the group, but the typed values remain until the
+   element itself is released or `CardElement.clear()` is called);
+3. `CardElement.clear()` (typed values, the save-card choice and the visible address fields).
+
+On each end of session the controller is dismissed and the held credential (`customerAccessSecret`,
+`checkoutClientSecret`) is cleared.
+
+### 9.3 "Released and cleared, not erased"
+
+The SDK clears its fields and releases its references, but Swift `String` / UIKit text storage gives no guarantee that
+the old bytes are overwritten in memory. The honest claim is *released and cleared*, not *erased*. Plaintext handling in
+`CardEncryptor` is unchanged (zeroed immediately after encryption).
+
+### 9.4 RELEASE GATE: QSA / acquirer confirmation
+
+**Release gate (open):** before shipping `CardElement` to merchants, obtain written confirmation from the QSA /
+acquirer that inline card fields hosted in the merchant's view hierarchy keep the merchant within the targeted SAQ
+level. If a merchant's QSA does not accept this, the fallback for strict merchants is `PaymentSheet`, which keeps the
+fields in an SDK-owned container.

@@ -2,7 +2,7 @@
 /// ("Buy with Apple Pay", "Donate with Apple Pay", and so on).
 ///
 /// Used by `Appearance.applePayButtonType` for the PaymentSheet's Apple Pay row and by
-/// `ApplePayButton(checkout:sessionId:style:type:)` for the standalone button. The text itself is
+/// `ExpressCheckoutElement.Configuration.buttonType` for the embedded button. The text itself is
 /// rendered and localized by PassKit.
 public enum ApplePayButtonType: Sendable, CaseIterable {
     /// The Apple Pay logo only.

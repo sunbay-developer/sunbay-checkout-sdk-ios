@@ -108,14 +108,10 @@
         private lazy var header = SheetHeaderView(appearance: appearance, localize: localize)
         /// The card-brand rules in effect for this screen (cached remote > bundled), fixed at creation.
         private let cardRuleSet = CardRulesProvider.activeRuleSet()
-        private lazy var cardForm = CardFormView(
-            appearance: appearance, localize: localize, ruleSet: cardRuleSet, brandItems: cardBrandItems)
         private let cardBinService: any CardBinService
         private let cardRulesService: any CardRulesService
-        /// Resolves the scheme from the BIN; created lazily so it exists only on the new-card flow.
-        private lazy var schemeResolver = CardSchemeResolver(
-            service: cardBinService, sessionId: session.id,
-            onChange: { [weak self] scheme in self?.cardForm.setBackendScheme(scheme) })
+        /// The new-card entry column (card form, save row, address forms); built with the layout.
+        private var newCardEntry: NewCardEntryView?
         private lazy var confirmButton = ConfirmButton(appearance: appearance)
         private lazy var notice = InlineNoticeView(appearance: appearance)
         private lazy var footer = CheckoutFooterView(appearance: appearance, localize: localize)
@@ -128,16 +124,11 @@
         private var expressView: ExpressCheckoutView?
         private var newCardEntryRow: UIView?
 
-        /// The "Save this card" (COF consent) checkbox, shown only when the effective COF decision is on.
-        private var saveCardSwitch: CheckboxControl?
         /// The effective card-on-file decision (session allows it, host option on, secret held).
         private let cardOnFileEnabled: Bool
         /// Initial state of the save-card checkbox; the user can still change it before paying.
         private let saveCardByDefault: Bool
 
-        private var billingAddressView: UIView?
-        private var shippingAddressView: UIView?
-        private var shippingContainer: UIStackView?
 
         // MARK: - Layout containers
 
@@ -280,9 +271,8 @@
             configureInitialNavigation()
             refreshConfirmButtonState()
             observeFieldFocus()
-            cardForm.onPANDigitsChanged = { [weak self] digits in self?.schemeResolver.digitsChanged(digits) }
             // Refresh the rules in the background; they apply the next time the card form is shown.
-            CardRulesRefresher.refreshInBackground(service: cardRulesService)
+            newCardEntry?.startBackgroundRefresh()
         }
 
         // MARK: - Keyboard focus
@@ -333,23 +323,23 @@
             // MARK: Layout readouts (internal, tests only)
 
             /// Test readout: whether the save-card row exists on the new-card page.
-            var isSaveCardRowVisibleForTest: Bool { saveCardSwitch != nil }
+            var isSaveCardRowVisibleForTest: Bool { newCardEntry?.isSaveCardRowVisible ?? false }
 
             /// Test readout: the billing address form is part of the new-card page.
-            var isBillingFormVisibleForTest: Bool { billingAddressView.map { !$0.isHidden } ?? false }
+            var isBillingFormVisibleForTest: Bool { newCardEntry?.billingAddressView.map { !$0.isHidden } ?? false }
 
             /// Test readout: the shipping form is shown (section present).
-            var isShippingFormVisibleForTest: Bool { shippingAddressView.map { !$0.isHidden } ?? false }
+            var isShippingFormVisibleForTest: Bool { newCardEntry?.shippingAddressView.map { !$0.isHidden } ?? false }
 
             /// The billing / shipping address form views (nil when the section is off).
-            var billingAddressViewForTest: UIView? { billingAddressView }
-            var shippingAddressViewForTest: UIView? { shippingAddressView }
+            var billingAddressViewForTest: UIView? { newCardEntry?.billingAddressView }
+            var shippingAddressViewForTest: UIView? { newCardEntry?.shippingAddressView }
 
             /// Test readout: the save-card checkbox state (false when the row is absent).
-            var isSaveCardOnForTest: Bool { saveCardSwitch?.isOn ?? false }
+            var isSaveCardOnForTest: Bool { newCardEntry?.isSaveCardOn ?? false }
 
             /// Test seam: set the save-card checkbox as if the user toggled it.
-            func setSaveCardForTest(_ on: Bool) { saveCardSwitch?.isOn = on }
+            func setSaveCardForTest(_ on: Bool) { newCardEntry?.setSaveCard(on) }
 
             /// Test readout: the fixed header container view.
             var headerContainerForTest: UIView { headerContainer }
@@ -365,7 +355,7 @@
             var savedCardListViewForTest: UIView? { savedCardSummary }
 
             /// Test readout: whether the card form is currently interactive (re-enabled after a failure).
-            var isCardFormInteractiveForTest: Bool { cardForm.isUserInteractionEnabled }
+            var isCardFormInteractiveForTest: Bool { newCardEntry?.isCardFormInteractive ?? false }
 
             /// Test readout: whether the primary CTA is interactive (enabled) right now. After a `.failed`
             /// outcome with a complete form this must be `true` so the user can retry (spec §3.1/§3.2) —
@@ -445,7 +435,7 @@
                     (billingAddressViewForTest as? DynamicAddressFormView)?.waitForLoadForTest()
                     (shippingAddressViewForTest as? DynamicAddressFormView)?.waitForLoadForTest()
                 }
-                cardForm.setFieldsForTest(pan: "4242424242424242", expiry: "12/99", cvv: "123")
+                newCardEntry?.fillCardForTest(awaitingAddressLoad: false)
                 refreshConfirmButtonState()
             }
 
@@ -525,7 +515,7 @@
             var confirmButtonTraitsForTest: UIAccessibilityTraits { confirmButton.accessibilityTraitsForTest }
 
             /// Test readout: whether the card form currently shows a field error.
-            var isCardFieldErrorShownForTest: Bool { cardForm.hasFieldErrorForTest }
+            var isCardFieldErrorShownForTest: Bool { newCardEntry?.hasCardFieldError ?? false }
 
             /// Test readout: the Pay button's current title (to assert locale-formatted amount).
             var payButtonTitleForTest: String { confirmButton.titleForTest }
@@ -621,39 +611,8 @@
 
         /// Pay with the manually entered new card.
         private func handleConfirmNewCard() {
-            guard let input = cardForm.cardInput else {
-                if !cardForm.showValidationIssue() {
-                    cardForm.showFieldError(.number, message: localize("sunbay.card.invalid"))
-                }
-                return
-            }
-            // Validate every shown address form (no short-circuit, so each shows its own error).
-            let addressViews = [billingAddressView, shippingAddressView].compactMap { $0 as? DynamicAddressFormView }
-            let addressResults = addressViews.map { $0.validate() }
-            guard addressResults.allSatisfy({ $0 }) else {
-                // Bring the first offending address field up (billing before shipping).
-                _ = addressViews.first(where: { $0.focusFirstError() })
-                return
-            }
-            let save = saveCardSwitch?.isOn ?? false
-            let billing = formAddress(from: billingAddressView)
-            // The shipping form's own values; nil when there is no shipping section.
-            let shipping = formAddress(from: shippingAddressView)
-            guard beginProcessing() else { return }
-            delegate?.content(
-                self,
-                didRequest: .confirmNewCard(
-                    input, save: save, billing: billing, shipping: shipping,
-                    billingFormShown: billingAddressView != nil,
-                    shippingFormShown: shippingAddressView != nil))
-        }
-
-        /// The values currently entered in an address form (nil when the form is absent). PII: never logged.
-        private func formAddress(from view: UIView?) -> AddressInput? {
-            switch view {
-            case let dynamic as DynamicAddressFormView: return dynamic.addressInput
-            default: return nil
-            }
+            guard let action = newCardEntry?.makeConfirmAction(), beginProcessing() else { return }
+            delegate?.content(self, didRequest: action)
         }
 
         /// Pay with a selected saved card (COF; the user selected the card, then tapped Pay).
@@ -673,7 +632,8 @@
                 didRequest: .confirmWallet(
                     WalletAuthorization(token: token, billing: nil, shipping: nil, email: nil,
                                         merchantIdentifier: walletMerchantId),
-                    billingFormShown: billingAddressView != nil, shippingFormShown: shippingAddressView != nil))
+                    billingFormShown: newCardEntry?.billingFormShown ?? false,
+                    shippingFormShown: newCardEntry?.shippingFormShown ?? false))
         }
 
         /// Moves to the processing phase: machine, CTA spinner, disabled inputs, delegate notices.
@@ -688,7 +648,7 @@
             // Also refuse while reconciling: an unsettled earlier attempt must not be re-submitted.
             guard !stateMachine.state.isLockedAgainstNewConfirm else { return false }
             notice.hide()
-            cardForm.showFieldError(.number, message: nil)
+            newCardEntry?.clearCardError()
             processingStartedAt = Date()
             stateMachine.beginProcessing()
             // Visible on every page: a wallet confirm on the home page (nothing selected) must still
@@ -755,7 +715,7 @@
 
         /// Enables or disables the editable inputs during / after processing.
         private func setInputsEnabled(_ enabled: Bool) {
-            cardForm.isUserInteractionEnabled = enabled
+            newCardEntry?.setInteractionEnabled(enabled)
             // The whole home page (express, saved list, "New card" entry) and the back button: no
             // navigation while a confirm is in flight. The header ✕ is locked the same way.
             homeStack.isUserInteractionEnabled = enabled
@@ -764,9 +724,6 @@
             header.setActionEnabled(enabled)
             savedCardList?.isUserInteractionEnabled = enabled
             expressView?.isUserInteractionEnabled = enabled
-            saveCardSwitch?.isEnabled = enabled
-            billingAddressView?.isUserInteractionEnabled = enabled
-            shippingContainer?.isUserInteractionEnabled = enabled
         }
 
         /// Updates the CTA for the current page.
@@ -805,7 +762,7 @@
                 // tappable, so a tap runs `handleConfirmNewCard` and surfaces the field error.
                 confirmButton.isHidden = false
                 confirmButton.update(status: .enabled, animated: false)
-                confirmButton.appearsDisabled = cardForm.cardInput == nil
+                confirmButton.appearsDisabled = !(newCardEntry?.isComplete ?? false)
             } else {
                 // Home: Pay is hidden unless a saved card is selected.
                 let submittable = selectedSavedCardId != nil
@@ -947,29 +904,17 @@
         private func buildNewCardStack() {
             let topDivider = makeNewCardTopDivider()
             newCardStack.addArrangedSubview(topDivider)
-            newCardStack.addArrangedSubview(makeCardInformationHeader())
-            newCardStack.addArrangedSubview(cardForm)
             // A little more breathing room between the top divider and the first section title.
             newCardStack.setCustomSpacing(20, after: topDivider)
 
-            if cardOnFileEnabled {
-                let saveRow = makeSaveCardRow()
-                newCardStack.addArrangedSubview(saveRow)
-                // Pull "Save this card" up close to the card form, and push the Address area below it
-                // further down, so the opt-in reads as belonging to the card (not the address).
-                newCardStack.setCustomSpacing(8, after: cardForm)
-                newCardStack.setCustomSpacing(28, after: saveRow)
-            }
-
-            if let billing = makeAddressView(mode: billingMode, options: .billing) {
-                billingAddressView = billing
-                newCardStack.addArrangedSubview(makeSectionTitle("sunbay.address.billingTitle"))
-                newCardStack.addArrangedSubview(billing)
-            }
-
-            if let shippingSection = makeShippingSection() {
-                newCardStack.addArrangedSubview(shippingSection)
-            }
+            let entry = NewCardEntryView(
+                appearance: appearance, localize: localize, localeCode: localeCode, sessionId: session.id,
+                cardBrandItems: cardBrandItems, cardRuleSet: cardRuleSet, cardBinService: cardBinService,
+                cardRulesService: cardRulesService, billingMode: billingMode, shippingMode: shippingMode,
+                addressService: addressService, cardOnFileEnabled: cardOnFileEnabled,
+                saveCardByDefault: saveCardByDefault, scanPresenter: { [weak self] in self })
+            newCardEntry = entry
+            newCardStack.addArrangedSubview(entry)
         }
 
         // MARK: - Component factories
@@ -1129,8 +1074,8 @@
             let merchantName = session.merchantName
             let params = session.applePayParams
             // The flags say whether the SDK shows a form for that kind right now; the same flags go to `confirmWallet`.
-            let billingFormShown = billingAddressView != nil
-            let shippingFormShown = shippingAddressView != nil
+            let billingFormShown = newCardEntry?.billingFormShown ?? false
+            let shippingFormShown = newCardEntry?.shippingFormShown ?? false
             let walletContacts = walletContacts
             Task { @MainActor [weak self] in
                 do {
@@ -1214,46 +1159,6 @@
             }
         }
 
-        private func makeSaveCardRow() -> UIView {
-            let checkbox = CheckboxControl(appearance: appearance)
-            checkbox.isOn = saveCardByDefault
-            saveCardSwitch = checkbox
-            // Toggling is a deliberate step away from the fields: hide the keyboard (the background tap
-            // recognizer ignores controls, so the checkbox box would otherwise leave it up).
-            checkbox.addAction(
-                UIAction { [weak self] _ in self?.view.endEditing(true) }, for: .valueChanged)
-
-            let label = UILabel()
-            label.text = localize("sunbay.sheet.saveThisCard")
-            label.font = appearance.optionLabelFont
-            label.textColor = appearance.optionLabelColor
-            label.translatesAutoresizingMaskIntoConstraints = false
-            checkbox.attachLabel(label)
-
-            // One-line, merchant-neutral explanation of what saving does (Stripe-style).
-            let hint = UILabel()
-            hint.text = localize("sunbay.sheet.saveThisCardHint")
-            hint.font = appearance.optionHintFont
-            hint.textColor = appearance.textSecondary
-            hint.numberOfLines = 0
-            hint.translatesAutoresizingMaskIntoConstraints = false
-            checkbox.attachLabel(hint)
-
-            let texts = UIStackView(arrangedSubviews: [label, hint])
-            texts.axis = .vertical
-            texts.spacing = 2
-
-            // Left-aligned: checkbox leads the text, with a trailing spacer so the row hugs the
-            // leading edge. Top-aligned so the checkbox sits beside the title line, not the hint.
-            let spacer = UIView()
-            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-            let row = UIStackView(arrangedSubviews: [checkbox, texts, spacer])
-            row.axis = .horizontal
-            row.alignment = .top
-            row.spacing = 8
-            return row
-        }
-
         /// Builds a container holding a full-width hairline for the top of the new-card subpage.
         ///
         /// The subpage content is inset 16pt by `rootStack`; this divider escapes that inset by
@@ -1277,98 +1182,6 @@
                 line.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: -16),
                 line.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: 16),
             ])
-            return container
-        }
-
-        /// Builds the "Card information" header row: the section title on the left and, when scanning is
-        /// available (auto-detected, unless the host disabled it), a themed "Scan card" button on the right.
-        private func makeCardInformationHeader() -> UIView {
-            let title = makeSectionTitle("sunbay.card.informationTitle")
-            #if !targetEnvironment(macCatalyst)
-                guard CardScanAvailability.isAvailable(policy: appearance.cardScanning) else { return title }
-
-                let button = UIButton(type: .system)
-                let config = UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
-                button.setImage(UIImage(systemName: "camera.fill", withConfiguration: config), for: .normal)
-                button.setTitle(" " + localize("sunbay.card.scan"), for: .normal)
-                button.titleLabel?.font = appearance.optionHintFont
-                button.tintColor = appearance.primary
-                button.setTitleColor(appearance.primary, for: .normal)
-                button.accessibilityLabel = localize("sunbay.card.scan")
-                button.setContentHuggingPriority(.required, for: .horizontal)
-                button.setContentCompressionResistancePriority(.required, for: .horizontal)
-                button.addTarget(self, action: #selector(scanCardTapped), for: .touchUpInside)
-
-                title.setContentHuggingPriority(.defaultLow, for: .horizontal)
-                let row = UIStackView(arrangedSubviews: [title, button])
-                row.axis = .horizontal
-                row.alignment = .center
-                row.spacing = 8
-                return row
-            #else
-                return title
-            #endif
-        }
-
-        #if !targetEnvironment(macCatalyst)
-            @objc private func scanCardTapped() {
-                view.endEditing(true)
-                let scanner = CardScanViewController(appearance: appearance, localize: localize)
-                scanner.onScanned = { [weak self] card in
-                    self?.cardForm.applyScannedCard(card)
-                    self?.refreshConfirmButtonState()
-                }
-                present(scanner, animated: true)
-            }
-        #endif
-
-        /// Builds a group section header: uppercased, semibold, in the primary text color and the
-        /// small `sectionHeaderFont`. It is the dark anchor of each group, while placeholders stay
-        /// gray and option labels are smaller/regular, giving a clear three-level hierarchy.
-        /// Shared by the "Card information", billing, and shipping group titles.
-        private func makeSectionTitle(_ key: String) -> UILabel {
-            let label = UILabel()
-            label.text = localize(key).uppercased()
-            label.font = appearance.sectionHeaderFont
-            label.textColor = appearance.text
-            return label
-        }
-
-        /// Builds a billing/shipping address view for a collection mode, or nil if there is none.
-        private func makeAddressView(mode: AddressCollectionMode, options: AddressFormOptions) -> UIView? {
-            switch mode {
-            case .simple:
-                // Simple mode is the dynamic form restricted to country, line1, postal code and names,
-                // wrapped so an unavailable metadata service degrades to a minimal local config.
-                let labels = FallbackAddressMetadataService.Labels(
-                    firstName: localize("sunbay.address.firstName"),
-                    lastName: localize("sunbay.address.lastName"),
-                    line1: localize("sunbay.address.line1"),
-                    postalCode: localize("sunbay.address.postalCode"))
-                return DynamicAddressFormView(
-                    appearance: appearance, localize: localize,
-                    service: FallbackAddressMetadataService(wrapping: addressService, labels: labels),
-                    locale: localeCode, options: options,
-                    visibleFields: [.country, .line1, .postalCode, .firstName, .lastName])
-            case .full:
-                return DynamicAddressFormView(
-                    appearance: appearance, localize: localize, service: addressService,
-                    locale: localeCode, options: options)
-            case .off, .automatic:
-                // `.automatic` is resolved in `init`; it never reaches here.
-                return nil
-            }
-        }
-
-        /// Builds the shipping section: a title and the shipping form. There is no "same as billing"
-        /// shortcut because the shipping form also collects name and phone, which billing does not.
-        private func makeShippingSection() -> UIView? {
-            guard let shipping = makeAddressView(mode: shippingMode, options: .shipping) else { return nil }
-            shippingAddressView = shipping
-            let container = UIStackView(arrangedSubviews: [makeSectionTitle("sunbay.address.shippingTitle"), shipping])
-            container.axis = .vertical
-            container.spacing = 12
-            shippingContainer = container
             return container
         }
 
@@ -1667,7 +1480,7 @@
             confirmButton.onTap = { [weak self] in
                 self?.handlePayTapped()
             }
-            cardForm.onEditingChanged = { [weak self] in
+            newCardEntry?.onEditingChanged = { [weak self] in
                 self?.refreshConfirmButtonState()
             }
         }

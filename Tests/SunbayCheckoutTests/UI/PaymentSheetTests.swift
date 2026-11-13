@@ -152,17 +152,6 @@
             }
             XCTAssertEqual(txnId, "txn_ok")
         }
-
-        // MARK: - 4. EmbeddedPaymentElement is internal (compile-time)
-
-        func test_embeddedPaymentElement_isInternal_notPublic() {
-            // It can only be referenced from the test target via @testable; if it were mistakenly marked public,
-            // this line would still compile, but the real guard for "not public" is the public-API audit in Final
-            // verification plus the existence note of this assertion.
-            // Here we instantiate via internal visibility to anchor that it is a "same-module internal symbol".
-            let stub = EmbeddedPaymentElement()
-            XCTAssertNotNil(stub)
-        }
     }
 
     // MARK: - Test RSA public key

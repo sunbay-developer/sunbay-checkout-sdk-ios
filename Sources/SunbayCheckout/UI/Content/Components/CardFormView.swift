@@ -150,6 +150,25 @@
             return true
         }
 
+        /// The display name of the detected card brand (for example "Visa"), or `nil` when none is
+        /// recognized. Brand only: it never carries any digit of the entered number.
+        var detectedBrandName: String? { rules.displayName }
+
+        /// Empties the three fields, drops the detected scheme and clears any field error. Plaintext is
+        /// only removed here, never read.
+        func clear() {
+            panField.text = ""
+            expiryField.text = ""
+            cvvField.text = ""
+            localScheme = nil
+            backendScheme = nil
+            onPANDigitsChanged?("")
+            reapplyRules()
+            refreshBrandIcons()
+            showFieldError(.number, message: nil)
+            onEditingChanged?()
+        }
+
         /// Applies the scheme recognized by the backend (nil drops it, falling back to the local guess).
         /// Re-groups the number without changing any digit, keeping the caret beside the same digit.
         func setBackendScheme(_ scheme: String?) {
@@ -238,6 +257,11 @@
             /// Test readouts for the brand icons and the CVV icon.
             var brandSchemesForTest: [String] { brandIconsView.visibleSchemesForTest }
             var brandLogosResolvedForTest: Int { brandIconsView.resolvedCountForTest }
+            /// Test readout of the number field's displayed text (formatted, e.g. `4242 4242 …`).
+            var panTextForTest: String { panField.text ?? "" }
+            /// Test seam: focuses the number field / reports whether it is the first responder (needs a window).
+            func focusPANForTest() { _ = panField.becomeFirstResponder() }
+            var isPANFirstResponderForTest: Bool { panField.isFirstResponder }
             var hasCVVIconForTest: Bool { cvvIconView.image != nil && cvvIconView.superview === group }
 
             /// Test seam: types `text` at the end of the number field through the real delegate path

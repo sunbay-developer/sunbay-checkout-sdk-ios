@@ -90,6 +90,22 @@ final class CheckoutSessionDriverTests: XCTestCase {
         XCTAssertEqual(cof.listCallCount, 0)
     }
 
+    func test_loadContext_noMethod_withFlagOff_returnsReadyWithEmptyEntries() async {
+        let session = CheckoutSession(
+            id: "sess_1", amount: Amount(minorUnits: 999, currencyCode: "USD"), merchantName: "Acme",
+            methods: [.card], expiresAt: Date().addingTimeInterval(600), rsaPublicKey: nil,
+            cofEnabled: true, collectBillingAddress: false)
+        let (driver, payment, cof) = makeDriver(
+            session: session, filter: PaymentMethodFilter(hide: ["CARD"]),
+            options: DriverOptions(failsWhenNoMethodAvailable: false))
+        guard case let .ready(context) = await driver.loadContext() else { return XCTFail("expected .ready") }
+        XCTAssertTrue(context.visibleEntries.isEmpty)
+        XCTAssertFalse(context.cardOnFileEnabled)
+        XCTAssertEqual(context.savedCards, [])
+        XCTAssertEqual(cof.listCallCount, 0)
+        XCTAssertEqual(payment.loadSessionCallCount, 1)
+    }
+
     func test_loadContext_sessionLoadCheckoutError_mapsToFailed() async {
         let expected = CheckoutErrors.networkUnavailable()
         let (driver, _, _) = makeDriver { payment, _ in payment.stubLoadError(expected) }

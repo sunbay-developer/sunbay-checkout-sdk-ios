@@ -19,7 +19,7 @@ WebView 收卡实现复杂、UI 风格难与宿主一致、键盘体验难控制
 继承旧 demo 中质量较好的抽象(actor 协调器、五态结果、协议注入、最小货币单位);Apple Pay 真机探针
 代码可借鉴。
 
-首版实现 **L1(PaymentSheet 黑盒页)+ L3(ApplePayButton)**;**L2(EmbeddedPaymentElement)**预留 v2。
+First release ships **L1 (PaymentSheet, black-box page)** and **L2 (Elements: `CheckoutElements` + `ExpressCheckoutElement` + `CardElement`, see §2.3)**. L2 replaces the removed `ApplePayButton` (formerly L3).
 **COF(保存卡)是首期功能。**
 
 ---
@@ -27,7 +27,7 @@ WebView 收卡实现复杂、UI 风格难与宿主一致、键盘体验难控制
 ## 1. 整体架构分层
 
 三层 UI 形态(对齐 Stripe iOS 粗粒度模型,**不做**原子字段拆分),共享一个 UI 无关 Core。
-架构一次规划到位,公开 API 按版本交付:首版 L1 + L3,L2 预留。
+The architecture is planned once; the public API is delivered by version: first release ships L1 + Elements (L2).
 
 ```
 Host App (ISV)
@@ -37,8 +37,8 @@ Host App (ISV)
         ▼
 UI 壳层(可替换,按版本交付;不含业务逻辑)
   ┌ PaymentSheet [L1 首版] 全屏 VC, present(sessionId) → outcome
-  ├ ApplePayButton [L3 首版] 独立钱包按钮(长期控件,事件用闭包)
-  └ EmbeddedElement [L2 预留/v2] 宿主内嵌整块(将来需 delegate)
+  ├ CheckoutElements / ExpressCheckoutElement [首版] embeddable components (replace the removed ApplePayButton; events via closures)
+  └ CardElement [L2] embeddable bank-card component (the delegate reports height / selection / completeness)
         │ 依赖 Core 接口(UI 不感知后端/加密细节)
         ▼
 Core 层(UI 无关,纯逻辑,可单测)
@@ -69,7 +69,7 @@ WalletAuthorizer, CofService, ActionHandler, CredentialStore} → Models`。壳�
 
 ---
 
-## 2. 公开 API 设计(首版 L1 + L3)
+## 2. Public API design (first release: L1 + L2 Elements)
 
 ### 2.1 配置入口
 
@@ -123,7 +123,7 @@ public final class SunbayCheckout {
 // The host backend creates the session and returns sessionId + checkoutClientSecret
 // (+ customerAccessSecret). Both secrets are held in memory only.
 PaymentSheet(checkout:sessionId:customerAccessSecret:checkoutClientSecret:)
-ApplePayButton(checkout:sessionId:...checkoutClientSecret:)
+CheckoutElements.create(checkout:sessionId:configuration:)   // configuration carries checkoutClientSecret
 ```
 
 **Effective COF rule.** COF is active only when all three hold: the session allows it
@@ -269,7 +269,7 @@ UI 层拆成两层,单向依赖 `Container → Content → Theme`:
   (user-action hand-off: at most one buffered action, first wins, cancel always wins), `SavedCardSelection`
   (saved-card order / selection / default / expiry / delete state) and the shared types `CheckoutUserAction`,
   `CheckoutSessionContext` and friends. `PaymentSheet` owns one driver and keeps its own retry loop (sheet
-  policy); the future `EmbeddedPaymentElement` and `FlowController` reuse the same driver.
+  policy); the L2 Elements (`CheckoutElements`) reuse the same driver.
 
 #### Address collection (visibility and style)
 
@@ -292,7 +292,7 @@ Two independent dimensions; the backend decides **whether** to collect, the host
     Shipping asks for first/last name, billing does not (like HPP).
 
 Host-provided addresses: `PaymentSheet(... billingAddress:shippingAddress:)` and
-`ApplePayButton(... billingAddress:shippingAddress:)` take an optional `AddressInput` each. Addresses are PII:
+`CheckoutElements.Configuration` / `CheckoutElements.updateAddresses(billing:shipping:)` take an optional `AddressInput` each. Addresses are PII:
 never logged, never returned in callbacks and never part of a diagnostic. The rules (aligned with the JS SDK):
 
 - **Complete.** Billing needs non-blank `country`, `city`, `line1` and `postalCode`. Shipping needs those plus
@@ -352,21 +352,74 @@ public enum CheckoutPresentationState: Sendable { case editing, processing, succ
   客户端自动跟随,避免"客户端以为能用但后端拒绝"的错位。
 - `present` 返回单次展示结果;`pending/unknown` 需配合 `retrievePayment` 或服务端 webhook 对账。
 
-### 2.3 L3 — 独立 Apple Pay 按钮 `ApplePayButton`
+### 2.3 Elements — `CheckoutElements` / `ExpressCheckoutElement` / `CardElement` (L2)
+
+> L2 is now **Elements**: embeddable components the merchant arranges in its own screen. `ExpressCheckoutElement`
+> replaces the removed `ApplePayButton`. The merchant owns the Pay button. Binding design:
+> `docs/superpowers/specs/2026-11-12-checkout-elements-design.md`.
 
 ```swift
-public final class ApplePayButton: UIControl {
-    public init(checkout: SunbayCheckout, sessionId: String,
-                style: ApplePayButtonStyle = .automatic)
-    /// Availability = backend-allowed ∩ device-capable ∩ merchant-id-configured.
-    public var isAvailable: Bool { get }
-    public var onAvailabilityChange: ((Bool) -> Void)?
-    public var onResult: ((CheckoutOutcome) -> Void)?
-}
+let elements = try await CheckoutElements.create(checkout: checkout, sessionId: sessionId)
+
+let express = elements.makeExpressCheckoutElement()      // .view / .isAvailable / .onAvailabilityChange / .onResult
+let card = elements.makeCardElement()                    // .view / .isAvailable / .isComplete / .delegate / .clear()
+card.delegate = self                                     // cardElementDidUpdateHeight / cardElementDidChangeSelection
+stack.addArrangedSubview(express.view)
+stack.addArrangedSubview(card.view)
+
+// The merchant's own Pay button:
+payButton.addAction(UIAction { _ in
+    Task {
+        let outcome = await elements.confirm()           // pays the CardElement's current selection
+        // .succeeded / .failed / .pending / .unknown; elements.paymentOption is display-only
+    }
+}, for: .touchUpInside)
+elements.close()                                         // when the screen goes away
 ```
 
-长期存在的 UI 控件,事件用闭包(iOS 惯例);只用 Core 的 `WalletAuthorizer` + `CheckoutController`,
-不碰卡表单。
+Components:
+
+- `CheckoutElements` loads the session once. All components made from it share one payment lock, one expiry timer and
+  one outcome history.
+- `ExpressCheckoutElement` (quick wallets, today only Apple Pay): a tap pays immediately and reports through `onResult`.
+- `CardElement` (saved cards when card-on-file is effective, a "New card" row, and the inline new-card form with the
+  optional "save this card" checkbox and billing / shipping address forms). **One `CardElement` per group**: a second
+  `makeCardElement(_:)` returns the same instance and ignores the new configuration.
+
+Behavior to integrate against:
+
+- **Errors.** `create` throws a `CheckoutError` only when the session cannot be loaded (or is expired). "No method
+  available", "Apple Pay unavailable" or "everything hidden" never throw: components report `isAvailable == false` and
+  render zero-height views. A failed `create` ends the UI session (the credential is cleared) before it throws.
+- **Configuration precedence.** The backend decides whether an address is collected. Global switches
+  (`Appearance.billingAddressEnabled` / `shippingAddressEnabled`, the form style) may only turn a form off; component
+  settings (`CardElement.Configuration.billingAddress` / `shippingAddress`, `.automatic` or `.off`) can only turn it off
+  further, never on. A host address supplied through `CheckoutElements.Configuration` suppresses the form as in
+  `PaymentSheet`. The global `PaymentMethodFilter` and provider availability always win over component settings
+  (`ExpressCheckoutElement.Configuration.methods`, `buttonType`, `buttonStyle`; `nil` = follow `Appearance`).
+- **`confirm()` semantics.** It pays the `CardElement` selection; the amount always comes from the server session. It
+  returns `.failed(NO_PAYMENT_OPTION_SELECTED)` when there is no card component or nothing is selected, and
+  `.failed(CARD_INPUT_INVALID)` (nothing submitted, inline field errors shown, the lock is never taken, no state change)
+  when the new-card form is invalid. While a payment is in flight another call returns `.failed(ALREADY_PRESENTING)`;
+  after a settled payment or an ended session it returns the stored outcome again. The lock covers only the in-flight
+  submit request (no polling, see §4.4).
+- **No notices rendered.** The components render no failure / pending / unknown notices and no spinner; only inline
+  field validation errors. The host shows outcomes. While a payment is in flight all inputs are disabled; after
+  `.failed` the form and selection stay so a retry works; after `.succeeded` the form is cleared and stays disabled.
+- **Pending / unknown.** `.pending` and `.unknown` disable the components (no resubmit) and `confirm()` keeps returning
+  the stored outcome. The host reconciles through `CheckoutElements.retrievePayment()` or the webhook; the SDK never
+  reports an undetermined result as `.failed`.
+- **`paymentOption`.** `CheckoutElements.paymentOption` is display data only (`label`, `image`, `paymentMethodType`):
+  "Visa ····4242" for a saved card, the brand name alone for a typed card (never a digit). It is `nil` when nothing
+  payable is selected, the typed card is incomplete, or the element has ended. `image` may be `nil` until the logo has
+  loaded, and the host is not notified when it arrives.
+- **Keyboard insets are the host's job.** The element self-sizes and scrolls the focused field into view inside the
+  nearest ancestor `UIScrollView`, but it does not adjust the host's insets for the keyboard.
+- **Express vs. card flow.** Express confirms inside the wallet sheet and does not touch the card form or `confirm()`;
+  both share one lock, so a card `confirm()` during a wallet payment (and vice versa) returns `ALREADY_PRESENTING`.
+- **Lifecycle.** `close()`, a deinit of the group, a successful payment and session expiry end the session (see
+  `docs/security-and-pci.md` §9). Closing mid-flight takes effect once the in-flight request returns, so a real
+  server outcome is never replaced.
 
 ### 2.4 结果与错误(公开类型,五态)
 
@@ -390,11 +443,11 @@ public struct CheckoutError: Error, Sendable {
 
 ### 2.5 事件返回方式
 
-一次性流程用 async(`present`);持续事件源用闭包(`ApplePayButton`)。不教条统一(与 Stripe 一致)。
+One-shot flows use async (`present`); continuous event sources use closures (`ExpressCheckoutElement`). The two are deliberately not forced into one style (same as Stripe).
 
 ### 2.6 首版不导出(v2)
 
-`EmbeddedPaymentElement` — L2,目录预留,首版不导出;将来需 delegate(高度/选项变化),架构已预留。
+A single-block embed was considered and superseded by Elements (§2.3); nothing is reserved or exported for it.
 
 ---
 
@@ -428,7 +481,7 @@ PaymentSheet → return Outcome
 successful payment. There is no consent object on the wire. Whether the backend requires a consent record is an
 open item (see `docs/real-api-integration-checklist.md`).
 
-### 3.2 Apple Pay(L1 页内 或 L3 独立按钮)
+### 3.2 Apple Pay (inside L1, or the L2 `ExpressCheckoutElement`)
 
 ```
 Controller → PaymentService.loadSession → 钱包参数 + merchantId(host 配置 > session 下发)
@@ -577,13 +630,12 @@ requires_action 路径,后端风控需要时触发 step-up,无需改客户端。
 
 | 版本 | 范围 |
 |---|---|
-| v0.x(首版) | L1 PaymentSheet + L3 ApplePayButton + COF 快捷支付(零验证) + 新卡 RSA 加密 + redirect action;mock 示例 App + Apple Pay 真机探针;Core 协议解耦 |
+| v0.x (first release) | L1 PaymentSheet + L2 Elements (`CheckoutElements` / `ExpressCheckoutElement` / `CardElement`) + COF quick pay (zero verification) + new-card RSA encryption + redirect action; mock example app + Apple Pay real-device probe; Core decoupled by protocols |
 | 真实后端联调 | 接口 ready 后替换 mock 适配器;沙箱端到端;锁定支持矩阵/包名/最低 OS |
 | v1.0 | 公开 API 冻结;合规说明材料;发布门槛验收 |
-| v1.x(后期) | L2 EmbeddedPaymentElement(minor,非破坏) |
 | 后期可选 | 3DS/CVC step-up、qrCode/showContent、卡输入页防截屏、SSL pinning、越狱检测(协议/路径已预留) |
 
-语义化版本:加 L2 = minor,不破坏现有接口;Core 从第一天 UI 无关 → L2 零返工。
+Semantic versioning: additive public API = minor, no breaking changes; Core has been UI-agnostic from day one, so L2 needed no rework.
 
 ### 6.2 目录结构
 
@@ -603,9 +655,9 @@ checkout-sdk-native/ios/
 │   │   │                               #   InlineNotice / DynamicAddressForm / Footer / SheetHeader
 │   │   ├── Container/                  # PaymentSheetContainerViewController (L1 bottom sheet)
 │   │   ├── PaymentSheet/               # L1 public entry [首版]
-│   │   ├── Wallet/                     # L3 ApplePayButton [首版]
+│   │   ├── Wallet/                     # Express wallet 逻辑 (ApplePayAvailability / WalletAuthorizer) [first release]; ExpressCheckoutElement lives in UI/Elements/
 │   │   ├── CardField/                  # CardFieldSecurity(PCI 键盘/自动填充硬化,保留复用)
-│   │   └── Embedded/                   # L2 [预留,首版空占位]
+│   │   └── Elements/                   # L2: CheckoutElements / ExpressCheckoutElement / CardElement
 │   ├── Core/
 │   │   ├── CheckoutController.swift    # actor 编排 + 状态机
 │   │   ├── PaymentService.swift        # protocol (mock/real)

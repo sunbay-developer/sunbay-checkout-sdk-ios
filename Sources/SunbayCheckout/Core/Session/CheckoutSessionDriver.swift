@@ -5,6 +5,12 @@ struct DriverOptions: Sendable {
     /// Whether the host turned the express (wallet) row off; Apple Pay is then not offered.
     var expressOff: Bool
 
+    /// Whether an empty method list (after the host filter and provider availability) is a terminal start
+    /// failure (`NO_PAYMENT_METHOD_AVAILABLE`, the sheet's behavior). When `false`, `loadContext()` returns
+    /// `.ready` with empty `visibleEntries` and leaves the session alive, so an embedded component can
+    /// render its own empty state.
+    var failsWhenNoMethodAvailable: Bool
+
     /// Tells which of the billing / shipping address forms the UI will show, given the loaded session and
     /// whether the host supplied a usable entry for each kind. The UI layer builds it from the appearance
     /// (it needs UIKit-gated types); the driver only forwards the result to the controller.
@@ -14,10 +20,12 @@ struct DriverOptions: Sendable {
 
     init(
         expressOff: Bool = false,
+        failsWhenNoMethodAvailable: Bool = true,
         addressFormsShown: @escaping @Sendable (CheckoutSession, Bool, Bool) -> (billing: Bool, shipping: Bool)
             = { _, _, _ in (false, false) }
     ) {
         self.expressOff = expressOff
+        self.failsWhenNoMethodAvailable = failsWhenNoMethodAvailable
         self.addressFormsShown = addressFormsShown
     }
 }
@@ -106,7 +114,7 @@ final class CheckoutSessionDriver: Sendable {
         // The entry survived the filter (this closure only runs for visible entries), so unusable wallet
         // parameters are reported once (deduplicated by the reporter), even when nothing else is available.
         await controller.reportWalletParamsInvalid(missing: walletMissing)
-        guard !available.isEmpty else {
+        guard !available.isEmpty || !options.failsWhenNoMethodAvailable else {
             await controller.dismiss()
             return .startFailed(.failed(
                 txnId: nil,
@@ -162,6 +170,21 @@ final class CheckoutSessionDriver: Sendable {
             await controller.dismiss()
             return .outcome(.canceled)
         }
+    }
+
+    /// Ends the UI session (clears the active state and the credential).
+    func dismiss() async {
+        await controller.dismiss()
+    }
+
+    /// Replaces the host billing / shipping address entries.
+    func updateHostAddresses(billing: AddressInput?, shipping: AddressInput?) async {
+        await controller.updateHostAddresses(billing: billing, shipping: shipping)
+    }
+
+    /// The Apple Pay contacts to request when no address form is shown.
+    func walletContactRequest() async -> WalletContactRequest {
+        await controller.walletContactRequest(billingFormShown: false, shippingFormShown: false)
     }
 
     /// A UI-independent result lookup (crash / kill recovery).

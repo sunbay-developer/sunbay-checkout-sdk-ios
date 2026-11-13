@@ -63,6 +63,25 @@
             XCTAssertNil(v.addressInput.state)
             XCTAssertNotEqual(v.addressInput.state, "CA")
         }
+
+        /// `clearValues()` must reset every visible address control: the state-menu label and the
+        /// model email too, not just the text fields.
+        func test_clearValues_resetsStateMenuLabelAndEmail() {
+            let v = DynamicAddressFormView(
+                appearance: .resolve(.default), localize: { $0 }, service: TwoCountryMockService(),
+                locale: "en-US")
+            v.waitForLoadForTest()
+            v.selectStateForTest("CA")
+            v.setEmailForTest("a@b.co")
+            XCTAssertNotNil(v.stateTitleForTest)
+            XCTAssertEqual(v.addressInput.email, "a@b.co")
+
+            v.clearValues()
+
+            XCTAssertNil(v.stateTitleForTest, "the state menu label must be reset")
+            XCTAssertNil(v.addressInput.state)
+            XCTAssertNil(v.addressInput.email)
+        }
     }
 
     /// Regression: the form must size to its rows once loaded. A leaked autoresizing-mask constraint

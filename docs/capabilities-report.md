@@ -12,8 +12,8 @@
 ## 1. Executive summary
 
 The SDK is a **pure-native** iOS payment SDK (no embedded WebView for card collection). Its first
-release delivers two integration surfaces — a black-box **PaymentSheet (L1)** and a standalone
-**ApplePayButton (L3)** — over a UI-agnostic core, with **Card-on-File (COF)** saved-card one-tap
+release delivers two integration surfaces — a black-box **PaymentSheet (L1)** and embeddable
+**Elements (`CheckoutElements` / `ExpressCheckoutElement` / `CardElement`)** (L2) — over a UI-agnostic core, with **Card-on-File (COF)** saved-card one-tap
 pay as a first-release feature. It runs end-to-end today against an **injected mock backend**; a
 real backend adapter is intentionally not built yet (the backend contract is undefined) and plugs
 into a ready public injection seam.
@@ -41,8 +41,32 @@ items in §7.
 | Surface | Status | What it is |
 |---|---|---|
 | **L1 `PaymentSheet`** | ✅ | Black-box modal page. `present(from:) async -> CheckoutOutcome`. Auto-renders new-card + COF saved cards (when enabled) + Apple Pay entry. Host writes almost no UI code. |
-| **L3 `ApplePayButton`** | ✅ | Standalone `UIControl` with `isAvailable` / `onAvailabilityChange` / `onResult`. Drop anywhere (cart, product page). |
-| **L2 `EmbeddedPaymentElement`** | ⛔ | Reserved internal stub for v2 (host-embedded inline element). Not public, no behavior. Architecture already supports adding it with zero core rework. |
+| **L2 Elements: `CheckoutElements` + `ExpressCheckoutElement` + `CardElement`** | ✅ | L2 is now Elements. One group per session shares one payment lock, expiry timer and outcome history. `CardElement` embeds saved cards (COF) and the inline new-card form (optional billing / shipping address forms); the merchant owns the Pay button and calls `CheckoutElements.confirm()`. See the Elements chapter below. |
+
+### 3.1 Elements chapter
+
+```swift
+let elements = try await CheckoutElements.create(checkout: checkout, sessionId: sessionId)
+let express = elements.makeExpressCheckoutElement()   // Apple Pay, tap pays immediately -> onResult
+let card = elements.makeCardElement()                 // saved cards + inline new-card form
+// Merchant's own Pay button:
+let outcome = await elements.confirm()                // pays the CardElement selection
+```
+
+- **Config precedence:** the backend decides whether an address is collected; global `Appearance` switches and the
+  component settings can only turn a form off, never on. `PaymentMethodFilter` and provider availability always win
+  over per-component settings.
+- **`confirm()`:** amount always from the server session; `CARD_INPUT_INVALID` (nothing submitted, inline errors, no
+  lock) and `NO_PAYMENT_OPTION_SELECTED` are returned as `.failed`; after a settled payment or ended session the stored
+  outcome is returned again.
+- **No notices rendered:** the components show only inline field errors; the host shows outcomes.
+- **Pending / unknown:** components stay disabled, `confirm()` returns the stored outcome, and the host reconciles via
+  `retrievePayment()` / webhook. The SDK does not poll.
+- **One `CardElement` per group** (a second `makeCardElement` returns the same instance).
+- **Keyboard insets are the host's job.**
+- `ExpressCheckoutElement` replaces the removed `ApplePayButton`.
+- **Security:** inline card fields are real views in the merchant's view hierarchy; see `docs/security-and-pci.md` §9
+  (host PCI scope and the QSA / acquirer release gate; fallback for strict merchants: `PaymentSheet`).
 
 ## 4. Core capabilities
 
@@ -66,14 +90,14 @@ items in §7.
 ## 5. Public API surface (semver-stable candidate)
 
 Entry & config: `SunbayCheckout`, `CheckoutConfiguration` (+ `Environment`), `sunbayCheckoutVersion`.
-UI: `PaymentSheet`, `ApplePayButton` (+ `ApplePayButtonStyle`).
+UI: `PaymentSheet`, `CheckoutElements`, `ExpressCheckoutElement`, `CardElement` (skeleton) (+ `Appearance.ApplePayButtonStyle`, `ApplePayButtonType`).
 Results/errors: `CheckoutOutcome`, `CheckoutError` (+ `Category`), `PaymentSnapshot`, `TxnStatus`.
 Models: `Amount`, `SavedCard`, `CheckoutSession`, `PaymentMethodKind`, `PaymentAction`, `Appearance` (+ `ColorScheme`).
 Host-implemented contracts: `PaymentService`, `CofService`, `SubmitRequest`, `Consent`.
 
 Internal (not exposed): `CheckoutController`, `CardEncryptor`, `CardInput`, `CredentialStore`,
 `ResultPoller`, `ActionHandler`/`ActionHandling`, `WalletAuthorizer`, `PaymentSheetViewController`,
-`EmbeddedPaymentElement`, the Unconfigured* defaults.
+the Unconfigured* defaults.
 
 ## 6. Internationalization (i18n)
 
@@ -99,7 +123,7 @@ Minor tracked items: in-sheet Apple Pay wiring (v-next), `Consent` version hardc
 
 - **Example app (`SunbayCheckoutDemo`)** — public-API-only; injects the mock backend via the
   public seam; demonstrates: PaymentSheet (new-card, COF saved-card one-tap, Apple Pay entry row),
-  standalone ApplePayButton, a scenario picker driving all five outcomes
+  the Elements section (Express element), a scenario picker driving all five outcomes
   (succeeded / failed / pending / requiresAction / networkTimeout→unknown). Builds and launches on
   the iOS Simulator.
 - **Apple Pay probe (`ApplePayProbe`)** — standalone, PassKit-direct; validates the client wallet

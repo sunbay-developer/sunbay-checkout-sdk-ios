@@ -7,7 +7,8 @@ is built ahead of its API, and remove the section only after the item is verifie
 ## 1. Card brand rules and BIN recognition
 
 Contract: `docs/card-rules-contract.md` (the HPP server hosts both endpoints; the SDK never calls
-the payment backend directly for this).
+the payment backend directly for this). The endpoints already exist and the JS SDK uses them
+(confirmed by the owner, 2026-11-12), so everything below is SDK-side work, not a backend dependency.
 
 State today (what was built ahead of the API):
 
@@ -120,8 +121,9 @@ Open verification items:
 - [x] Submit requires `sessionType`: without it the backend returns `C16` "Parameter cannot be
       empty:sessionType" (observed 2026-11-09). The SDK echoes the `sessionType` from the load-session
       response on every submit path.
-- [ ] Backend renames session `storeCard` to `supportStoreCard`. The response still carries legacy
-      `storeCard`; the SDK reads only `supportStoreCard` (absent means `true`). Re-check after deployment.
+- [x] Backend renames session `storeCard` to `supportStoreCard`. Done on the backend (confirmed by the owner,
+      2026-11-12; not yet re-verified with a live call). The SDK reads only `supportStoreCard` (absent means `true`),
+      so no SDK change is needed.
 - [ ] Unknown or malformed currency codes are now rejected (`INVALID_RESPONSE`); confirm the backend's
       currency table only issues codes Foundation knows.
 - [x] In-doubt submit business codes: the SDK treats a non-network business error on submit as a
@@ -146,14 +148,17 @@ Open verification items:
 - [ ] Does a `storeCard: true` new-card submit also need `customerAccessSecret` to bind the card to the
       customer? The `C01` requirement is resolved by sending `payerBillingInfo` (the SDK now does). Whether
       `customerAccessSecret` is needed on store-card submit is still unanswered until a store-card channel exists.
-- [ ] Backend `supportStoreCard` rename is still pending (the session still returns `storeCard`).
+- [x] Backend `supportStoreCard` rename is deployed (confirmed by the owner, 2026-11-12).
 - [x] `E03` is returned only for failed payments, so treating it as a definite failure is correct
       (confirmed by the user, 2026-11-09). This resolves the `E03` candidate above.
 - [ ] `R` with a redirect returns `pending` without a result query or polling; revisit when QR payments
       are supported (user decision, 2026-11-09).
 - [x] Real new-card payment end to end: passes against dev as of 2026-11-09 (submit `S` + `retrievePayment`).
 - [x] `payment/result` responses omit `sessionId` (observed 2026-11-09); the SDK falls back to the queried session.
-- [ ] Saving a card is blocked (live facts, dev, 2026-11-09): `storeCard: true` without `payerBillingInfo`
+- [x] Saving a card was blocked on the merchant's store-card channel; the channel is now configured (confirmed by
+      the owner, 2026-11-12). Follow-up still open: re-run `RealAPICofTests.testStoreThenPayWithSavedCard` against dev
+      (opt-in, needs `SUNBAY_DEV_SERVER_URL`) to confirm the card appears in `card/list`.
+      History of the blocker (live facts, dev, 2026-11-09): `storeCard: true` without `payerBillingInfo`
       is rejected with `C01` "Request parameter missing:payerBillingInfo is null" (with or without
       `customerAccessSecret`). With a billing address the dev merchant returns `txnStatus F` "No available
       channel" (a `tokenId` is returned but the card does not appear in `card/list`). Unblocking needs
@@ -214,7 +219,8 @@ Cross-repo items:
 
 - [ ] Register `WALLET_PARAMS_INVALID` in the shared `WARNING_CODES` and in the JS `api.md` code table (the JS
       SDK owns the table; the iOS code already emits it).
-- [ ] Apple Pay merchant id and certificate onboarding for the dev/test merchants (backend).
+- [x] Apple Pay merchant id and certificate onboarding for the dev/test merchants (backend): done (confirmed by
+      the owner, 2026-11-12). Still to verify on a real device: an Apple Pay payment succeeds end to end.
 
 Open verification items on a real device (Apple Pay cannot be exercised on the simulator or in `swift test`):
 
@@ -297,5 +303,10 @@ Apple Pay submits now carry `digitalWalletInfo.applePay.merchantIdentifier` (the
 - [ ] Backend: align `docs/api/checkout-api.json` (field marked optional, "not consumed yet") with the dev
       behavior (submit rejected with `merchantIdentifier is required` when absent).
 - [ ] Real-device check: an Apple Pay payment with the internal merchant id succeeds end to end.
-- [ ] Ask backend how an integrator's own merchant id is registered with Sunbay (the request still sends whatever
-      the host configured).
+- [x] How an integrator's own merchant id is registered with Sunbay: through the separate developer platform, where the
+      integrator can also upload its own certificate (confirmed by the owner, 2026-11-12). The SDK still sends whatever
+      the host configured; add this to the integration guide.
+
+## Release gate
+
+- [ ] **RELEASE GATE:** obtain written QSA / acquirer confirmation of the host's PCI scope for `CardElement` before shipping it to merchants (see `docs/security-and-pci.md` §9.4); until then recommend `PaymentSheet`.

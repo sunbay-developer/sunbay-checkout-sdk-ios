@@ -47,6 +47,26 @@ enum CheckoutErrors {
         )
     }
 
+    /// `CheckoutElements.confirm()` found nothing to pay with (no card component, or nothing selected).
+    static func noPaymentOptionSelected() -> CheckoutError {
+        CheckoutError(
+            code: "NO_PAYMENT_OPTION_SELECTED",
+            message: "No payment option is selected.",
+            category: .validation,
+            traceId: nil
+        )
+    }
+
+    /// `CheckoutElements.confirm()` found the new-card form (or a shown address form) invalid; nothing was submitted.
+    static func cardInputInvalid() -> CheckoutError {
+        CheckoutError(
+            code: "CARD_INPUT_INVALID",
+            message: "The card details are incomplete or invalid.",
+            category: .validation,
+            traceId: nil
+        )
+    }
+
     /// Deleting a saved card is not supported by this `CofService`.
     static func cardDeleteUnsupported() -> CheckoutError {
         CheckoutError(

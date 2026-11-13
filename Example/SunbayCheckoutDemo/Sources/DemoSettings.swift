@@ -159,7 +159,7 @@ struct DemoSettings: Codable, Equatable {
 
     // MARK: Apple Pay button color
 
-    /// The Apple Pay button color (maps to `Appearance.applePayButtonStyle` and `ApplePayButton(style:)`).
+    /// The Apple Pay button color (maps to `Appearance.applePayButtonStyle` and `ExpressCheckoutElement.Configuration.buttonStyle`).
     enum DemoApplePayStyle: String, Codable, CaseIterable, Identifiable {
         case automatic, black, white
 

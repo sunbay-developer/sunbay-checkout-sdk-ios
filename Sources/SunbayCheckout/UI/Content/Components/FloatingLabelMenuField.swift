@@ -78,6 +78,11 @@
             setNeedsLayout()
         }
 
+        #if DEBUG
+            /// The visible value text, for tests.
+            var selectedTitleForTest: String? { valueLabel.text }
+        #endif
+
         // MARK: - Setup
 
         private func configure() {

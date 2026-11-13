@@ -4,17 +4,16 @@ Native payment SDK for embedding **Sunbay Checkout** into iOS apps. It renders n
 a card form, an Apple Pay button, and a saved-card (COF) list — collects card data in native
 controls, encrypts it locally with an RSA public key, and submits it directly to the Sunbay backend.
 
-> **Status:** UI layer implemented (first-release L1 + L3 + COF). The Swift package, example app, and
+> **Status:** UI layer implemented (first-release L1 + L2 Elements + COF). The Swift package, example app, and
 > host/simulator test suites are in place; real/sandbox backend end-to-end is the remaining release gate.
 > See `docs/product-spec.md`.
 
 ## Approach
 
 - **Pure native** — no embedded WebView for card collection. The card form is native UIKit.
-- Three UI layers, planned once, delivered by version:
+- Two UI layers, planned once, delivered by version:
   - **L1 `PaymentSheet`** — black-box bottom-sheet page (first release)
-  - **L3 `ApplePayButton`** — standalone wallet button (first release)
-  - **L2 `EmbeddedPaymentElement`** — host-embedded block (reserved for v2)
+  - **Elements `CheckoutElements`** — embeddable components: `ExpressCheckoutElement` (Apple Pay; replaces the removed `ApplePayButton`), `CardElement` (saved cards + inline new-card form; the merchant owns the Pay button)
 - **COF (saved cards)** is a first-release feature: list saved cards and pay in one tap.
 
 ## Quick start
@@ -34,9 +33,14 @@ let sheet = PaymentSheet(
 sheet.onStateChange = { state in /* ... */ }
 let outcome = await sheet.present(from: self)
 
-// L3 — standalone Apple Pay button
-let button = ApplePayButton(checkout: checkout, sessionId: sessionId)
-button.onResult = { outcome in /* ... */ }
+// Elements — embed Apple Pay and the card form in your own screen
+let elements = try await CheckoutElements.create(checkout: checkout, sessionId: sessionId)
+let express = elements.makeExpressCheckoutElement()
+express.onResult = { outcome in /* ... */ }
+let card = elements.makeCardElement()
+// add express.view and card.view to your layout; each is zero-height when unavailable
+// your own Pay button:
+let outcome = await elements.confirm()
 ```
 
 ## Apple Pay merchant id

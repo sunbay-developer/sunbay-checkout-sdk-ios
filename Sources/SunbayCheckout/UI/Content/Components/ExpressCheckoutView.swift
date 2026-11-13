@@ -11,7 +11,7 @@
     /// The button is a real PassKit `PKPaymentButton` (per spec §7.4) pinned to fill the row so PassKit
     /// owns the glyph, label localization, and light/dark styling. This view only renders the button +
     /// divider and forwards taps via `onApplePayTapped`; **availability gating is the caller's job**
-    /// (design §7.4 three-factor logic lives in the content VC / `ApplePayButton`).
+    /// (design §7.4 three-factor logic lives in the content VC / `ExpressCheckoutElement`).
     ///
     /// iOS-only: gated by `#if canImport(UIKit)`. The Apple Pay button additionally requires PassKit; on
     /// a platform without PassKit the view degrades to just the divider (the caller would not show it).
@@ -34,6 +34,16 @@
         private let rightRule = UIView()
         private let dividerPlacement: DividerPlacement
         private let showsDivider: Bool
+        /// Per-component overrides of the global button wording / color (nil = follow `appearance`).
+        private let buttonTypeOverride: ApplePayButtonType?
+        private let buttonStyleOverride: Appearance.ApplePayButtonStyle?
+        #if DEBUG && canImport(PassKit)
+            // `PKPaymentButton` exposes no getters, so the values handed to it are recorded (test seams,
+            // DEBUG only: nothing extra is retained in production builds).
+            private(set) var appliedButtonType: PKPaymentButtonType?
+            private(set) var appliedButtonStyle: PKPaymentButtonStyle?
+            private(set) weak var paymentButton: PKPaymentButton?
+        #endif
 
         /// Creates the express row with resolved appearance tokens.
         ///
@@ -43,7 +53,14 @@
         ///   - dividerPlacement: Whether the divider sits below (default) or above the button.
         ///   - showsDivider: Whether to render the "Or pay using" divider at all. Pass `false` when the
         ///     express row is the only payment option on the page (nothing to separate it from).
-        init(appearance: ResolvedAppearance, dividerPlacement: DividerPlacement = .below, showsDivider: Bool = true) {
+        ///   - buttonType: Overrides the global Apple Pay button wording (nil = follow `appearance`).
+        ///   - buttonStyle: Overrides the global Apple Pay button color (nil = follow `appearance`).
+        init(
+            appearance: ResolvedAppearance, dividerPlacement: DividerPlacement = .below, showsDivider: Bool = true,
+            buttonType: ApplePayButtonType? = nil, buttonStyle: Appearance.ApplePayButtonStyle? = nil
+        ) {
+            self.buttonTypeOverride = buttonType
+            self.buttonStyleOverride = buttonStyle
             self.appearance = appearance
             self.dividerPlacement = dividerPlacement
             self.showsDivider = showsDivider
@@ -70,7 +87,7 @@
                 stack.bottomAnchor.constraint(equalTo: bottomAnchor),
             ])
 
-            let payButton = makeApplePayButton()
+            let payButton = makeWalletButton()
             payButton.translatesAutoresizingMaskIntoConstraints = false
             payButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 48).isActive = true
             guard showsDivider else {
@@ -133,11 +150,16 @@
         }
 
         /// Builds the Apple Pay button, using an official `PKPaymentButton` where PassKit is available.
-        private func makeApplePayButton() -> UIView {
+        private func makeWalletButton() -> UIView {
             #if canImport(PassKit)
-                let button = PKPaymentButton(
-                    paymentButtonType: appearance.applePayButtonType.pkType,
-                    paymentButtonStyle: appearance.applePayButtonStyle.pkStyle)
+                let type = (buttonTypeOverride ?? appearance.applePayButtonType).pkType
+                let style = (buttonStyleOverride ?? appearance.applePayButtonStyle).pkStyle
+                let button = PKPaymentButton(paymentButtonType: type, paymentButtonStyle: style)
+                #if DEBUG
+                    appliedButtonType = type
+                    appliedButtonStyle = style
+                    paymentButton = button
+                #endif
                 button.cornerRadius = appearance.primaryButtonCornerRadius
                 button.addTarget(self, action: #selector(handleApplePayTap), for: .touchUpInside)
                 return button
@@ -149,6 +171,12 @@
                 return placeholder
             #endif
         }
+
+        #if DEBUG && canImport(PassKit)
+            var appliedButtonTypeForTest: PKPaymentButtonType? { appliedButtonType }
+            var appliedButtonStyleForTest: PKPaymentButtonStyle? { appliedButtonStyle }
+            var paymentButtonForTest: UIView? { paymentButton }
+        #endif
 
         @objc private func handleApplePayTap() {
             onApplePayTapped?()

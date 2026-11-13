@@ -36,6 +36,11 @@
 
         private var locale: String?
 
+        /// Called after the form's content height may have changed (a load finished or failed, an inline
+        /// error appeared or cleared). A self-sizing host must re-measure: its own bounds may not change
+        /// when it pins a stale height, so no layout pass of the host would reveal the growth.
+        var onContentSizeChange: (() -> Void)?
+
         /// The user-entered values, stored as codes/raw text so they survive a rebuild (§7.3).
         private var model = AddressInput()
 
@@ -193,6 +198,7 @@
             errorLabels[type]?.text = message
             errorLabels[type]?.isHidden = message == nil
             (textFields[type] as? FloatingLabelTextField)?.setErrorActive(message != nil)
+            onContentSizeChange?()
         }
 
         private func clearError(for type: AddressFieldType) {
@@ -204,6 +210,24 @@
         private func clearErrors() {
             fieldErrors = [:]
             for type in errorLabels.keys { applyError(for: type) }
+        }
+
+        /// Empties every entered value (except the selected country) and clears all field errors.
+        func clearValues() {
+            model.line1 = nil
+            model.line2 = nil
+            model.city = nil
+            model.state = nil
+            model.postalCode = nil
+            model.district = nil
+            model.firstName = nil
+            model.lastName = nil
+            model.phone = nil
+            model.email = nil
+            // The state menu keeps its own label; reset it with the model.
+            stateButton?.clearSelection()
+            applyStoredValues()
+            clearErrors()
         }
 
         /// Refetches with a new locale and rebuilds, preserving already-entered values (§7.3).
@@ -295,8 +319,9 @@
             errorContainer.isHidden = loadState != .failed
             contentStack.isHidden = loadState != .loaded
 
-            guard loadState == .loaded else { return }
-            rebuildFields()
+            if loadState == .loaded { rebuildFields() }
+            invalidateIntrinsicContentSize()
+            onContentSizeChange?()
         }
 
         /// Rebuilds the field controls from the current config, then re-applies stored values.
@@ -611,6 +636,12 @@
                 stateButton?.setSelected(title: name)
             }
         }
+
+        /// The state-menu button's visible value text (nil when nothing is shown), for tests.
+        var stateTitleForTest: String? { stateButton?.selectedTitleForTest }
+
+        /// Sets the model email directly (no field edits it), for tests.
+        func setEmailForTest(_ value: String?) { model.email = value }
 
         /// Invokes the real country-selection logic for the given country code (the exact production
         /// code path, including stale-subdivision clearing), then reloads the country config.

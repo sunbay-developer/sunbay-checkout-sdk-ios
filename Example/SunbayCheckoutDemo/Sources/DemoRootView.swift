@@ -136,11 +136,11 @@ import SunbayCheckoutTestSupport
     ///
     /// A tabbed config screen (Pay / Options / Look) exposing every `DemoSettings` knob, a "Pay (sheet)"
     /// action that creates a real order through the local `Example/DevServer` and presents the SDK
-    /// `PaymentSheet` against the selected backend, a standalone `ApplePayButton` section, and a
-    /// live Logs tab. The environment is switchable (dev by default); there is no mock mode.
+    /// `PaymentSheet` against the selected backend, a separate "Elements" tab (a merchant checkout page built from
+    /// `CheckoutElements`, see `ElementsTabView.swift`), and a live Logs tab. The environment is switchable (dev by default); there is no mock mode.
     ///
     /// Consumes only the SDK public API (`SunbayCheckout`, `CheckoutConfiguration`, `PaymentSheet`,
-    /// `ApplePayButton`, `CheckoutOutcome`, `CheckoutError`) plus `DevSessionClient` from
+    /// `CheckoutElements`, `CheckoutOutcome`, `CheckoutError`) plus `DevSessionClient` from
     /// `SunbayCheckoutTestSupport`. No internal types, no `@testable`.
     ///
     /// Localization gate: the `Locale` picker writes into `CheckoutConfiguration.locale`, which the
@@ -153,8 +153,6 @@ import SunbayCheckoutTestSupport
         @StateObject private var log = DemoLog()
         /// The toast currently shown over the tabs (payment results).
         @State private var toast: DemoToast?
-        /// Whether the embedded ApplePayButton has been loaded (it is not rendered until asked for).
-        @State private var embeddedLoaded = false
         /// The current order session; every payment action needs one.
         @State private var session: DevSession?
         /// True while a session is being created.
@@ -169,25 +167,43 @@ import SunbayCheckoutTestSupport
             return (value?.isEmpty == false ? value : nil) ?? "merchant.com.example.yourapp"
         }()
 
+        /// DEBUG-only launch arguments for screenshots: `-ElementsTabFirst YES` selects the Elements tab and
+        /// `-ElementsAutoCreate YES` creates an order on launch (see Example/README.md).
+        #if DEBUG
+            @State private var selectedTab = UserDefaults.standard.bool(forKey: "ElementsTabFirst") ? 3 : 0
+        #else
+            @State private var selectedTab = 0
+        #endif
+
         var body: some View {
-            TabView {
-                tab("Pay", systemImage: "creditcard") {
+            TabView(selection: $selectedTab) {
+                tab("Pay", tag: 0, systemImage: "creditcard") {
                     orderSection
                     sessionSection
                     paymentSheetSection
-                    applePaySection
                 }
-                tab("Look", systemImage: "paintbrush") {
+                tab("Look", tag: 1, systemImage: "paintbrush") {
                     appearanceSection
                     effectsSection
                     localeSection
                 }
-                tab("Options", systemImage: "slider.horizontal.3") {
+                tab("Options", tag: 2, systemImage: "slider.horizontal.3") {
                     methodsSection
                     addressSection
                     cofSection
                 }
-                tab("Logs", systemImage: "list.bullet.rectangle") {
+                ElementsTabView(
+                    settings: settings,
+                    session: session,
+                    isCreatingSession: isCreatingSession,
+                    sessionError: sessionError,
+                    makeCheckout: { makeCheckout() },
+                    createSession: { createSession() },
+                    onOutcome: { handle($0, source: "Elements") },
+                    onLog: { log.add($0, level: $1) }
+                )
+                .tag(3)
+                tab("Logs", tag: 4, systemImage: "list.bullet.rectangle") {
                     logsSection
                 }
             }
@@ -200,8 +216,10 @@ import SunbayCheckoutTestSupport
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: toast)
-            .onChange(of: session?.sessionId) { id in
-                if id == nil { embeddedLoaded = false }
+            .onAppear {
+                #if DEBUG
+                    if UserDefaults.standard.bool(forKey: "ElementsAutoCreate"), session == nil { createSession() }
+                #endif
             }
             .onChange(of: sessionInputs) { _ in
                 // A session belongs to the inputs it was created with.
@@ -223,7 +241,7 @@ import SunbayCheckoutTestSupport
 
         /// One tab: its own navigation stack around a form, so each tab keeps its scroll position.
         private func tab<Content: View>(
-            _ title: String, systemImage: String, @ViewBuilder content: () -> Content
+            _ title: String, tag: Int, systemImage: String, @ViewBuilder content: () -> Content
         ) -> some View {
             NavigationView {
                 Form { content() }
@@ -232,6 +250,7 @@ import SunbayCheckoutTestSupport
             }
             .navigationViewStyle(.stack)
             .tabItem { Label(title, systemImage: systemImage) }
+            .tag(tag)
         }
 
         // MARK: - Order
@@ -384,7 +403,7 @@ import SunbayCheckoutTestSupport
                 }
                 .pickerStyle(.menu)
             } header: {
-                SectionHelp("Payment methods", "Hide maps to PaymentMethodFilter(hide:). Hiding Card also hides saved cards; hiding every method makes present() fail with NO_PAYMENT_METHOD_AVAILABLE. Apple Pay button text maps to Appearance.applePayButtonType (the sheet's express row) and ApplePayButton(type:) (the embedded button). Apple Pay button color maps to Appearance.applePayButtonStyle (the sheet; Automatic follows the sheet's light/dark mode) and ApplePayButton(style:) (the embedded button; Automatic follows the system).")
+                SectionHelp("Payment methods", "Hide maps to PaymentMethodFilter(hide:). Hiding Card also hides saved cards; hiding every method makes present() fail with NO_PAYMENT_METHOD_AVAILABLE. Apple Pay button text maps to Appearance.applePayButtonType (the sheet's express row) and ExpressCheckoutElement.Configuration.buttonType (the embedded element). Apple Pay button color maps to Appearance.applePayButtonStyle (the sheet; Automatic follows the sheet's light/dark mode) and ExpressCheckoutElement.Configuration.buttonStyle (the embedded element; Automatic follows the system).")
             }
         }
 
@@ -461,33 +480,6 @@ import SunbayCheckoutTestSupport
                 )
             } header: {
                 SectionHelp("PaymentSheet", "L1 black-box page for the current session: new-card form, 'Save this card', saved cards (one-tap) and an Apple Pay entry row.")
-            }
-        }
-
-        private var applePaySection: some View {
-            Section {
-                if embeddedLoaded, session != nil {
-                    StandaloneApplePaySection(
-                        checkout: makeCheckout(),
-                        session: session,
-                        type: settings.applePayText.sdk,
-                        style: settings.applePayStyle.sdkButton,
-                        onResult: { handle($0, source: "Apple Pay") },
-                        onAvailability: { log.add("Apple Pay button available: \($0)") }
-                    )
-                    Button("Remove") {
-                        embeddedLoaded = false
-                        log.add("Embedded ApplePayButton removed")
-                    }
-                } else {
-                    Button("Load ApplePayButton") {
-                        embeddedLoaded = true
-                        log.add("Embedded ApplePayButton loaded")
-                    }
-                    .disabled(session == nil)
-                }
-            } header: {
-                SectionHelp("Embedded components", "Components you embed in your own screen. Nothing is rendered until you load it. Currently: the L3 ApplePayButton bound to the current session (needs a real device). Card and billing-address components will be added here once they are embeddable.")
             }
         }
 
@@ -865,47 +857,6 @@ import SunbayCheckoutTestSupport
         }
     }
 
-    // MARK: - Standalone ApplePayButton section
-
-    /// The standalone `ApplePayButton` bound to the current session.
-    struct StandaloneApplePaySection: View {
-        let checkout: SunbayCheckout
-        let session: DevSession?
-        let type: ApplePayButtonType
-        let style: ApplePayButton.ApplePayButtonStyle
-        let onResult: (CheckoutOutcome) -> Void
-        let onAvailability: (Bool) -> Void
-        @State private var available = false
-
-        var body: some View {
-            if let session {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(available ? "Available" : "Unavailable (device cannot pay or merchant id not configured)")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    ApplePayButtonView(
-                        checkout: checkout,
-                        sessionId: session.sessionId,
-                        checkoutClientSecret: session.checkoutClientSecret,
-                        type: type,
-                        style: style,
-                        onResult: onResult,
-                        onAvailabilityChange: {
-                            available = $0
-                            onAvailability($0)
-                        }
-                    )
-                    .id("\(session.sessionId)-\(type)-\(style)")
-                    .frame(height: 48)
-                }
-            } else {
-                Text("Create a session first.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
     /// Readable session-creation failure copy (never includes secrets or response bodies).
     private func describeSessionError(_ error: Error) -> String {
         if error is InvalidServerURL {
@@ -915,35 +866,6 @@ import SunbayCheckoutTestSupport
             return error.description
         }
         return "Dev server session failed: \(error.localizedDescription)"
-    }
-
-    // MARK: - ApplePayButton wrapper (UIKit control -> SwiftUI)
-
-    /// Bridges the public `ApplePayButton` (UIControl) into SwiftUI, wiring `onResult` and `onAvailabilityChange`.
-    struct ApplePayButtonView: UIViewRepresentable {
-        let checkout: SunbayCheckout
-        let sessionId: String
-        let checkoutClientSecret: String
-        let type: ApplePayButtonType
-        let style: ApplePayButton.ApplePayButtonStyle
-        let onResult: (CheckoutOutcome) -> Void
-        let onAvailabilityChange: (Bool) -> Void
-
-        func makeUIView(context: Context) -> ApplePayButton {
-            let button = ApplePayButton(
-                checkout: checkout,
-                sessionId: sessionId,
-                style: style,
-                type: type,
-                checkoutClientSecret: checkoutClientSecret
-            )
-            button.onResult = onResult
-            button.onAvailabilityChange = onAvailabilityChange
-            button.setContentHuggingPriority(.defaultLow, for: .horizontal)
-            return button
-        }
-
-        func updateUIView(_ uiView: ApplePayButton, context: Context) {}
     }
 
     // MARK: - Get the top VC (for present)
@@ -966,15 +888,6 @@ import SunbayCheckoutTestSupport
     extension DemoSettings.DemoApplePayStyle {
         /// The sheet's Apple Pay button color for this demo choice.
         var sdkSheet: Appearance.ApplePayButtonStyle {
-            switch self {
-            case .automatic: return .automatic
-            case .black: return .black
-            case .white: return .white
-            }
-        }
-
-        /// The embedded `ApplePayButton` color for this demo choice.
-        var sdkButton: ApplePayButton.ApplePayButtonStyle {
             switch self {
             case .automatic: return .automatic
             case .black: return .black

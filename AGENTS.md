@@ -19,8 +19,8 @@ confirms payments against the Sunbay backend.
 and sent directly to the backend. There is **no embedded WebView for card collection** — the earlier
 WebView-hosted-page experiment (`sunbay-pay-sdk`) is abandoned.
 
-First release ships **L1 (PaymentSheet, black-box page)** and **L3 (ApplePayButton)**; **L2
-(EmbeddedPaymentElement)** is reserved for v2. COF (saved cards) is a **first-release** feature.
+First release ships **L1 (PaymentSheet, black-box page)** and **L2 (Elements: `CheckoutElements` +
+`ExpressCheckoutElement` + `CardElement`)**; the old L3 `ApplePayButton` was removed. COF (saved cards) is a **first-release** feature.
 
 Full design: `docs/product-spec.md`. Security/PCI: `docs/security-and-pci.md`.
 
@@ -109,3 +109,19 @@ The tree also now includes:
   precise files — **never `git add .`**.
 - Files that may contain secrets (`.env*`, credentials, token-bearing npmrc)
   **must not be committed**.
+
+## 6. External documents (maintained outside this repo)
+
+- **Security & PCI explainer (DingTalk doc, Chinese, for compliance / product / business readers):**
+  "Checkout iOS SDK 安全与 PCI 合规说明", in the owner's personal docs under `Projects/Checkout`.
+  - URL: https://alidocs.dingtalk.com/i/nodes/ydxXB52LJq73XRO0t2qOO6GnWqjMp697
+  - nodeId: `ydxXB52LJq73XRO0t2qOO6GnWqjMp697` (folder `Projects/Checkout`: `Obva6QBXJw9wmLvOs7qygm9qWn4qY5Pr`).
+  - Keep it in sync with `docs/security-and-pci.md` and the code. Update it (do not create a copy) whenever any of
+    these change: what card/wallet/secret data the SDK handles or retains, the public components and their
+    exposure (`PaymentSheet`, `ExpressCheckoutElement`, `CardElement`), the data sent to the backend
+    (`userDeviceInfo`, contacts, BIN lookup), `PrivacyInfo.xcprivacy`, cleanup rules, or the release gates / open
+    decisions in its section 11. Add a row to its change log.
+  - Update with the DingTalk `dws doc` tools (`+fetch` to read, `+update` to edit; load the `dingtalk-doc` skill).
+    Known quirk: write verification reports `partial_success` because the service normalizes Markdown; fetch the
+    document and compare content instead of retrying the write.
+  - The repo copy stays English-only; the DingTalk doc is an external artifact and may be Chinese.

@@ -7,7 +7,7 @@ import Foundation
 /// The public entry point of the SunbayCheckout SDK (product-spec §2.1).
 ///
 /// The host constructs this object from a `CheckoutConfiguration`, then hands it to the UI
-/// shell (`PaymentSheet` / `ApplePayButton`) to start checkout by `sessionId`.
+/// shell (`PaymentSheet` / `CheckoutElements`) to start checkout by `sessionId`.
 ///
 /// ## Backends
 /// `init(configuration:)` talks to the real Sunbay backend for the configured environment
@@ -115,7 +115,7 @@ public final class SunbayCheckout {
     /// Creates the entry point from a configuration and host-provided backend services (service injection seam, Task 11.5).
     ///
     /// The host implements `PaymentService` / `CofService` (mock or real backend adapters)
-    /// and injects them here; the public UI (`ApplePayButton` / `PaymentSheet`) drives
+    /// and injects them here; the public UI (`CheckoutElements` / `PaymentSheet`) drives
     /// end-to-end payments through them, with no changes needed to Core/UI.
     ///
     /// The optional `addressMetadataService` powers the full-mode address form (§7.5). It defaults
@@ -141,7 +141,7 @@ public final class SunbayCheckout {
             addressMetadataService: addressMetadataService)
     }
 
-    // MARK: - Internal factory seam (used by PaymentSheet / ApplePayButton)
+    // MARK: - Internal factory seam (used by PaymentSheet / CheckoutElements)
 
     /// Assembles a `CheckoutController` using the (injected or default) services held by this instance (internal DI seam).
     ///
@@ -196,3 +196,67 @@ public final class SunbayCheckout {
         )
     }
 }
+
+#if canImport(UIKit)
+    /// The UI-shell dependencies assembled once from a `SunbayCheckout` (internal): shared by
+    /// `PaymentSheet` and `CheckoutElements` so both wire the controller, wallet and localization identically.
+    struct UIWiring {
+        let controller: CheckoutController
+        let localize: (String) -> String
+        let localeCode: String?
+        let appearance: Appearance
+        let paymentSheetTitle: String?
+        let addressMetadataService: any AddressMetadataService
+        let walletAuthorizer: any WalletAuthorizing
+        let walletMerchantId: String?
+        let screenMetrics: ScreenMetricsStore
+        let paymentMethodFilter: PaymentMethodFilter
+        let diagnostics: DiagnosticsReporter
+    }
+
+    extension SunbayCheckout {
+        /// Builds the controller (fresh `CredentialStore`, real `ActionHandler`/`WebAuthOpener`), the real PassKit
+        /// wallet and the localization / merchant-id inputs from this instance's configuration.
+        func makeUIWiring() -> UIWiring {
+            UIWiring(
+                controller: makeController(
+                    credentials: CredentialStore(),
+                    actionHandler: ActionHandler(webAuthOpener: WebAuthOpener())),
+                localize: LocalizationResolver(explicitLocale: configuration.locale).localizedNoComment,
+                localeCode: configuration.locale,
+                appearance: configuration.appearance ?? .default,
+                paymentSheetTitle: configuration.paymentSheetTitle,
+                addressMetadataService: addressMetadataService,
+                walletAuthorizer: WalletAuthorizer(),
+                walletMerchantId: resolveMerchantId(
+                    configured: configuration.applePayMerchantId, sessionProvided: nil),
+                screenMetrics: screenMetrics,
+                paymentMethodFilter: configuration.paymentMethodFilter,
+                diagnostics: diagnostics)
+        }
+    }
+
+    extension DriverOptions {
+        /// The driver options for a UI shell: which address forms it will show is derived from `appearance`
+        /// (it needs UIKit-gated types), so the Core driver only receives the result.
+        static func forUI(appearance: Appearance, failsWhenNoMethodAvailable: Bool) -> DriverOptions {
+            let billingEnabled = appearance.billingAddressEnabled
+            let shippingEnabled = appearance.shippingAddressEnabled
+            let billingStyle = appearance.billingAddressStyle
+            let shippingStyle = appearance.shippingAddressStyle
+            return DriverOptions(
+                expressOff: appearance.expressPosition == .off,
+                failsWhenNoMethodAvailable: failsWhenNoMethodAvailable,
+                addressFormsShown: { session, billingUsable, shippingUsable in
+                    (
+                        AddressCollectionMode.resolveAddressMode(
+                            .from(enabled: billingEnabled), collect: session.collectBillingAddress,
+                            hasUsableEntry: billingUsable, style: billingStyle) != .off,
+                        AddressCollectionMode.resolveAddressMode(
+                            .from(enabled: shippingEnabled), collect: session.collectShippingAddress,
+                            hasUsableEntry: shippingUsable, style: shippingStyle) != .off
+                    )
+                })
+        }
+    }
+#endif
