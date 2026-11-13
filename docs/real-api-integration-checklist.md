@@ -10,80 +10,63 @@ Contract: `docs/card-rules-contract.md` (the HPP server hosts both endpoints; th
 the payment backend directly for this). The endpoints already exist and the JS SDK uses them
 (confirmed by the owner, 2026-11-12), so everything below is SDK-side work, not a backend dependency.
 
-State today (what was built ahead of the API):
+Decision 2026-11-13 (`docs/superpowers/specs/2026-11-13-card-rules-sync-design.md`): **rules sync is
+implemented; BIN recognition is deferred on iOS.** HPP's rules are enough for formatting hints and no
+BIN should leave the device yet. The BIN items below stay open on purpose.
 
-- `Core/CardBrand/`: rule model + loader + sanity checks (`CardRuleSet`), prefix matching, bundled
-  **draft** rules (`Resources/CardRules/card-brand-rules.json`), cache store and provider
-  (`CardRulesProvider`: cached remote > bundled > minimal), background refresher, BIN resolver
-  (`CardSchemeResolver`), and the **internal** protocols `CardRulesService` / `CardBinService` with
-  fail-soft empty defaults.
-- `CheckoutContentViewController` takes both services as init parameters defaulting to the empty
-  ones; nothing above it passes them yet. No real HTTP adapter exists.
-- `CardFormView` already groups, auto-advances and sizes the security-code hint from the rules, and
-  validates leniently (number 12–19 digits, security code 3–4 digits).
+State today:
 
-### 1.1 Wire the real services
+- Rules: `HTTPCardRulesService` (conditional `GET /api/card/rules`), time-gated background refresh
+  (once per hour per process, triggered when a card form is built in the PaymentSheet and in Elements),
+  cache in `Caches`, bundled copy produced by `scripts/update-card-rules.sh`. The services stay
+  `internal` (not injectable by hosts), like the address service.
+- BIN: `CardBinService` / `CardSchemeResolver` exist and are tested but run with `EmptyCardBinService`.
 
-- [ ] Add HTTP adapters for `GET /api/card/rules` and `POST /api/card/bin`, modeled on
-      `HTTPAddressMetadataService` (thin adapter built on `SunbayAPIClient` and the environment-built host; no baseURL is injected or hard-coded anywhere).
-- [ ] The protocols are `internal` today. Make them `public` and inject them through
-      `SunbayCheckout.init(...)` as optional parameters defaulting to `nil` (the fail-soft empty
-      implementation). This adds public API: minor version bump, and update
-      `docs/product-spec.md` §2 / §7.
-- [ ] Thread them down the same path as `addressMetadataService`: `SunbayCheckout` → `PaymentSheet`
-      (both its public and internal init) → the sheet runner → `CheckoutContentViewController`.
-- [ ] Update `docs/product-spec.md` §7: the two endpoints move from "mock baseline" to real, and
-      `AGENTS.md` rule 7 still applies (keep them behind protocols).
+### 1.1 Rules service (done)
 
-### 1.2 Networking details that are easy to get wrong
+- [x] HTTP adapter for `GET /api/card/rules`, built on `SunbayAPIClient` (`getRaw`, no envelope).
+- [x] Protocols stay `internal` (decided: no public injection; small public surface).
+- [x] Threaded `SunbayCheckout` → `UIWiring` → `PaymentSheet` / `CheckoutElements` → `NewCardEntryView`.
+- [x] ETag handling: the client session has no URL cache; the stored ETag is sent verbatim.
+- [x] Short timeout (3 s), no retry, invalid / oversized / unknown-schema documents ignored.
+- [ ] Real-device check against a deployed dev endpoint (see 1.4).
 
-- [ ] **ETag with `URLSession`:** the shared `URLCache` can answer a conditional request itself and
-      hide the `304` (the app sees a `200`). Decide one approach and test it: either use an
-      ephemeral configuration with `requestCachePolicy = .reloadIgnoringLocalCacheData` and send
-      `If-None-Match` manually from our own stored ETag, or rely on `URLCache` and drop our ETag
-      store. Do not mix them.
-- [ ] **Envelope:** `/api/card/rules` returns the raw rules document (no `{code,msg,data}`); only
-      errors use the envelope. `/api/card/bin` always uses the envelope and success is `code == "0"`
-      (string). Treat any other `code`, any non-2xx, and any decoding failure as "no result".
-- [ ] **Timeouts and retries:** short timeout (about 3 s), no retries, never block input. The adapter
-      must throw `CardBinServiceError.rateLimited` on a `429` (the resolver then stops for the session);
-      any other error counts as a failure (3 in a row also stop it).
-- [ ] **Never log** the BIN, the request body, or the response of `/api/card/bin`. No analytics
-      events carrying them.
-- [ ] Send the BIN only when `sessionId` is available; send at most 9 digits; never a full PAN.
+### 1.2 BIN recognition (deferred)
+
+- [ ] `HTTPCardBinService` for `POST /api/card/bin` (envelope, success `code == "0"`), 3 s timeout, no
+      retry; map `429` (`HTTP_429`) to `CardBinServiceError.rateLimited`.
+- [ ] Inject it in place of `EmptyCardBinService` in `NewCardEntryView` callers (PaymentSheet content VC
+      and `CardElement`).
+- [ ] **Never log** the BIN, the request body or the response. Send at most 9 digits, only with a
+      `sessionId`; never a full PAN.
+- [ ] Privacy paperwork when enabled: BIN data flow in `docs/security-and-pci.md` and the DingTalk PCI
+      doc, `PrivacyInfo.xcprivacy` re-check, tell integrators about privacy labels.
 
 ### 1.3 Data
 
-- [ ] Replace the bundled draft rules with the production document from the HPP repo.
-- [ ] Add the release script that overwrites the bundled file from the live `GET /api/card/rules`
-      at SDK build time, and the CI check that compares the bundled file's SHA-256 with the live
-      ETag and warns on drift. The bundled file is never edited by hand.
-- [ ] The backend's `cardScheme` is `VISA MASTERCARD AMEX DISCOVER JCB DINERSCLUB UNIONPAY` or `null`;
-      rules use the lower-cased keys (note `dinersclub`, not `diners`). Re-check against the real
-      endpoint, and confirm an unknown value falls back to local matching / `generic`.
-- [ ] Run the contract's test vectors (section 6) against the Swift implementation using the
-      production document, not only the draft.
+- [x] The bundled rules are the HPP document (`scripts/update-card-rules.sh`, never edited by hand).
+- [x] The contract's test vectors (§6) run against the bundled document
+      (`CardRulesContractVectorsTests`).
+- [ ] Re-run `scripts/update-card-rules.sh --check https://checkout.sunbay-dev.com/api/card/rules` after
+      the HPP `dinersclub` rename is deployed to every environment, and then **remove the temporary
+      `diners` → `dinersclub` alias** in `CardRuleSet`.
+- [x] HPP-side maintenance and sync guide: checkout repo `docs/card-rules-maintenance.md`.
+- [ ] Hook `scripts/update-card-rules.sh --check` into CI as a drift warning (no CI config in this repo).
+- [ ] Ask HPP to add `autoAdvanceLength` for the brands that omit it, and `maestro` / `mir` if wanted
+      (the draft bundle had them; the HPP document does not).
 
 ### 1.4 Behavior to verify on a real device with the real API
 
 - [ ] Cold start offline: bundled rules, input works, no spinner or delay.
 - [ ] Cold start online: rules refresh in the background and apply the **next** time the card
       component is shown, never mid-typing.
-- [ ] BIN conflict: the local prefix guess is replaced by the backend scheme at 6 digits; the
-      display re-groups without deleting any digit and without caret jumps.
-- [ ] Editing the first digits of a number that already resolved a scheme re-resolves it.
-- [ ] Backend returns `null` or fails: stays on the local guess, then on `generic`; payment is
-      never blocked by a rules/BIN failure.
-- [ ] The short-prefix flicker described in the contract (for example `62`) is acceptable.
+- [ ] Rules unavailable or invalid: the previous rules stay; payment is never blocked.
+- [ ] Diners Club number formats and shows the Diners icon with both the old (`diners`) and the new
+      (`dinersclub`) HPP document.
 
 ### 1.5 Privacy and security paperwork
 
-- [ ] `docs/security-and-pci.md`: add the BIN lookup (first 6–9 digits leave the device over TLS to
-      the HPP server, never logged or persisted) and the public, non-sensitive rules cache in the OS
-      cache directory.
-- [ ] `PrivacyInfo.xcprivacy` now ships (no tracking, no collected data types). When the BIN call is
-      added, re-check what the manifest must declare and tell integrators whether their privacy
-      labels are affected.
+- [x] `docs/security-and-pci.md` records the rules request (public data, `Caches`) and that no BIN is sent.
 - [ ] Confirm the HPP endpoints are covered by the host app's ATS (HTTPS only) — no exceptions.
 
 ### 1.6 Cleanup once the rules are live
@@ -94,8 +77,9 @@ State today (what was built ahead of the API):
       rules are ever empty, but they must not disagree with the rules document.
 - [ ] Scanning deliberately still requires Luhn for every brand (including UnionPay) as the guard against
       misreads; non-Luhn UnionPay cards must be typed by hand. Revisit only if that proves to be a real problem.
-- [ ] Replace the demo mock BIN and rules services with the real adapters (Example; Showcase moved to
-      `showcase-ios` and creates real dev sessions), and keep a scriptable test double in `SunbayCheckoutTestSupport`.
+- [ ] Replace the demo mock BIN and rules services with the real adapters when BIN is enabled (Example;
+      Showcase moved to `showcase-ios` and creates real dev sessions), and keep a scriptable test double
+      in `SunbayCheckoutTestSupport`.
 - [ ] Keep Android and HPP on the same document and the same test vectors; a behavior change starts
       with the contract, then all three implementations.
 

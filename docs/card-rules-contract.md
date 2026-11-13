@@ -175,14 +175,21 @@ Response (standard HPP envelope, `code: "0"`):
 ### 4.1 Rules lifecycle
 
 1. On card component display: use the **cached** document if one exists, else the **bundled** one.
-2. In the background send one conditional `GET /api/card/rules` (with the stored ETag). At most once
-   per process / page load.
+2. In the background send one conditional `GET /api/card/rules` (with the stored ETag). Page load for
+   web; the native SDKs check when a card form is built, **at most once per hour per process**, so a
+   long-lived app still picks up changes (the server caches for 5 minutes). A failed or `304` check also
+   counts toward the hour.
 3. On `200` with a valid document: store body and ETag, and use it **the next time the component is
    shown** (not in the middle of typing). On `304`, a failure, an invalid document or an unknown
    `schemaVersion`: keep the current rules.
 4. Precedence: cached remote > bundled. Never block input on the network.
 
 Native SDKs: cache in the OS cache directory (purgeable); the data is public and non-sensitive.
+The scheme key for Diners Club is `dinersclub` everywhere (HPP renamed its legacy `diners` key on
+2026-11-13; the iOS SDK still reads an old `diners` key as `dinersclub` until that is deployed
+everywhere). The bundled copy is produced by `scripts/update-card-rules.sh` (`--check` reports drift)
+and is never edited by hand. It is stored in the compact form the HPP route serves, so its SHA-256 equals the
+live ETag. HPP-side maintenance rules live in the checkout repo: `docs/card-rules-maintenance.md`.
 HPP front end: ships the rules statically in its bundle and does not fetch them. This is equivalent
 to the native flow because the bundle and `GET /api/card/rules` are built from the same repo JSON;
 changing a rule means redeploying HPP.
@@ -199,7 +206,7 @@ changing a rule means redeploying HPP.
   a BIN costs no request. A `null` result keeps the current scheme.
 - **The server does not rate-limit, so clients throttle themselves:** at most 20 lookups per session
   (one session = one checkout screen), and no more lookups for the rest of the session after a `429`
-  or after 3 consecutive failures. Rules are fetched at most once per process / page load.
+  or after 3 consecutive failures. Rules are checked at most once per hour per process (native) or per page load (web).
 - Any failure is silent: stay on local matching.
 
 ### 4.3 Validation (lenient)

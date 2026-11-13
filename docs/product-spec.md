@@ -290,6 +290,13 @@ Two independent dimensions; the backend decides **whether** to collect, the host
     (Core/AddressMetadata, no UIKit); the default `SunbayCheckout(configuration:)` wires the real HPP adapter
     (`HTTPAddressMetadataService`: `GET /api/address/country` and `GET /api/address/country/{code}`).
     Shipping asks for first/last name, billing does not (like HPP).
+- **Card-brand rules.** The card form formats, groups and sizes the security code from a rules document
+  (`docs/card-rules-contract.md`). The SDK ships a bundled copy and, when a card form is built, refreshes a
+  cached copy in the background from `GET /api/card/rules` (`HTTPCardRulesService`, conditional with the
+  stored ETag, at most once per hour per process); a valid new document applies the next time a card form
+  is shown. **BIN recognition (`POST /api/card/bin`) is deliberately not wired on iOS**: the rules are
+  enough for formatting hints, and no BIN leaves the device. The recognition code stays dormant behind
+  `CardBinService`.
 
 Host-provided addresses: `PaymentSheet(... billingAddress:shippingAddress:)` and
 `CheckoutElements.Configuration` / `CheckoutElements.updateAddresses(billing:shipping:)` take an optional `AddressInput` each. Addresses are PII:

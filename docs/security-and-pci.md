@@ -99,6 +99,10 @@
 - The SDK sends an optional `userDeviceInfo` with submit: `deviceType`, `deviceModel`, `deviceOs`,
   `deviceOsVersion`, `deviceResolution`, `screenWidth`, `screenHeight`, `colorDepth`, `timeZoneOffset`
   and `language`. It contains no advertising identifier, no vendor identifier and no user-identifying data.
+- Card-brand rules: the card form refreshes a public, non-sensitive rules document with
+  `GET /api/card/rules` (no card data, no session id; only an `If-None-Match` ETag) and caches it in the
+  OS cache directory (`Caches`, purgeable). **No BIN (first 6–9 digits) is sent anywhere**: BIN recognition
+  is not wired on iOS (decision 2026-11-13).
 - `PrivacyInfo.xcprivacy` ships in the SDK resources: no tracking, no tracking domains. The collected-data
   declaration (payment info and device info sent to the backend) is OPEN and must be decided before an
   App Store release; the manifest content is not final.

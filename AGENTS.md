@@ -79,6 +79,9 @@ The tree also now includes:
   TTL/dedup cache (`AddressMetadataCache`) + HTTP adapter (`HTTPAddressMetadataService`) + the fail-soft
   `EmptyAddressMetadataService` default (no UIKit; full-mode address, protocol + UI + cache only this phase,
   not wired to real data).
+- `Sources/SunbayCheckout/Core/CardBrand/` — card-brand rules (`CardRuleSet`, bundled + cached remote copy,
+  `HTTPCardRulesService`, time-gated `CardRulesRefresher`). BIN recognition (`CardBinService`,
+  `CardSchemeResolver`) is dormant by decision. The bundled rules come from `scripts/update-card-rules.sh`.
 - `Sources/SunbayCheckout/Core/Localization/` + `Sources/SunbayCheckout/Resources/Localizations/{en,zh-Hans}.lproj/` —
   the i18n subsystem and its string resources (v1 ships en-US + zh-CN). See `docs/product-spec.md` §9.
 - `Sources/SunbayCheckoutTestSupport/` — a public-API-only library target (scriptable service doubles + demo
