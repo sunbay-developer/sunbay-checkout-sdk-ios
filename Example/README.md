@@ -128,9 +128,9 @@ placeholder.
 
 ## Configuration playground
 
-The app is a four-tab config screen (`DemoRootView`) over a `DemoSettings` value: **Pay** (session, order, the pay actions),
-**Look** (themes, effects, locale), **Options** (payment methods, addresses, saved cards) and
-**Logs** (live output), ordered by how often they are used. Every knob
+The app is a five-tab screen (`DemoRootView`) over a `DemoSettings` value: **Pay** (session, order, the pay actions),
+**Elements** (a merchant-style page built from `CheckoutElements`), **Look** (themes, effects, locale),
+**Options** (payment methods, addresses, saved cards) and **Logs** (live output), ordered by how often they are used. Every knob
 maps into a `CheckoutConfiguration` (environment from Pay > Order > More, default `.dev`) or the dev-session request at Pay time:
 
 - **Server URL** - base URL of the local dev session server.

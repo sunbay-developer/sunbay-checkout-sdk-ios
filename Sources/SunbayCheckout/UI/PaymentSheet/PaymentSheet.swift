@@ -89,6 +89,10 @@
         /// used to build the content VC's full-mode address form. UI-agnostic (Core type).
         private let addressMetadataService: any AddressMetadataService
 
+        /// The card-rules source threaded in from `SunbayCheckout`; building the card form refreshes the
+        /// cached rules through it.
+        private let cardRulesService: any CardRulesService
+
         /// The wallet capability for the in-sheet Apple Pay row (real PassKit by default).
         private let walletAuthorizer: any WalletAuthorizing
         /// The resolved Apple Pay merchant id (host configuration first); nil hides the Apple Pay row.
@@ -145,6 +149,7 @@
                 appearance: wiring.appearance,
                 paymentSheetTitle: wiring.paymentSheetTitle,
                 addressMetadataService: wiring.addressMetadataService,
+                cardRulesService: wiring.cardRulesService,
                 walletAuthorizer: wiring.walletAuthorizer,
                 walletMerchantId: wiring.walletMerchantId,
                 screenMetrics: wiring.screenMetrics,
@@ -187,6 +192,7 @@
             appearance: Appearance = .default,
             paymentSheetTitle: String? = nil,
             addressMetadataService: any AddressMetadataService = EmptyAddressMetadataService(),
+            cardRulesService: any CardRulesService = EmptyCardRulesService(),
             walletAuthorizer: any WalletAuthorizing = WalletAuthorizer(),
             walletMerchantId: String? = nil,
             screenMetrics: ScreenMetricsStore? = nil,
@@ -201,6 +207,7 @@
             self.appearance = appearance
             self.paymentSheetTitle = paymentSheetTitle
             self.addressMetadataService = addressMetadataService
+            self.cardRulesService = cardRulesService
             self.driver = CheckoutSessionDriver(
                 controller: controller,
                 sessionId: sessionId,
@@ -255,6 +262,7 @@
                 localeCode: localeCode,
                 paymentSheetTitle: paymentSheetTitle,
                 addressService: addressMetadataService,
+                cardRulesService: cardRulesService,
                 walletAuthorizer: walletAuthorizer,
                 walletMerchantId: walletMerchantId,
                 walletContacts: { [controller] billing, shipping in
@@ -414,6 +422,7 @@
         private let localeCode: String?
         private let paymentSheetTitle: String?
         private let addressService: any AddressMetadataService
+        private let cardRulesService: any CardRulesService
         private let walletAuthorizer: any WalletAuthorizing
         private let walletMerchantId: String?
         private let walletContacts: @Sendable (Bool, Bool) async -> WalletContactRequest
@@ -444,6 +453,7 @@
             localeCode: String?,
             paymentSheetTitle: String?,
             addressService: any AddressMetadataService,
+            cardRulesService: any CardRulesService,
             walletAuthorizer: any WalletAuthorizing,
             walletMerchantId: String?,
             walletContacts: @escaping @Sendable (Bool, Bool) async -> WalletContactRequest,
@@ -458,6 +468,7 @@
             self.localeCode = localeCode
             self.paymentSheetTitle = paymentSheetTitle
             self.addressService = addressService
+            self.cardRulesService = cardRulesService
             self.walletAuthorizer = walletAuthorizer
             self.walletMerchantId = walletMerchantId
             self.walletContacts = walletContacts
@@ -503,6 +514,7 @@
                 onWalletParamsInvalid: onWalletParamsInvalid,
                 cardOnFileEnabled: context.cardOnFileEnabled,
                 saveCardByDefault: context.saveCardByDefault,
+                cardRulesService: cardRulesService,
                 billingEntryUsable: context.billingEntryUsable,
                 shippingEntryUsable: context.shippingEntryUsable,
                 billingStyle: appearance.billingAddressStyle,

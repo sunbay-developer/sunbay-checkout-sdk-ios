@@ -64,27 +64,42 @@ enum CardRulesProvider {
         brands: [])
 }
 
+/// Limits how often the rules are checked: one claim per `minInterval`, thread-safe.
+///
+/// A failed or `304` check also consumes the claim, so an unhealthy server is not hammered.
+final class CardRulesRefreshGate: @unchecked Sendable {
+    /// The gate shared by the whole process.
+    static let shared = CardRulesRefreshGate()
+
+    private let minInterval: TimeInterval
+    private let lock = NSLock()
+    private var lastClaim: Date?
+
+    /// - Parameter minInterval: Seconds between allowed checks (one hour by default).
+    init(minInterval: TimeInterval = 3600) {
+        self.minInterval = minInterval
+    }
+
+    /// Returns true (and records `now`) when no claim happened within the interval.
+    func claim(now: Date = Date()) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if let lastClaim, now.timeIntervalSince(lastClaim) < minInterval { return false }
+        lastClaim = now
+        return true
+    }
+}
+
 /// Refreshes the cached rules in the background. Applies at the **next** time a card component is
 /// shown; it never changes the rules of a component already on screen.
 enum CardRulesRefresher {
-    /// At most one refresh per process.
-    private static let state = RefreshState()
-
-    private final class RefreshState: @unchecked Sendable {
-        private let lock = NSLock()
-        private var started = false
-        func claim() -> Bool {
-            lock.lock()
-            defer { lock.unlock() }
-            if started { return false }
-            started = true
-            return true
-        }
-    }
-
-    /// Fire-and-forget conditional refresh; failures and invalid documents are ignored silently.
-    static func refreshInBackground(service: any CardRulesService, store: CardRulesStore = CardRulesStore()) {
-        guard state.claim() else { return }
+    /// Fire-and-forget conditional refresh, at most once per gate interval (one hour per process by
+    /// default). Failures and invalid documents are ignored silently.
+    static func refreshInBackground(
+        service: any CardRulesService, store: CardRulesStore = CardRulesStore(),
+        gate: CardRulesRefreshGate = .shared
+    ) {
+        guard gate.claim() else { return }
         Task.detached(priority: .utility) {
             await refresh(service: service, store: store)
         }

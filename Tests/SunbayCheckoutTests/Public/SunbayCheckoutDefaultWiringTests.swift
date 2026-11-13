@@ -214,4 +214,25 @@ final class SunbayCheckoutDefaultWiringTests: XCTestCase {
         XCTAssertEqual(payment.loadSessionCallCount, 1)
         XCTAssertTrue(hosts.isEmpty)
     }
+
+    func test_defaultInit_usesTheHTTPCardRulesService() {
+        let checkout = SunbayCheckout(
+            configuration: CheckoutConfiguration(environment: .dev), urlSession: StubURLProtocol.session())
+        XCTAssertTrue(checkout.cardRulesService is HTTPCardRulesService)
+    }
+
+    func test_serviceInjectionInit_usesTheEmptyCardRulesService() {
+        let checkout = SunbayCheckout(
+            configuration: CheckoutConfiguration(environment: .dev),
+            paymentService: MockPaymentService(), cofService: MockCofService())
+        XCTAssertTrue(checkout.cardRulesService is EmptyCardRulesService)
+    }
+
+    #if canImport(UIKit)
+        func test_uiWiring_carriesTheCardRulesService() {
+            let checkout = SunbayCheckout(
+                configuration: CheckoutConfiguration(environment: .dev), urlSession: StubURLProtocol.session())
+            XCTAssertTrue(checkout.makeUIWiring().cardRulesService is HTTPCardRulesService)
+        }
+    #endif
 }

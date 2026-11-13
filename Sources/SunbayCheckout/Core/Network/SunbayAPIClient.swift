@@ -114,6 +114,30 @@ struct SunbayAPIClient: Sendable {
         return try Self.decodeEnvelope(result)
     }
 
+    /// Sends a GET and returns the raw body and response for any HTTP status.
+    ///
+    /// For endpoints that are not enveloped (the card-rules document). Never retried: the caller decides
+    /// what each status means. Only a transport failure throws (generic network `CheckoutError`).
+    ///
+    /// - Parameters:
+    ///   - route: Backend route.
+    ///   - headers: Extra request headers (for example `If-None-Match`).
+    ///   - timeout: Request timeout in seconds.
+    func getRaw(
+        _ route: SunbayEndpoints.Route, headers: [String: String] = [:], timeout: TimeInterval = 3
+    ) async throws -> (Data, HTTPURLResponse) {
+        var request = URLRequest(url: SunbayEndpoints.url(for: route, environment: environment))
+        request.httpMethod = "GET"
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("ios/\(SDKInfo.version)", forHTTPHeaderField: "X-Sunbay-SDK")
+        if let locale { request.setValue(locale, forHTTPHeaderField: "Accept-Language") }
+        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
+        let (data, response) = try await send(request)
+        guard let http = response as? HTTPURLResponse else { throw Self.invalidResponse() }
+        return (data, http)
+    }
+
     /// Performs the request; any transport failure becomes a generic network `CheckoutError`.
     private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
         #if DEBUG

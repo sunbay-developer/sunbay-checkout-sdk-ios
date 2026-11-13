@@ -44,6 +44,7 @@
         let localize: (String) -> String
         let localeCode: String?
         let addressService: any AddressMetadataService
+        let cardRulesService: any CardRulesService
 
         private var expressElements: [WeakBox<ExpressCheckoutElement>] = []
         /// The group's single card component (created on first `makeCardElement`).
@@ -53,7 +54,7 @@
             driver: CheckoutSessionDriver, coordinator: ElementsCoordinator, appearance: Appearance,
             walletAuthorizer: any WalletAuthorizing, walletMerchantId: String?,
             screenMetrics: ScreenMetricsStore?, localize: @escaping (String) -> String, localeCode: String?,
-            addressService: any AddressMetadataService
+            addressService: any AddressMetadataService, cardRulesService: any CardRulesService
         ) {
             self.driver = driver
             self.coordinator = coordinator
@@ -64,6 +65,7 @@
             self.localize = localize
             self.localeCode = localeCode
             self.addressService = addressService
+            self.cardRulesService = cardRulesService
             coordinator.onStateChange = { [weak self] state in self?.stateDidChange(state) }
         }
 
@@ -92,7 +94,7 @@
                 walletMerchantId: wiring.walletMerchantId, screenMetrics: wiring.screenMetrics,
                 paymentMethodFilter: wiring.paymentMethodFilter, reporter: wiring.diagnostics,
                 addressService: wiring.addressMetadataService, localize: wiring.localize,
-                localeCode: wiring.localeCode)
+                localeCode: wiring.localeCode, cardRulesService: wiring.cardRulesService)
         }
 
         /// Internal dependency-injection seam (tests inject a controller built from a mock backend and a stub wallet).
@@ -104,7 +106,8 @@
             reporter: DiagnosticsReporter? = nil,
             addressService: any AddressMetadataService = EmptyAddressMetadataService(),
             localize: @escaping (String) -> String = LocalizationResolver(explicitLocale: nil).localizedNoComment,
-            localeCode: String? = nil
+            localeCode: String? = nil,
+            cardRulesService: any CardRulesService = EmptyCardRulesService()
         ) async throws -> CheckoutElements {
             // Submit runs off the main thread; snapshot the screen up front (refreshed when a view joins a window).
             screenMetrics?.recordMainScreen()
@@ -137,7 +140,7 @@
                     driver: driver, coordinator: coordinator, appearance: appearance,
                     walletAuthorizer: walletAuthorizer, walletMerchantId: walletMerchantId,
                     screenMetrics: screenMetrics, localize: localize, localeCode: localeCode,
-                    addressService: addressService)
+                    addressService: addressService, cardRulesService: cardRulesService)
             }
         }
 

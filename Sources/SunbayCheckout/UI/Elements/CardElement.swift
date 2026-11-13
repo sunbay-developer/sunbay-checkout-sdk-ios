@@ -170,7 +170,7 @@
             let entry = NewCardEntryView(
                 appearance: appearance, localize: localize, localeCode: group.localeCode, sessionId: session.id,
                 cardBrandItems: brandItems, cardRuleSet: ruleSet, cardBinService: EmptyCardBinService(),
-                cardRulesService: EmptyCardRulesService(), billingMode: billingMode, shippingMode: shippingMode,
+                cardRulesService: group.cardRulesService, billingMode: billingMode, shippingMode: shippingMode,
                 addressService: group.addressService,
                 cardOnFileEnabled: context.cardOnFileEnabled && (configuration.showsSaveCardOption ?? true),
                 saveCardByDefault: context.saveCardByDefault,

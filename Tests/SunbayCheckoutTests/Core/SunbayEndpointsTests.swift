@@ -27,6 +27,18 @@ final class SunbayEndpointsTests: XCTestCase {
         XCTAssertEqual(url.absoluteString, "https://checkout.sunbay-dev.com/api/address/country")
     }
 
+    func testCardRulesOnEveryEnvironment() {
+        XCTAssertEqual(
+            SunbayEndpoints.url(for: .cardRules, environment: .dev).absoluteString,
+            "https://checkout.sunbay-dev.com/api/card/rules")
+        XCTAssertEqual(
+            SunbayEndpoints.url(for: .cardRules, environment: .test).absoluteString,
+            "https://checkout.sunbay-uat.us/api/card/rules")
+        XCTAssertEqual(
+            SunbayEndpoints.url(for: .cardRules, environment: .production).absoluteString,
+            "https://checkout.sunbay.us/api/card/rules")
+    }
+
     func testAddressCountryConfigEncodesCodeAsOnePathComponent() {
         let url = SunbayEndpoints.url(for: .addressCountryConfig(code: "U/S"), environment: .dev)
         XCTAssertEqual(url.absoluteString, "https://checkout.sunbay-dev.com/api/address/country/U%2FS")
