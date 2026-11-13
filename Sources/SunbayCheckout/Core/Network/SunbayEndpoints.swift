@@ -16,6 +16,8 @@ enum SunbayEndpoints {
         case addressCountries
         /// Loads the address field configuration of one country.
         case addressCountryConfig(code: String)
+        /// The card-brand rules document (raw JSON, not enveloped).
+        case cardRules
     }
 
     /// Returns the backend origin for the given environment.
@@ -39,6 +41,7 @@ enum SunbayEndpoints {
         case .cardList: path = checkoutBase + "/card/list"
         case .addressCountries: path = origin + "/api/address/country"
         case .addressCountryConfig(let code): path = origin + "/api/address/country/" + encode(code)
+        case .cardRules: path = origin + "/api/card/rules"
         }
         return URL(string: path)!
     }

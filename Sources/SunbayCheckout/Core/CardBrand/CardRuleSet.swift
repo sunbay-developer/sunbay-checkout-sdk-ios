@@ -221,8 +221,12 @@ extension CardRuleSet {
                 guard let length = Int(key), CardRuleSet.validGroups(sizes) else { return nil }
                 byLength[length] = sizes
             }
+            // Temporary shim: HPP documents published before the key rename call Diners `diners`, while
+            // the backend and the session's payment methods say `dinersclub`. Remove once HPP is deployed
+            // everywhere.
+            let key = scheme.lowercased()
             return Brand(
-                scheme: scheme.lowercased(), displayName: displayName, patterns: patterns.map(\.value),
+                scheme: key == "diners" ? "dinersclub" : key, displayName: displayName, patterns: patterns.map(\.value),
                 lengths: lengths, groups: groups, groupsByLength: byLength,
                 cvv: CVV(name: cvv.name, sizes: cvv.sizes), autoAdvanceLength: autoAdvanceLength)
         }
