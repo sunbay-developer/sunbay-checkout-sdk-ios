@@ -64,7 +64,9 @@
             addressService: any AddressMetadataService,
             cardOnFileEnabled: Bool,
             saveCardByDefault: Bool,
-            scanPresenter: @escaping () -> UIViewController?
+            scanPresenter: @escaping () -> UIViewController?,
+            cardRulesStore: CardRulesStore = CardRulesStore(),
+            cardRulesGate: CardRulesRefreshGate = .shared
         ) {
             self.appearance = appearance
             self.localize = localize
@@ -85,6 +87,14 @@
             cardForm.onPANDigitsChanged = { [weak self] digits in self?.schemeResolver.digitsChanged(digits) }
             cardForm.onEditingChanged = { [weak self] in self?.onEditingChanged?() }
             buildLayout(billingMode: billingMode, shippingMode: shippingMode)
+
+            // Keep the cached rules fresh. The rules in effect for this form are already fixed; an update
+            // applies the next time a card form is built. The empty default never fetches, so it must not
+            // use up the shared gate.
+            if !(cardRulesService is EmptyCardRulesService) {
+                CardRulesRefresher.refreshInBackground(
+                    service: cardRulesService, store: cardRulesStore, gate: cardRulesGate)
+            }
         }
 
         @available(*, unavailable)

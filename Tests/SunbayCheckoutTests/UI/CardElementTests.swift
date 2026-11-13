@@ -118,6 +118,26 @@
             XCTAssertNil(elements.paymentOption)
         }
 
+        func test_groupCarriesTheInjectedRulesService() async throws {
+            struct Marker: CardRulesService {
+                func fetchRules(ifNoneMatch etag: String?) async throws -> CardRulesFetchResult { .notModified }
+            }
+            let payment = MockPaymentService()
+            payment.stubSession(
+                CheckoutSession(
+                    id: "s_rules", amount: Amount(minorUnits: 999, currencyCode: "USD"), merchantName: "Acme",
+                    methods: [.card], expiresAt: Date().addingTimeInterval(600), rsaPublicKey: nil,
+                    cofEnabled: false, collectBillingAddress: false, collectShippingAddress: false))
+            let controller = CheckoutController(
+                paymentService: payment, cofService: MockCofService(), credentials: CredentialStore(),
+                actionHandler: StubActionHandler(result: .pending))
+            let elements = try await CheckoutElements.create(
+                controller: controller, sessionId: "s_rules",
+                walletAuthorizer: MockWalletAuthorizer(canMake: false, outcome: .success(Data([1]))),
+                walletMerchantId: nil, cardRulesService: Marker())
+            XCTAssertTrue(elements.cardRulesService is Marker)
+        }
+
         func test_secondMakeCardElement_returnsTheSameInstance() async throws {
             let (elements, _) = try await makeElements(id: "s_same")
             XCTAssertTrue(elements.makeCardElement() === elements.makeCardElement())

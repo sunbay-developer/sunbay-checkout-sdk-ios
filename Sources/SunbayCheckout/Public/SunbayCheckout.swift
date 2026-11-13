@@ -44,6 +44,10 @@ public final class SunbayCheckout {
     /// exposed externally. UI-agnostic (Core type; never imports UIKit).
     let addressMetadataService: any AddressMetadataService
 
+    /// The card-brand rules source (refreshes the cached rules in the background). Internal: not
+    /// injectable by hosts. The service-injection initializers use the fail-soft empty default.
+    let cardRulesService: any CardRulesService
+
     /// Screen metrics snapshot for `userDeviceInfo`; recorded on the main actor when the UI shell
     /// presents (`PaymentSheet.present`) and read from the submit path (which runs off the main thread).
     let screenMetrics: ScreenMetricsStore
@@ -92,6 +96,7 @@ public final class SunbayCheckout {
             },
             addressMetadataService: ReportingAddressMetadataService(
                 wrapping: HTTPAddressMetadataService(client: client), reporter: diagnostics),
+            cardRulesService: HTTPCardRulesService(client: client),
             screenMetrics: metrics,
             diagnostics: diagnostics)
     }
@@ -101,6 +106,7 @@ public final class SunbayCheckout {
         configuration: CheckoutConfiguration,
         serviceFactory: @escaping (CredentialStore) -> (any PaymentService, any CofService),
         addressMetadataService: (any AddressMetadataService)? = nil,
+        cardRulesService: (any CardRulesService)? = nil,
         screenMetrics: ScreenMetricsStore = ScreenMetricsStore(),
         diagnostics: DiagnosticsReporter = DiagnosticsReporter()
     ) {
@@ -110,6 +116,7 @@ public final class SunbayCheckout {
         self.screenMetrics = screenMetrics
         self.addressMetadataService = AddressMetadataCache(
             wrapping: addressMetadataService ?? EmptyAddressMetadataService())
+        self.cardRulesService = cardRulesService ?? EmptyCardRulesService()
     }
 
     /// Creates the entry point from a configuration and host-provided backend services (service injection seam, Task 11.5).
@@ -207,6 +214,7 @@ public final class SunbayCheckout {
         let appearance: Appearance
         let paymentSheetTitle: String?
         let addressMetadataService: any AddressMetadataService
+        let cardRulesService: any CardRulesService
         let walletAuthorizer: any WalletAuthorizing
         let walletMerchantId: String?
         let screenMetrics: ScreenMetricsStore
@@ -227,6 +235,7 @@ public final class SunbayCheckout {
                 appearance: configuration.appearance ?? .default,
                 paymentSheetTitle: configuration.paymentSheetTitle,
                 addressMetadataService: addressMetadataService,
+                cardRulesService: cardRulesService,
                 walletAuthorizer: WalletAuthorizer(),
                 walletMerchantId: resolveMerchantId(
                     configured: configuration.applePayMerchantId, sessionProvided: nil),
