@@ -170,7 +170,7 @@ import SunbayCheckoutTestSupport
         /// DEBUG-only launch arguments for screenshots: `-ElementsTabFirst YES` selects the Elements tab and
         /// `-ElementsAutoCreate YES` creates an order on launch (see Example/README.md).
         #if DEBUG
-            @State private var selectedTab = UserDefaults.standard.bool(forKey: "ElementsTabFirst") ? 3 : 0
+            @State private var selectedTab = UserDefaults.standard.bool(forKey: "ElementsTabFirst") ? 1 : 0
         #else
             @State private var selectedTab = 0
         #endif
@@ -182,16 +182,6 @@ import SunbayCheckoutTestSupport
                     sessionSection
                     paymentSheetSection
                 }
-                tab("Look", tag: 1, systemImage: "paintbrush") {
-                    appearanceSection
-                    effectsSection
-                    localeSection
-                }
-                tab("Options", tag: 2, systemImage: "slider.horizontal.3") {
-                    methodsSection
-                    addressSection
-                    cofSection
-                }
                 ElementsTabView(
                     settings: settings,
                     session: session,
@@ -202,7 +192,17 @@ import SunbayCheckoutTestSupport
                     onOutcome: { handle($0, source: "Elements") },
                     onLog: { log.add($0, level: $1) }
                 )
-                .tag(3)
+                .tag(1)
+                tab("Look", tag: 2, systemImage: "paintbrush") {
+                    appearanceSection
+                    effectsSection
+                    localeSection
+                }
+                tab("Options", tag: 3, systemImage: "slider.horizontal.3") {
+                    methodsSection
+                    addressSection
+                    cofSection
+                }
                 tab("Logs", tag: 4, systemImage: "list.bullet.rectangle") {
                     logsSection
                 }
