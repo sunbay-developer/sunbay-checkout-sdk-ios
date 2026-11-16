@@ -103,6 +103,8 @@ The tree also now includes:
   **real-device probe** (capability → wallet sheet → token, no real backend). Real/sandbox
   end-to-end is a release gate after the backend is ready.
 - Do not add tests beyond what is asked; when changing tested logic, update its tests.
+- `../showcase-ios` is a standalone showcase project and is **not** part of the SDK test run. Do not run its tests when
+  testing the SDK. Run them only when `showcase-ios` itself changed, or when an SDK change affects what it consumes.
 
 ## 5. Git conventions
 
