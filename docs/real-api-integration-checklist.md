@@ -291,6 +291,22 @@ Apple Pay submits now carry `digitalWalletInfo.applePay.merchantIdentifier` (the
       integrator can also upload its own certificate (confirmed by the owner, 2026-11-12). The SDK still sends whatever
       the host configured; add this to the integration guide.
 
+## Multi-attempt sessions (2026-11-13)
+
+A session can now hold several attempts: `create-session` WITHOUT `transactionRequestId` makes a multi-attempt session; with it the
+session is payable only once. The session has its own `status` (`ACTIVE` / `COMPLETED` / `INACTIVE` / `EXPIRED`); `txnStatus` stays and
+describes the latest transaction. Ended sessions: `load` returns only `sessionId` + `status`; `result` returns only `sessionId` + `status`
+for `EXPIRED`; `submit` rejects with `C30` (expired), `C10` (completed) or `C11` (closed).
+
+SDK behavior: `load` of an ended session throws `CHECKOUT_EXPIRED` / `SESSION_COMPLETED` / `SESSION_CLOSED`; a `result` without
+`txnStatus` for an ended session throws the same error; `PaymentSnapshot.sessionStatus` exposes the session status. `C10` / `C11` / `C30`
+from `submit` reach the host as `.failed` with the backend code kept.
+
+- [ ] Backend (not deployed when this was written): confirm the field name `status`, the upper-case values, and that `load` / `result`
+      return it for active sessions.
+- [ ] Backend: does `result` for `EXPIRED` ever carry `txnStatus`? (the SDK tolerates both)
+- [ ] Open: after `C10` / `C11` / `C30` the sheet still shows a retryable error. Decide whether the UI should stop offering Pay.
+
 ## Release gate
 
 - [ ] **RELEASE GATE:** obtain written QSA / acquirer confirmation of the host's PCI scope for `CardElement` before shipping it to merchants (see `docs/security-and-pci.md` §9.4); until then recommend `PaymentSheet`.

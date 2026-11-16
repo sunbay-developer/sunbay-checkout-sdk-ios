@@ -23,6 +23,8 @@ enum ContractDecoding {
     /// The wire format of the session `data` object (only takes the fields Core needs; other fields are ignored).
     struct SessionWire: Decodable {
         let sessionId: String
+        /// Backend session status (`ACTIVE` / `COMPLETED` / `INACTIVE` / `EXPIRED`); absent on older backends.
+        let status: String?
         /// Backend session type (for example `"sdk"`); optional on the wire.
         let sessionType: String?
         let currency: String
@@ -39,7 +41,7 @@ enum ContractDecoding {
         let collectShippingAddress: Bool
 
         private enum CodingKeys: String, CodingKey {
-            case sessionId, sessionType, currency, totalAmount, expiresAt, merchantName
+            case sessionId, status, sessionType, currency, totalAmount, expiresAt, merchantName
             case rsaPublicKey, supportStoreCard, paymentMethods
             case collectBillingAddress, collectShippingAddress
         }
@@ -47,7 +49,22 @@ enum ContractDecoding {
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             sessionId = try c.decode(String.self, forKey: .sessionId)
+            status = try c.decodeIfPresent(String.self, forKey: .status)
             sessionType = try c.decodeIfPresent(String.self, forKey: .sessionType)
+            if ContractDecoding.sessionEndedError(forStatus: status) != nil {
+                // An ended session (COMPLETED / INACTIVE / EXPIRED) carries only `sessionId` + `status`;
+                // the detail fields are absent, so they must not be required here.
+                currency = ""
+                totalAmount = 0
+                expiresAt = ""
+                merchantName = ""
+                rsaPublicKey = nil
+                supportStoreCard = false
+                paymentMethods = []
+                collectBillingAddress = false
+                collectShippingAddress = false
+                return
+            }
             currency = try c.decode(String.self, forKey: .currency)
             totalAmount = try ContractDecoding.decodeMinorUnits(
                 from: c, forKey: .totalAmount, currencyCode: currency)
@@ -229,12 +246,35 @@ enum ContractDecoding {
         }
     }
 
+    // MARK: - Session status
+
+    /// Maps an ended session status to the error the SDK surfaces; nil for `ACTIVE`, an absent or an unknown status.
+    ///
+    /// - `EXPIRED` reuses the SDK's existing `CHECKOUT_EXPIRED` error.
+    /// - `COMPLETED` → `SESSION_COMPLETED`; `INACTIVE` → `SESSION_CLOSED`.
+    static func sessionEndedError(forStatus status: String?) -> CheckoutError? {
+        switch status?.uppercased() {
+        case "EXPIRED":
+            return CheckoutErrors.sessionExpired()
+        case "COMPLETED":
+            return CheckoutErrors.sessionEnded(code: "SESSION_COMPLETED", message: "The checkout session is already completed.")
+        case "INACTIVE":
+            return CheckoutErrors.sessionEnded(code: "SESSION_CLOSED", message: "The checkout session is closed.")
+        default:
+            return nil
+        }
+    }
+
     // MARK: - Result (§7.4)
 
     /// The wire format of the submit / result `data` object.
     struct ResultWire: Decodable {
         let txnId: String?
-        let txnStatus: String
+        /// Latest transaction status; absent when the session has ended and there is no transaction to report
+        /// (for example `EXPIRED`).
+        let txnStatus: String?
+        /// Backend session status (`ACTIVE` / `COMPLETED` / `INACTIVE` / `EXPIRED`); absent on older backends.
+        let status: String?
         /// Absent on `payment/result` responses (present on submit); callers supply a fallback.
         let sessionId: String?
         let action: ActionWire?
@@ -344,16 +384,16 @@ extension ContractDecoding.ResultWire {
     /// - Throws: `DecodingError` when `txnStatus` is not recognized.
     /// - Parameter fallbackSessionId: The session the SDK asked about; used when the wire omits `sessionId`.
     func toEnvelope(fallbackSessionId: String) throws -> ResultEnvelope {
-        guard let status = TxnStatus(rawValue: txnStatus) else {
+        guard let txnStatus, let status = TxnStatus(rawValue: txnStatus) else {
             throw DecodingError.dataCorrupted(
                 DecodingError.Context(
                     codingPath: [],
-                    debugDescription: "Unknown txnStatus: \(txnStatus)"
+                    debugDescription: "Unknown txnStatus: \(txnStatus ?? "nil")"
                 )
             )
         }
         let snapshot = PaymentSnapshot(sessionId: sessionId ?? fallbackSessionId, status: status, txnId: txnId,
-            failureReason: failureReason)
+            failureReason: failureReason, sessionStatus: self.status)
         let mapped: PaymentAction? = status == .requiresAction ? ContractDecoding.mapAction(action) : nil
         return ResultEnvelope(snapshot: snapshot, action: mapped)
     }

@@ -567,7 +567,7 @@ idle → loadingSession → ready → authorizing → submitting → 终态
                                      requiresAction(R → ActionHandler)
 ```
 
-- **服务端确认终态**:`succeeded(S)` / `failed(F)`——不可逆,只回调一次。
+- **服务端确认终态**:`succeeded(S)` 不可逆。`failed(F)` 只是**这一次尝试**的结论,不是 session 的终态:多次支付的 session(下单时不传 `transactionRequestId`)失败后仍是 `ACTIVE`,用户可换方式或重试,SDK 保持表单可重试。session 自身状态见 §7.1 / §7.4 的 `status`。
 - **非终态**:`pending(I)` / `requiresAction(R)`——需 `retrievePayment` 继续查。
 - **UI 终态但非交易终态**:`canceled`(只关 UI)、`unknown`(网络中断)——都不能据此判断未扣款,必须查询。
 
@@ -787,7 +787,10 @@ SubmitRequest(
 
 `POST /api/checkout/web/payment/result/{sessionId}` returns `txnId`, `txnStatus`, `sessionId`,
 `totalAmount`, `currency`, optional `failureReason`, `resultUrl` and `action`. `txnStatus` is `S`, `F` or
-`R` only; there is no `I`. Mapping: `S` succeeded, `F` failed (only from an explicit `F`), `R` with a known
+`R` only; there is no `I`. The response also carries the session `status` (`ACTIVE`, `COMPLETED`, `INACTIVE`,
+`EXPIRED`); `txnStatus` only describes the latest transaction and can be absent when the session is `EXPIRED`
+(the SDK then surfaces `CHECKOUT_EXPIRED`). For a single-attempt session `COMPLETED` means the transaction reached
+`S` or `F`. Mapping: `S` succeeded, `F` failed (only from an explicit `F`), `R` with a known
 action goes to `ActionHandler` (§4.5), `R` with an unknown action or an undetermined result is
 pending/unknown, resolved by the host via `retrievePayment` / webhook.
 

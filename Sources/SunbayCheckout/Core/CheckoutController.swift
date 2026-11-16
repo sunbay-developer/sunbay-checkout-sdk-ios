@@ -97,6 +97,11 @@ enum CheckoutErrors {
         )
     }
 
+    /// The session has ended (completed or closed) and can no longer be paid.
+    static func sessionEnded(code: String, message: String) -> CheckoutError {
+        CheckoutError(code: code, message: message, category: .validation, traceId: nil)
+    }
+
     /// The default `PAYMENT_FAILED` message used when the server gives no reason.
     static let defaultPaymentFailedMessage = "The payment failed."
 
