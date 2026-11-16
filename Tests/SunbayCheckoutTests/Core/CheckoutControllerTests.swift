@@ -1132,4 +1132,46 @@ final class CheckoutControllerTests: XCTestCase {
         let after = await controller.isCardOnFileEnabled
         XCTAssertFalse(after)
     }
+
+    // MARK: - Multi-attempt sessions
+
+    func test_multiAttempt_failedThenSucceeded_onTheSameSession() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession())
+        payment.stubSubmit([
+            PaymentSnapshot(sessionId: "sess_1", status: .failed, txnId: "t1",
+                            failureReason: "No funds", sessionStatus: "ACTIVE"),
+            PaymentSnapshot(sessionId: "sess_1", status: .succeeded, txnId: "t2",
+                            sessionStatus: "COMPLETED"),
+        ])
+        let controller = makeController(payment: payment)
+        _ = try await controller.start(
+            sessionId: "sess_1", customerAccessSecret: "cas_1", checkoutClientSecret: "ccs_1")
+
+        let first = await controller.confirmWallet(WalletAuthorization(token: Data([1]), billing: nil, shipping: nil, email: nil))
+        guard case .failed(_, let err) = first else { return XCTFail("expected failed, got \(first)") }
+        XCTAssertEqual(err.message, "No funds")
+
+        // The failed attempt must not end the session: the same session is submitted again.
+        let second = await controller.confirmWallet(WalletAuthorization(token: Data([1]), billing: nil, shipping: nil, email: nil))
+        guard case .succeeded(let txnId) = second else { return XCTFail("expected succeeded, got \(second)") }
+        XCTAssertEqual(txnId, "t2")
+        XCTAssertEqual(payment.submitCallCount, 2)
+    }
+
+    func test_multiAttempt_sessionClosed_C11_failsWithBackendCodeAndAllowsNoResultQuery() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession())
+        payment.stubSubmitError(
+            CheckoutError(code: "C11", message: "Session already closed", category: .payment, traceId: nil))
+        let controller = makeController(payment: payment)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+
+        let outcome = await controller.confirmWallet(WalletAuthorization(token: Data([1]), billing: nil, shipping: nil, email: nil))
+
+        guard case .failed(let txnId, let err) = outcome else { return XCTFail("expected failed, got \(outcome)") }
+        XCTAssertNil(txnId)
+        XCTAssertEqual(err.code, "C11")
+        XCTAssertEqual(payment.getResultCallCount, 0)
+    }
 }

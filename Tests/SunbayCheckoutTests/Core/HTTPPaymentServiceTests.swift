@@ -273,4 +273,76 @@ final class HTTPPaymentServiceTests: XCTestCase {
             XCTFail("wrong error")
         }
     }
+
+    // MARK: - Multi-attempt sessions
+
+    private func endedSession(_ status: String) -> String {
+        #"{"code":"0","msg":"ok","data":{"sessionId":"s1","status":"\#(status)"}}"#
+    }
+
+    func testLoadSessionEndedStatusSurfacesTypedError() async {
+        let expected = [("EXPIRED", "CHECKOUT_EXPIRED"), ("COMPLETED", "SESSION_COMPLETED"), ("INACTIVE", "SESSION_CLOSED")]
+        for (status, code) in expected {
+            stub([endedSession(status)])
+            let service = await makeService()
+            do {
+                _ = try await service.loadSession("s1")
+                XCTFail("expected throw for \(status)")
+            } catch let error as CheckoutError {
+                // Not a generic INVALID_RESPONSE / network error.
+                XCTAssertEqual(error.code, code)
+                XCTAssertNotEqual(error.category, .network)
+            } catch {
+                XCTFail("wrong error")
+            }
+        }
+    }
+
+    func testLoadSessionActiveStatusDecodes() async throws {
+        stub([#"{"code":"0","msg":"ok","data":{"sessionId":"s1","status":"ACTIVE","currency":"USD","totalAmount":1000,"expiresAt":"2030-01-01T00:00:00Z","merchantName":"M","paymentMethods":[{"method":"VISA","type":"CARD"}]}}"#])
+        let service = await makeService()
+        let session = try await service.loadSession("s1")
+        XCTAssertEqual(session.id, "s1")
+    }
+
+    func testResultForExpiredSessionWithoutTxnStatusSurfacesExpired() async {
+        stub([#"{"code":"0","msg":"ok","data":{"sessionId":"s1","status":"EXPIRED"}}"#])
+        let service = await makeService()
+        do {
+            _ = try await service.getResult(sessionId: "s1")
+            XCTFail("expected throw")
+        } catch let error as CheckoutError {
+            XCTAssertEqual(error.code, "CHECKOUT_EXPIRED")
+        } catch {
+            XCTFail("wrong error")
+        }
+    }
+
+    func testFailedResultKeepsActiveSessionStatus_soTheBuyerCanRetry() async throws {
+        stub([result("F", extra: #","status":"ACTIVE","failureReason":"No funds""#)])
+        let service = await makeService()
+        let snapshot = try await service.getResult(sessionId: "s1")
+        XCTAssertEqual(snapshot.status, .failed)
+        XCTAssertEqual(snapshot.sessionStatus, "ACTIVE")
+        XCTAssertEqual(snapshot.failureReason, "No funds")
+    }
+
+    func testSubmitSessionClosedBusinessCodes_reachHostWithBackendCode() async {
+        for code in ["C10", "C11", "C30"] {
+            stub([#"{"code":"\#(code)","msg":"Session ended","data":null}"#])
+            let service = await makeService()
+            do {
+                _ = try await service.submit(SubmitRequest(
+                    sessionId: "s1", paymentMethod: "CARD", attemptId: UUID(),
+                    cardEncryptedData: "CIPHER", storeCard: false, checkoutClientSecret: "ccs_x",
+                    sessionType: "sdk"))
+                XCTFail("expected throw for \(code)")
+            } catch let error as CheckoutError {
+                XCTAssertEqual(error.code, code)
+                XCTAssertEqual(error.category, .payment)
+            } catch {
+                XCTFail("wrong error")
+            }
+        }
+    }
 }

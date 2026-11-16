@@ -399,4 +399,49 @@ final class ContractCodableTests: XCTestCase {
         XCTAssertEqual(session.methodEntries.first?.logoURL, "https://res.sunbay-dev.com/a/b.png?inline=1")
         XCTAssertEqual(CardBrandItem.items(from: session.methodEntries).map(\.scheme), ["unionpay", "visa"])
     }
+
+    // MARK: - Multi-attempt sessions (session status)
+
+    func test_decodeSession_endedSessionWithOnlyStatus_doesNotThrow() throws {
+        for status in ["COMPLETED", "INACTIVE", "EXPIRED"] {
+            let json = #"{"sessionId":"s1","status":"\#(status)"}"#
+            let wire = try JSONDecoder().decode(ContractDecoding.SessionWire.self, from: Data(json.utf8))
+            XCTAssertEqual(wire.status, status)
+            XCTAssertNotNil(ContractDecoding.sessionEndedError(forStatus: wire.status))
+        }
+    }
+
+    func test_decodeSession_activeSessionStillRequiresDetail() {
+        let json = #"{"sessionId":"s1","status":"ACTIVE"}"#
+        XCTAssertThrowsError(try JSONDecoder().decode(ContractDecoding.SessionWire.self, from: Data(json.utf8)))
+    }
+
+    func test_sessionEndedError_mapsStatusToStableCodes() {
+        XCTAssertEqual(ContractDecoding.sessionEndedError(forStatus: "EXPIRED")?.code, "CHECKOUT_EXPIRED")
+        XCTAssertEqual(ContractDecoding.sessionEndedError(forStatus: "COMPLETED")?.code, "SESSION_COMPLETED")
+        XCTAssertEqual(ContractDecoding.sessionEndedError(forStatus: "INACTIVE")?.code, "SESSION_CLOSED")
+        XCTAssertEqual(ContractDecoding.sessionEndedError(forStatus: "completed")?.code, "SESSION_COMPLETED")
+        XCTAssertNil(ContractDecoding.sessionEndedError(forStatus: "ACTIVE"))
+        XCTAssertNil(ContractDecoding.sessionEndedError(forStatus: nil))
+        XCTAssertNil(ContractDecoding.sessionEndedError(forStatus: "SOMETHING_NEW"))
+    }
+
+    func test_decodeResult_carriesSessionStatus_andTxnStatusStaysTheLatestAttempt() throws {
+        let json = Data(#"{"txnId":"t1","txnStatus":"F","status":"ACTIVE","failureReason":"No funds"}"#.utf8)
+        let envelope = try ContractDecoding.decodeResult(from: json, fallbackSessionId: "s1")
+        XCTAssertEqual(envelope.snapshot.status, .failed)
+        XCTAssertEqual(envelope.snapshot.sessionStatus, "ACTIVE")
+    }
+
+    func test_decodeResult_withoutSessionStatus_isNil() throws {
+        let envelope = try ContractDecoding.decodeResult(
+            from: Data(#"{"txnId":"t1","txnStatus":"S"}"#.utf8), fallbackSessionId: "s1")
+        XCTAssertNil(envelope.snapshot.sessionStatus)
+    }
+
+    func test_decodeResult_withoutTxnStatus_throws() {
+        XCTAssertThrowsError(
+            try ContractDecoding.decodeResult(
+                from: Data(#"{"sessionId":"s1","status":"EXPIRED"}"#.utf8), fallbackSessionId: "s1"))
+    }
 }
