@@ -91,7 +91,7 @@ The tree also now includes:
   the generated `*.xcodeproj`/`*.xcworkspace`/`Derived/` are git-ignored). This is the SDK-consuming
   real-device/demo surface and the UI localization gate. It runs against the real backend only, in the
   `.dev` environment. `Example/ApplePayProbe/` remains the standalone PassKit probe.
-- The merchant-style showcase app lives in the sibling `showcase-ios` repository (it creates real dev
+- The merchant-style showcase app lives in the sibling `ios-checkout-sdk-showcase` repository (it creates real dev
   sessions); it is no longer part of this repo.
 - `Tests/SunbayCheckoutE2ETests/` — a protocol-driven e2e target that runs on the host via `swift test`
   (no UIKit), alongside `Tests/SunbayCheckoutTests/`.
@@ -103,8 +103,8 @@ The tree also now includes:
   **real-device probe** (capability → wallet sheet → token, no real backend). Real/sandbox
   end-to-end is a release gate after the backend is ready.
 - Do not add tests beyond what is asked; when changing tested logic, update its tests.
-- `../showcase-ios` is a standalone showcase project and is **not** part of the SDK test run. Do not run its tests when
-  testing the SDK. Run them only when `showcase-ios` itself changed, or when an SDK change affects what it consumes.
+- `../ios-checkout-sdk-showcase` is a standalone showcase project and is **not** part of the SDK test run. Do not run its tests when
+  testing the SDK. Run them only when `ios-checkout-sdk-showcase` itself changed, or when an SDK change affects what it consumes.
 
 ## 5. Git conventions
 
