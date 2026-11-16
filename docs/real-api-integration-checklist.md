@@ -78,7 +78,7 @@ State today:
 - [ ] Scanning deliberately still requires Luhn for every brand (including UnionPay) as the guard against
       misreads; non-Luhn UnionPay cards must be typed by hand. Revisit only if that proves to be a real problem.
 - [ ] Replace the demo mock BIN and rules services with the real adapters when BIN is enabled (Example;
-      Showcase moved to `showcase-ios` and creates real dev sessions), and keep a scriptable test double
+      Showcase moved to `ios-checkout-sdk-showcase` and creates real dev sessions), and keep a scriptable test double
       in `SunbayCheckoutTestSupport`.
 - [ ] Keep Android and HPP on the same document and the same test vectors; a behavior change starts
       with the contract, then all three implementations.
