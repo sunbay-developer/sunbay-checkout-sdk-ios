@@ -15,7 +15,7 @@ test('builds an sdk session payload with COF enabled', () => {
     assert.equal(p.productList[0].amount, 999);
     assert.equal(p.productList[0].num, 1);
     assert.equal(p.collectBillingAddress, false);
-    assert.ok(p.transactionRequestId.startsWith('IOS'));
+    assert.equal(p.transactionRequestId, undefined, 'omitted so the session allows multiple attempts');
     assert.ok(p.referenceOrderId.startsWith('IOS'));
 });
 

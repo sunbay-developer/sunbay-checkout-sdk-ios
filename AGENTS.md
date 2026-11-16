@@ -1,6 +1,7 @@
 # AGENTS.md — Sunbay Checkout iOS SDK
 
 Development conventions for all AI agents and engineers working in this repository.
+Part of the `online-payment/` workspace. Project map for navigation only: `../../AGENTS.md`. This repo stays self-contained.
 **Read this file and `docs/product-spec.md` in full before touching payment code.**
 
 This repository is a **standalone git repo** (independent from the `checkout` web repo and the

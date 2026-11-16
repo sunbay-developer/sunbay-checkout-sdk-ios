@@ -28,7 +28,7 @@ export function maskSecret(value) {
  */
 export function summarizeCreateSessionPayload(payload) {
     return {
-        transactionRequestId: payload.transactionRequestId,
+        referenceOrderId: payload.referenceOrderId,
         merchantId: payload.merchantId,
         sessionType: payload.sessionType,
         customerId: payload.customerId,

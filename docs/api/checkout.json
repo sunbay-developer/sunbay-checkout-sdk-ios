@@ -234,6 +234,39 @@
         },
         "security": []
       }
+    },
+    "/checkout/web/card/unbind": {
+      "post": {
+        "summary": "解绑已存卡",
+        "deprecated": false,
+        "description": "<p>\nSDK 携带有效的 customerAccessSecret 与 card:list 返回的 savedCardId 调用本接口。\n下游仅将 token 置为失效状态（不物理删除），解绑后该卡不再出现在 card/list，也不能用于 TOKEN 支付。",
+        "tags": [],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CardUnbindReq",
+                "description": "解绑请求（含 sessionId、customerAccessSecret、savedCardId）"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultVoid",
+                  "description": "成功时 data 为空"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
     }
   },
   "components": {
@@ -426,6 +459,47 @@
           "content": {
             "$ref": "#/components/schemas/MapString",
             "description": ""
+          }
+        }
+      },
+      "SubmitSessionPaymentResp": {
+        "type": "object",
+        "properties": {
+          "txnId": {
+            "type": "string",
+            "description": "sunbay 交易流水号"
+          },
+          "linkId": {
+            "type": "string",
+            "description": "链接ID"
+          },
+          "txnStatus": {
+            "type": "string",
+            "description": "支付状态\nS - 成功，F - 失败，R - 需要后续操作"
+          },
+          "action": {
+            "$ref": "#/components/schemas/ActionDTO",
+            "description": "后续动作（仅状态为 R 时返回）"
+          },
+          "sessionId": {
+            "type": "string",
+            "description": "会话ID"
+          },
+          "totalAmount": {
+            "type": "number",
+            "description": "总金额（含税）"
+          },
+          "currency": {
+            "type": "string",
+            "description": "货币类型"
+          },
+          "failureReason": {
+            "type": "string",
+            "description": "失败原因（仅状态为 F 时返回）"
+          },
+          "resultUrl": {
+            "type": "string",
+            "description": "查询支付结果 (如果返回R时候 可以通过resultUrl查询支付结果)\n/web/checkout/payment/result/{sessionId}"
           }
         }
       },
@@ -633,6 +707,39 @@
           "paymentMethod"
         ]
       },
+      "CardItem": {
+        "type": "object",
+        "properties": {
+          "savedCardId": {
+            "type": "string",
+            "description": "前端不透明卡片 ID，格式：sc_{uuid}。\n不暴露真实 tokenId；用卡支付时将此值传入 SubmitSessionPaymentReq.savedCardId。"
+          },
+          "maskedCardNumber": {
+            "type": "string",
+            "description": "脱敏卡号，如 **** **** **** 4242"
+          },
+          "cardBrand": {
+            "type": "string",
+            "description": "卡品牌：visa / mastercard / amex ..."
+          },
+          "cardBrandLogoUrl": {
+            "type": "string",
+            "description": "卡组织 logo URL（来自 Basis 支付方式字典），字典未配置时为 null"
+          },
+          "expiryMonth": {
+            "type": "string",
+            "description": "过期月 MM"
+          },
+          "expiryYear": {
+            "type": "string",
+            "description": "过期年 YY"
+          },
+          "cardholderName": {
+            "type": "string",
+            "description": "持卡人姓名"
+          }
+        }
+      },
       "CardBinRecognizeResp": {
         "type": "object",
         "properties": {
@@ -647,6 +754,27 @@
           "issuerName": {
             "type": "string",
             "description": "发卡行名称"
+          }
+        }
+      },
+      "ResultVoid": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": ""
+          },
+          "msg": {
+            "type": "string",
+            "description": ""
+          },
+          "data": {
+            "description": "",
+            "type": "null"
+          },
+          "traceId": {
+            "type": "string",
+            "description": ""
           }
         }
       },
@@ -670,6 +798,28 @@
             "description": ""
           }
         }
+      },
+      "CardUnbindReq": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "description": "关联的 Session ID（必填）"
+          },
+          "customerAccessSecret": {
+            "type": "string",
+            "description": "Customer 访问密钥（必填）"
+          },
+          "savedCardId": {
+            "type": "string",
+            "description": "待解绑的卡片不透明 ID，格式 sc_{uuid}（必填）"
+          }
+        },
+        "required": [
+          "sessionId",
+          "customerAccessSecret",
+          "savedCardId"
+        ]
       },
       "CardBinRecognizeReq": {
         "type": "object",
@@ -749,80 +899,6 @@
           "traceId": {
             "type": "string",
             "description": ""
-          }
-        }
-      },
-      "SubmitSessionPaymentResp": {
-        "type": "object",
-        "properties": {
-          "txnId": {
-            "type": "string",
-            "description": "sunbay 交易流水号"
-          },
-          "linkId": {
-            "type": "string",
-            "description": "链接ID"
-          },
-          "txnStatus": {
-            "type": "string",
-            "description": "支付状态\nS - 成功，F - 失败，R - 需要后续操作"
-          },
-          "action": {
-            "$ref": "#/components/schemas/ActionDTO",
-            "description": "后续动作（仅状态为 R 时返回）"
-          },
-          "sessionId": {
-            "type": "string",
-            "description": "会话ID"
-          },
-          "totalAmount": {
-            "type": "number",
-            "description": "总金额（含税）"
-          },
-          "currency": {
-            "type": "string",
-            "description": "货币类型"
-          },
-          "failureReason": {
-            "type": "string",
-            "description": "失败原因（仅状态为 F 时返回）"
-          },
-          "tokenId": {
-            "type": "string",
-            "description": "已存卡 Token（storeCard=true 且交易成功时返回）"
-          },
-          "resultUrl": {
-            "type": "string",
-            "description": "查询支付结果 (如果返回R时候 可以通过resultUrl查询支付结果)\n/web/checkout/payment/result/{sessionId}"
-          }
-        }
-      },
-      "CardItem": {
-        "type": "object",
-        "properties": {
-          "savedCardId": {
-            "type": "string",
-            "description": "前端不透明卡片 ID，格式：sc_{uuid}。\n不暴露真实 tokenId；用卡支付时将此值传入 SubmitSessionPaymentReq.savedCardId。"
-          },
-          "maskedCardNumber": {
-            "type": "string",
-            "description": "脱敏卡号，如 **** **** **** 4242"
-          },
-          "cardBrand": {
-            "type": "string",
-            "description": "卡品牌：visa / mastercard / amex ..."
-          },
-          "expiryMonth": {
-            "type": "string",
-            "description": "过期月 MM"
-          },
-          "expiryYear": {
-            "type": "string",
-            "description": "过期年 YY"
-          },
-          "cardholderName": {
-            "type": "string",
-            "description": "持卡人姓名"
           }
         }
       },

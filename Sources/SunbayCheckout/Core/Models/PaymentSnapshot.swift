@@ -26,6 +26,10 @@ public struct PaymentSnapshot: Sendable, Equatable {
     public let txnId: String?
     /// Server-provided failure reason; nil when absent.
     public let failureReason: String?
+    /// Backend session status (`ACTIVE` / `COMPLETED` / `INACTIVE` / `EXPIRED`); nil on older backends.
+    ///
+    /// `status` only describes the latest transaction; one session can hold several attempts.
+    public let sessionStatus: String?
 
     /// Creates a payment snapshot.
     ///
@@ -34,10 +38,15 @@ public struct PaymentSnapshot: Sendable, Equatable {
     ///   - status: Current transaction status.
     ///   - txnId: Transaction identifier, may be nil.
     ///   - failureReason: Server-provided failure reason, may be nil.
-    public init(sessionId: String, status: TxnStatus, txnId: String?, failureReason: String? = nil) {
+    ///   - sessionStatus: Backend session status, may be nil.
+    public init(
+        sessionId: String, status: TxnStatus, txnId: String?, failureReason: String? = nil,
+        sessionStatus: String? = nil
+    ) {
         self.sessionId = sessionId
         self.status = status
         self.txnId = txnId
         self.failureReason = failureReason
+        self.sessionStatus = sessionStatus
     }
 }

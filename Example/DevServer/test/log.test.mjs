@@ -12,13 +12,13 @@ test('maskSecret keeps the prefix and the last 4 characters only', () => {
 
 test('payload summary carries business fields and no credentials', () => {
     const summary = summarizeCreateSessionPayload({
-        appId: 'app', merchantId: 'm', transactionRequestId: 'IOS1', referenceOrderId: 'IOS1',
+        appId: 'app', merchantId: 'm', referenceOrderId: 'IOS1',
         amount: { orderAmount: 105, taxAmount: 8, priceCurrency: 'USD' },
         sessionType: 'sdk', customerId: 'cust-1', supportStoreCard: true,
         collectBillingAddress: false, collectShippingAddress: false,
     });
     assert.deepEqual(summary, {
-        transactionRequestId: 'IOS1', merchantId: 'm', sessionType: 'sdk', customerId: 'cust-1',
+        referenceOrderId: 'IOS1', merchantId: 'm', sessionType: 'sdk', customerId: 'cust-1',
         supportStoreCard: true, amount: { orderAmount: 105, taxAmount: 8, priceCurrency: 'USD' },
         collectBillingAddress: false, collectShippingAddress: false,
     });

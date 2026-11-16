@@ -67,7 +67,8 @@ export function buildCreateSessionPayload(input, config, now) {
 
     return {
         appId: config.appId,
-        transactionRequestId: id,
+        // transactionRequestId is intentionally NOT sent: omitting it creates a multi-attempt session
+        // (the buyer can retry after a failed payment); sending it makes the session payable only once.
         referenceOrderId: id,
         merchantId: config.merchantId,
         // The caller's user identifier (saved cards are scoped to it); falls back to the configured one.
@@ -109,7 +110,7 @@ export async function createSession(input = {}) {
         headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${CONFIG.apiKey}`,
-            'X-Client-Request-Id': payload.transactionRequestId,
+            'X-Client-Request-Id': payload.referenceOrderId,
             'X-Timestamp': String(now),
         },
         body: JSON.stringify(payload),

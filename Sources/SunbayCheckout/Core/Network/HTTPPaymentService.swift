@@ -107,6 +107,10 @@ final class HTTPPaymentService: PaymentService, PaymentActionProviding, @uncheck
         }
         let wire: ContractDecoding.SessionWire = try await client.post(
             .loadSession(id: id), body: LoadBody(checkoutClientSecret: secret))
+        // An ended session (COMPLETED / INACTIVE / EXPIRED) only carries sessionId + status.
+        if let ended = ContractDecoding.sessionEndedError(forStatus: wire.status) {
+            throw ended
+        }
         do {
             return try wire.toSession()
         } catch {
@@ -152,6 +156,10 @@ final class HTTPPaymentService: PaymentService, PaymentActionProviding, @uncheck
     // MARK: - Helpers
 
     private func accept(_ wire: ContractDecoding.ResultWire, fallbackSessionId: String) throws -> PaymentSnapshot {
+        // No transaction to report (for example an EXPIRED session): surface the session state, not a decode error.
+        if wire.txnStatus == nil, let ended = ContractDecoding.sessionEndedError(forStatus: wire.status) {
+            throw ended
+        }
         let envelope: ResultEnvelope
         do {
             envelope = try wire.toEnvelope(fallbackSessionId: fallbackSessionId)
