@@ -1,11 +1,11 @@
 # AGENTS.md — Sunbay Checkout iOS SDK
 
 Development conventions for all AI agents and engineers working in this repository.
-Part of the `online-payment/` workspace. Project map for navigation only: `../../AGENTS.md`. This repo stays self-contained.
+Part of the `checkout/` workspace. Project map for navigation only: `../../AGENTS.md`. This repo stays self-contained.
 **Read this file and `docs/product-spec.md` in full before touching payment code.**
 
 This repository is a **standalone git repo** (independent from the `checkout` web repo and the
-`checkout-sdk-native/android` repo). It must be fully self-contained: all context needed to build
+`sdk/native/android` repo). It must be fully self-contained: all context needed to build
 the SDK lives in `docs/`. Do not assume access to the `checkout` repo at runtime.
 
 ---
@@ -103,7 +103,7 @@ The tree also now includes:
   **real-device probe** (capability → wallet sheet → token, no real backend). Real/sandbox
   end-to-end is a release gate after the backend is ready.
 - Do not add tests beyond what is asked; when changing tested logic, update its tests.
-- `../ios-checkout-sdk-showcase` is a standalone showcase project and is **not** part of the SDK test run. Do not run its tests when
+- `../../../showcase/sdk-for-ios` is a standalone showcase project and is **not** part of the SDK test run. Do not run its tests when
   testing the SDK. Run them only when `ios-checkout-sdk-showcase` itself changed, or when an SDK change affects what it consumes.
 
 ## 5. Git conventions
