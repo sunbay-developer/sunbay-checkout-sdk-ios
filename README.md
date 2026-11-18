@@ -27,14 +27,17 @@ let checkout = SunbayCheckout(
 let sheet = PaymentSheet(
     checkout: checkout,
     sessionId: sessionId,                 // created server-side by the merchant backend
-    customerAccessSecret: customerAccessSecret  // COF only; delivered over HTTPS
+    customerAccessSecret: customerAccessSecret,  // COF only; delivered over HTTPS
+    checkoutClientSecret: checkoutClientSecret   // issued with the session; required by the default backend adapter
 )
 // Optional: observe the in-sheet presentation state (editing / processing / succeeded / failed).
 sheet.onStateChange = { state in /* ... */ }
 let outcome = await sheet.present(from: self)
 
 // Elements — embed Apple Pay and the card form in your own screen
-let elements = try await CheckoutElements.create(checkout: checkout, sessionId: sessionId)
+var options = CheckoutElements.Configuration()
+options.checkoutClientSecret = checkoutClientSecret
+let elements = try await CheckoutElements.create(checkout: checkout, sessionId: sessionId, configuration: options)
 let express = elements.makeExpressCheckoutElement()
 express.onResult = { outcome in /* ... */ }
 let card = elements.makeCardElement()
@@ -90,6 +93,8 @@ Swift Package Manager (primary). XCFramework reserved/on-demand. CocoaPods not p
 
 - [`docs/product-spec.md`](docs/product-spec.md) — full self-contained design (architecture, public
   API, data flows, state machine, backend contract baseline, COF model).
+- [`docs/api/api.md`](docs/api/api.md) — public API reference (symbols, defaults, error codes).
+- [`docs/api/guide.md`](docs/api/guide.md) — integration guide with examples.
 - [`docs/security-and-pci.md`](docs/security-and-pci.md) — security hard rules and PCI assessment.
 - [`AGENTS.md`](AGENTS.md) — development conventions.
 

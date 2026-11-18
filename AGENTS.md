@@ -61,6 +61,36 @@ Full design: `docs/product-spec.md`. Security/PCI: `docs/security-and-pci.md`.
    API, and open verification items, are tracked in `docs/real-api-integration-checklist.md`; read it
    before wiring any real endpoint and update it when you build something against a mock.
 
+## 2a. API documentation contract (non-negotiable)
+
+The public API is documented in `docs/api/api.md` (reference) and `docs/api/guide.md` (integration
+guide). They are part of the product and must never drift from the code.
+
+**Triggers.** Any change that affects what an integrator sees or calls:
+- Adding, removing, renaming or re-typing a `public` symbol, parameter, property, enum case or protocol requirement.
+- Changing a default value, an availability rule (for example when an element is `isAvailable`), a precedence rule, threading
+  (`@MainActor`) or a documented behavior of a call.
+- Adding, removing or renaming a `CheckoutError` code, a warning code or a `CheckoutOutcome` mapping.
+- Changing `CheckoutConfiguration.Environment` hosts, supported locales, minimum iOS version or the Apple Pay setup requirements.
+
+**Required in the same change (same branch, same PR):**
+1. Update `docs/api/api.md` for every affected symbol, default and error code.
+2. Update `docs/api/guide.md` where an example, a recommended flow or a "what to do" table is affected.
+3. Update `README.md` if its Quick start, Theming or Distribution sections are affected.
+4. Update the in-repo consumers of the changed API: `Example/SunbayCheckoutDemo` (and `Sources/SunbayCheckoutTestSupport` if it uses the symbol).
+   The Example must still build against the new API.
+5. Check the showcase app (`../../../showcase/sdk-for-ios`, see section 4). If it uses the changed API, update it in its own repo on its own branch and
+   commit, in the same working session, and say so in the report. If it is unaffected, say that explicitly.
+6. A breaking change bumps MAJOR (section 2, rule 3; `docs/releasing.md`). Say so in the docs change.
+7. Update the tests of the changed logic (section 4).
+
+**Review gate.** Before reporting a task done, run a self-check: list every `public` symbol touched by the diff
+(`git diff -U0 -- Sources | grep -E '^[+-].*\bpublic\b'`) and confirm each is reflected in `docs/api/api.md`. A change to the public
+surface without a matching docs change is incomplete.
+
+**Doc rules.** English only. Document behavior and defaults as the code has them, not as intended. Never put card values, secrets or real
+credentials in examples. Keep `api.md` structured as: signature block, then a table or list of semantics.
+
 ## 3. Code organization
 
 See `docs/product-spec.md` §6.2 for the full tree. In short:
