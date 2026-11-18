@@ -8,10 +8,10 @@ import Foundation
 public struct CheckoutConfiguration: Sendable, Equatable {
     /// Runtime environment.
     ///
-    /// Declares which Sunbay environment the host integration targets. Defaults to `production`;
-    /// developers pass `dev` / `test` explicitly only when connecting to a non-production backend.
-    /// The SDK stores this as the host's declared intent; it does not itself derive backend URLs
-    /// from it (the host-injected `PaymentService` / `CofService` adapters own the real endpoints).
+    /// Selects the Sunbay backend the SDK talks to. Defaults to `production`; developers pass
+    /// `dev` / `test` explicitly only when connecting to a non-production backend. The SDK's default
+    /// adapters derive their endpoints from it (see `SunbayEndpoints`); host-injected
+    /// `PaymentService` / `CofService` implementations use their own endpoints and ignore it.
     public enum Environment: Sendable, Equatable {
         /// Development environment.
         case dev
