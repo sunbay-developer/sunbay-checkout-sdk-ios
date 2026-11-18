@@ -33,7 +33,7 @@ export const CONFIG = {
     appId: process.env.APP_ID,
     merchantId: process.env.MERCHANT_ID,
     currency: process.env.CURRENCY ?? 'USD',
-    customerId: process.env.CUSTOMER_ID ?? 'sunbay-ios-dev-customer',
+    customerId: process.env.CUSTOMER_ID,
 };
 
 export const HAS_CREDENTIALS = Boolean(CONFIG.apiKey && CONFIG.appId && CONFIG.merchantId);
@@ -119,8 +119,9 @@ export async function createSession(input = {}) {
     let data = null;
     try {
         data = await res.json();
-    } catch {
+    } catch(err) {
         // Non-JSON upstream body (for example a gateway HTML page); reported below.
+        console.error(err)
     }
     log('create-session <- upstream', {
         ms: Date.now() - started,
