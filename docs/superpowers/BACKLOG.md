@@ -4,6 +4,13 @@
 
 Status: FIXED on branch `fix/no-resubmit-after-unknown` (Core reconciliation-first confirm + UI lock).
 
+> 2026-11-19: the original Core gate (`PendingReconciliationStore`, polling `reconcile`) was removed by the
+> no-poll realignment, which relied on the backend deduping by `attemptId`. Every confirm now mints a new
+> `attemptId`, so that no longer holds. Replaced by a lighter gate: `AttemptStore` (shared per `SunbayCheckout`)
+> marks the last attempt unsettled after `.pending` / `.unknown`; the next confirm makes ONE
+> `getResult(sessionId:attemptId:)` and submits only if the attempt failed or never reached the core
+> (`ATTEMPT_NOT_RECEIVED`). No polling, no UI lock.
+
 The gap (now closed): after a `.pending` / `.unknown` outcome the Pay button re-enabled and a second tap
 minted a NEW `attemptId` and called `confirm*` again with no query-first across attempts, risking a
 duplicate charge if the first attempt had actually succeeded server-side (AGENTS.md hard rule 5).
