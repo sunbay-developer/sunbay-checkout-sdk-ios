@@ -599,6 +599,9 @@ public protocol PaymentService: Sendable {
     func loadSession(_ id: String) async throws -> CheckoutSession
     func submit(_ req: SubmitRequest) async throws -> PaymentSnapshot
     func getResult(sessionId: String) async throws -> PaymentSnapshot
+    /// Queries the session state plus the state of the attempt submitted with `attemptId`.
+    /// Default implementation forwards to `getResult(sessionId:)`.
+    func getResult(sessionId: String, attemptId: UUID) async throws -> PaymentSnapshot
 }
 
 public protocol CofService: Sendable {

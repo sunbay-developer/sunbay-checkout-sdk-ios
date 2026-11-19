@@ -103,6 +103,16 @@ public protocol PaymentService: Sendable {
     func loadSession(_ id: String) async throws -> CheckoutSession
     /// Submits a payment.
     func submit(_ req: SubmitRequest) async throws -> PaymentSnapshot
-    /// Queries the payment result.
+    /// Queries the payment result of the session (session state only).
     func getResult(sessionId: String) async throws -> PaymentSnapshot
+    /// Queries the payment result of one attempt: the session state plus the state of the attempt
+    /// submitted with `attemptId`. The default implementation falls back to ``getResult(sessionId:)``.
+    func getResult(sessionId: String, attemptId: UUID) async throws -> PaymentSnapshot
+}
+
+extension PaymentService {
+    /// Default for hosts that implement only the session-level query.
+    public func getResult(sessionId: String, attemptId: UUID) async throws -> PaymentSnapshot {
+        try await getResult(sessionId: sessionId)
+    }
 }

@@ -749,7 +749,7 @@ Session {
 ```swift
 SubmitRequest(
     sessionId, paymentMethod,       // "CARD" / "APPLE_PAY" / "TOKEN" (saved card)
-    attemptId,                      // SDK-local in-flight guard only; not sent
+    attemptId,                      // new UUID per confirm; sent as `attemptId` (required by the backend)
     cardEncryptedData,              // new card ciphertext (§7.2)
     walletToken,                    // Apple Pay token; sent in cardEncryptedData
     savedCardId,                    // with paymentMethod "TOKEN"
@@ -867,6 +867,12 @@ never surfaced as a payment error. The secret never appears in logs or errors.
 1. [P0] RSA 加密 **padding / 算法**与后端解密一致(§7.2)——**写 CardEncryptor 前必须确认**。
 2. [P0] Apple Pay merchant ID 两种模式的证书/网关对应。
 3. [P0] Native session 鉴权、attemptId/幂等契约、结果查询/服务端通知。
+   - Update 2026-11-19: `attemptId` is required on submit and is now sent. Result queries that follow a
+     submit send it too (`getResult(sessionId:attemptId:)`); the backend then returns the attempt's own
+     state. `EXPIRED` with no `txnStatus` for such a query maps to `PAYMENT_OUTCOME_UNKNOWN`, not
+     `CHECKOUT_EXPIRED`. The Core gate now queries by attemptId: after `.pending` / `.unknown`, the next confirm makes one
+     `getResult(sessionId:attemptId:)` and submits only on `F` or `ATTEMPT_NOT_RECEIVED`; `S` returns
+     `.succeeded`; anything unconfirmed returns `.pending` / `.unknown` without submitting.
    - Backend-contract TBD (reconciliation gate): `PaymentSnapshot` is SESSION-level and carries no
      attemptId. The Core reconciliation gate (`CheckoutController.resolveReconciled`) therefore trusts a
      terminal `F` as the verdict of the LATEST attempt. ASSUMPTION to confirm with the backend: "a new

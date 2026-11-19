@@ -150,6 +150,20 @@ public final class ScriptablePaymentService: PaymentService, @unchecked Sendable
         return snapshot
     }
 
+    /// The attemptId of the most recent attempt-scoped result query (nil when none was made).
+    public var lastGetResultAttemptId: UUID? {
+        lock.lock(); defer { lock.unlock() }
+        return _lastGetResultAttemptId
+    }
+    private var _lastGetResultAttemptId: UUID?
+
+    public func getResult(sessionId: String, attemptId: UUID) async throws -> PaymentSnapshot {
+        lock.lock()
+        _lastGetResultAttemptId = attemptId
+        lock.unlock()
+        return try await getResult(sessionId: sessionId)
+    }
+
     public func getResult(sessionId: String) async throws -> PaymentSnapshot {
         let (error, snapshot): (Error?, PaymentSnapshot?) = {
             lock.lock(); defer { lock.unlock() }
