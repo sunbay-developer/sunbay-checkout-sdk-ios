@@ -233,6 +233,61 @@ final class HTTPPaymentServiceTests: XCTestCase {
         XCTAssertEqual(snapshot.status, .succeeded)
     }
 
+    func testSubmitBodyIncludesAttemptIdOnEveryPath() async throws {
+        let attempt = UUID()
+        let requests = [
+            SubmitRequest(sessionId: "s1", paymentMethod: "CARD", attemptId: attempt,
+                          cardEncryptedData: "C", sessionType: "sdk"),
+            SubmitRequest(sessionId: "s1", paymentMethod: "APPLE_PAY", attemptId: attempt,
+                          walletToken: Data([1, 2, 3]), sessionType: "sdk"),
+            SubmitRequest(sessionId: "s1", paymentMethod: "TOKEN", attemptId: attempt,
+                          savedCardId: "card_1", customerAccessSecret: "cas", sessionType: "sdk"),
+        ]
+        stub(requests.map { _ in result("S") })
+        let service = await makeService()
+        for request in requests { _ = try await service.submit(request) }
+        XCTAssertEqual(bodies.count, 3)
+        for body in bodies {
+            XCTAssertEqual(body["attemptId"] as? String, attempt.uuidString)
+        }
+    }
+
+    func testGetResultWithAttemptIdSendsAttemptIdInBody() async throws {
+        stub([result("S")])
+        let service = await makeService()
+        let attempt = UUID()
+        let snapshot = try await service.getResult(sessionId: "s1", attemptId: attempt)
+        XCTAssertEqual(captured.first?.url?.path, "/api/checkout/web/payment/result/s1")
+        XCTAssertEqual(bodies[0] as? [String: String], ["attemptId": attempt.uuidString])
+        XCTAssertEqual(snapshot.status, .succeeded)
+    }
+
+    func testGetResultWithAttemptIdExpiredWithoutTxnStatusThrowsOutcomeUnknown() async {
+        stub([#"{"code":"0","msg":"Success","data":{"status":"EXPIRED","sessionId":"s1","supportStoreCard":false}}"#])
+        let service = await makeService()
+        do {
+            _ = try await service.getResult(sessionId: "s1", attemptId: UUID())
+            XCTFail("expected throw")
+        } catch let error as CheckoutError {
+            XCTAssertEqual(error.code, "PAYMENT_OUTCOME_UNKNOWN")
+        } catch {
+            XCTFail("wrong error")
+        }
+    }
+
+    func testGetResultWithAttemptIdActiveWithoutTxnStatusThrowsAttemptNotReceived() async {
+        stub([#"{"code":"0","msg":"Success","data":{"status":"ACTIVE","sessionId":"s1"}}"#])
+        let service = await makeService()
+        do {
+            _ = try await service.getResult(sessionId: "s1", attemptId: UUID())
+            XCTFail("expected throw")
+        } catch let error as CheckoutError {
+            XCTAssertEqual(error.code, "ATTEMPT_NOT_RECEIVED")
+        } catch {
+            XCTFail("wrong error")
+        }
+    }
+
     func testSubmitWithoutWireSessionIdFallsBackToRequestSession() async throws {
         stub([#"{"code":"0","msg":"ok","data":{"txnId":"t5","txnStatus":"S"}}"#])
         let service = await makeService()

@@ -87,6 +87,28 @@ enum CheckoutErrors {
         )
     }
 
+    /// The queried attempt never reached the transaction core: no transaction exists for it, so a new
+    /// attempt is safe. Internal signal between `HTTPPaymentService` and `CheckoutController`.
+    static func attemptNotReceived() -> CheckoutError {
+        CheckoutError(
+            code: "ATTEMPT_NOT_RECEIVED",
+            message: "No transaction was created for the queried attempt.",
+            category: .runtime,
+            traceId: nil
+        )
+    }
+
+    /// A submitted attempt can no longer be confirmed (for example the session expired after the submit).
+    /// Neither paid nor failed: the buyer must not pay again.
+    static func paymentOutcomeUnknown() -> CheckoutError {
+        CheckoutError(
+            code: "PAYMENT_OUTCOME_UNKNOWN",
+            message: "The payment result could not be confirmed.",
+            category: .network,
+            traceId: nil
+        )
+    }
+
     /// Session invalid / expired.
     static func sessionExpired() -> CheckoutError {
         CheckoutError(
@@ -138,8 +160,10 @@ enum CheckoutErrors {
 /// and the synchronous result mapping) and is released the moment the confirm returns — it never waits on a poll or a
 /// backend terminal state. The SDK does NOT client-poll for the result: a non-terminal `I` submit result maps straight to
 /// `.pending`, and the host reconciles later via `retrievePayment` / webhook. Duplicate-charge protection rests on (1)
-/// holding the lock while one submit is in flight and (2) the backend deduping by `attemptId` / `txnId` — not on freezing
-/// the UI. See `docs/superpowers/specs/2026-11-06-submit-lock-and-no-poll-realignment-design.md`.
+/// holding the lock while one submit is in flight and (2) the unsettled-attempt gate: every confirm mints a NEW
+/// `attemptId`, so the backend cannot dedupe a repeat; after a `.pending` / `.unknown` outcome the next confirm for that
+/// session first queries the last attempt (one request, no polling) and never submits while it is unconfirmed — not on
+/// freezing the UI. See `docs/superpowers/specs/2026-11-06-submit-lock-and-no-poll-realignment-design.md`.
 ///
 /// All dependencies are protocol-injected (`PaymentService` / `CofService` / `ActionHandling`) plus cohesive boundaries
 /// (`CredentialStore` holds the secret, `CardEncryptor` touches plaintext cards). This class imports no UIKit/PassKit
@@ -169,6 +193,11 @@ actor CheckoutController {
     /// immediately returns `alreadyPresenting`, does **not** generate a new attemptId, and does **not** call submit.
     private var isConfirming = false
 
+    /// The last submitted attempt per session and whether its result is unsettled. Shared across the controllers
+    /// of one `SunbayCheckout`, so it survives `dismiss()` and a re-present; a result query for a session
+    /// carries the last attemptId so the backend reports the state of that attempt.
+    private let attempts: AttemptStore
+
     /// Creates the controller.
     ///
     /// - Parameters:
@@ -183,8 +212,10 @@ actor CheckoutController {
         credentials: CredentialStore,
         actionHandler: any ActionHandling,
         cardOnFile: CardOnFileOptions = CardOnFileOptions(),
-        reporter: DiagnosticsReporter? = nil
+        reporter: DiagnosticsReporter? = nil,
+        attempts: AttemptStore = AttemptStore()
     ) {
+        self.attempts = attempts
         self.reporter = reporter
         self.paymentService = paymentService
         self.cofService = cofService
@@ -327,6 +358,7 @@ actor CheckoutController {
             return .failed(txnId: nil, error: CheckoutErrors.alreadyPresenting())
         }
         defer { endAttempt() }
+        if let settled = await reconcileUnsettledAttempt(sessionId: session.id) { return settled }
         let attemptId = UUID()
 
         // Encryption (§7.2): missing public key or encryption failure → do not submit, fail directly (terminal state, clear the credential).
@@ -369,6 +401,7 @@ actor CheckoutController {
             return .failed(txnId: nil, error: CheckoutErrors.alreadyPresenting())
         }
         defer { endAttempt() }
+        if let settled = await reconcileUnsettledAttempt(sessionId: session.id) { return settled }
         let attemptId = UUID()
 
         reportIncompleteEntries()
@@ -405,6 +438,7 @@ actor CheckoutController {
             return .failed(txnId: nil, error: CheckoutErrors.alreadyPresenting())
         }
         defer { endAttempt() }
+        if let settled = await reconcileUnsettledAttempt(sessionId: session.id) { return settled }
         let attemptId = UUID()
 
         reportIncompleteEntries()
@@ -481,7 +515,10 @@ actor CheckoutController {
 
     /// UI-independent result query (crash / kill recovery, §4.3).
     func retrievePayment(sessionId: String) async throws -> PaymentSnapshot {
-        try await paymentService.getResult(sessionId: sessionId)
+        if let attemptId = attempts.lastAttemptId(sessionId: sessionId) {
+            return try await paymentService.getResult(sessionId: sessionId, attemptId: attemptId)
+        }
+        return try await paymentService.getResult(sessionId: sessionId)
     }
 
     /// Ends the UI session: clears the active state and the credential. Does **not** cancel the server-side transaction (per spec).
@@ -586,6 +623,47 @@ actor CheckoutController {
     /// `defer { endAttempt() }`) spans only this in-flight submit + the one-shot query + the
     /// synchronous mapping; it never waits on a poll or a backend terminal state.
     private func submitAndResolve(_ request: SubmitRequest) async -> CheckoutOutcome {
+        attempts.record(sessionId: request.sessionId, attemptId: request.attemptId)
+        let outcome = await performSubmit(request)
+        switch outcome {
+        case .pending, .unknown: attempts.setUnsettled(true, sessionId: request.sessionId)
+        case .succeeded, .failed: attempts.setUnsettled(false, sessionId: request.sessionId)
+        case .canceled: break
+        }
+        return outcome
+    }
+
+    /// Before any new submit: if the last attempt of this session is unsettled, query it once.
+    ///
+    /// Every confirm mints a new attemptId, so the backend cannot dedupe a repeated tap; this query is the
+    /// duplicate-charge guard. Returns the outcome to report INSTEAD of submitting, or nil when a new submit is
+    /// safe (the attempt failed, or never reached the transaction core).
+    private func reconcileUnsettledAttempt(sessionId: String) async -> CheckoutOutcome? {
+        guard attempts.isUnsettled(sessionId: sessionId),
+            let attemptId = attempts.lastAttemptId(sessionId: sessionId)
+        else { return nil }
+        let snapshot: PaymentSnapshot
+        do {
+            snapshot = try await paymentService.getResult(sessionId: sessionId, attemptId: attemptId)
+        } catch let error as CheckoutError where error.code == "ATTEMPT_NOT_RECEIVED" {
+            attempts.setUnsettled(false, sessionId: sessionId)
+            return nil
+        } catch {
+            return .unknown(sessionId: sessionId)
+        }
+        switch snapshot.status {
+        case .failed:
+            attempts.setUnsettled(false, sessionId: sessionId)
+            return nil
+        case .succeeded:
+            attempts.setUnsettled(false, sessionId: sessionId)
+            return await mapSnapshot(snapshot)
+        case .initial, .requiresAction:
+            return .pending(txnId: snapshot.txnId)
+        }
+    }
+
+    private func performSubmit(_ request: SubmitRequest) async -> CheckoutOutcome {
         let snapshot: PaymentSnapshot
         do {
             snapshot = try await paymentService.submit(request)
@@ -596,7 +674,8 @@ actor CheckoutController {
         } catch {
             // Query once on failure; never blindly resend the same attemptId.
             do {
-                snapshot = try await paymentService.getResult(sessionId: request.sessionId)
+                snapshot = try await paymentService.getResult(
+                    sessionId: request.sessionId, attemptId: request.attemptId)
             } catch {
                 return .unknown(sessionId: request.sessionId)
             }

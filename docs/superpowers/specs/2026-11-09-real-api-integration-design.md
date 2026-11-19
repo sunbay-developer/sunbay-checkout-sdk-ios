@@ -98,7 +98,7 @@ maps it to an origin (same table as the JS SDK; verify before release):
 | Status | `S F I R` | `S F R` only | `I` is never received; pending/unknown is derived (below) |
 | Address | `line1/line2` | `address/address2`; no `state` code guarantee, no `district` | mapper |
 | Client secret | n/a | `checkoutClientSecret` in load and submit bodies | `CredentialStore` supplies it |
-| Idempotency | `attemptId` | no field in the API | `attemptId` stays an SDK-local in-flight guard only |
+| Idempotency | `attemptId` | `attemptId` (required on `/payment/submit`; optional on `/payment/result`) | Superseded 2026-11-19: sent on every submit, and on result queries that follow a submit |
 | Device info | n/a | optional `userDeviceInfo` | SDK fills what iOS can provide |
 
 Pending/unknown rule (keeps `AGENTS.md` §2.5): `R` with a known action goes to `ActionHandler`;

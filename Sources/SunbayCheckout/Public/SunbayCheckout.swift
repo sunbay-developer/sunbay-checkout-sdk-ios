@@ -55,6 +55,9 @@ public final class SunbayCheckout {
     /// Diagnostics channel shared by this instance's controllers and views (internal).
     let diagnostics: DiagnosticsReporter
 
+    /// Last submitted attempt per session; shared by every controller this instance creates.
+    let attempts = AttemptStore()
+
     /// Receives non-fatal diagnostics (warnings and non-terminal errors), always on the main thread.
     ///
     /// Events raised before a handler is set are buffered (last 50) and replayed in order when it is
@@ -199,7 +202,8 @@ public final class SunbayCheckout {
             credentials: credentials,
             actionHandler: actionHandler,
             cardOnFile: cardOnFile,
-            reporter: diagnostics
+            reporter: diagnostics,
+            attempts: attempts
         )
     }
 }

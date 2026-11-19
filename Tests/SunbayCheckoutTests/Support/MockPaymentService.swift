@@ -45,6 +45,8 @@ final class MockPaymentService: PaymentService, PaymentActionProviding, @uncheck
     private(set) var getResultCallCount = 0
     private(set) var loadSessionCallCount = 0
     private(set) var lastSubmitRequest: SubmitRequest?
+    /// The attemptId of the most recent `getResult(sessionId:attemptId:)` call (nil for session-only queries).
+    private(set) var lastGetResultAttemptId: UUID?
 
     init() {}
 
@@ -142,10 +144,21 @@ final class MockPaymentService: PaymentService, PaymentActionProviding, @uncheck
         return snapshot
     }
 
+    func getResult(sessionId: String, attemptId: UUID) async throws -> PaymentSnapshot {
+        // The session-only call below resets the recorded id; record ours once it returns or throws.
+        defer {
+            lock.lock()
+            lastGetResultAttemptId = attemptId
+            lock.unlock()
+        }
+        return try await getResult(sessionId: sessionId)
+    }
+
     func getResult(sessionId: String) async throws -> PaymentSnapshot {
         let (error, snapshot, delay): (Error?, PaymentSnapshot?, Duration?) = {
             lock.lock(); defer { lock.unlock() }
             getResultCallCount += 1
+            lastGetResultAttemptId = nil
             let snap: PaymentSnapshot?
             if _getResultSnapshots.count > 1 {
                 snap = _getResultSnapshots.removeFirst()

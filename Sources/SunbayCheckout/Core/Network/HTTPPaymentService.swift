@@ -65,8 +65,10 @@ final class HTTPPaymentService: PaymentService, PaymentActionProviding, @uncheck
 
     private struct LoadBody: Encodable, Sendable { let checkoutClientSecret: String }
     private struct EmptyBody: Encodable, Sendable {}
+    private struct ResultBody: Encodable, Sendable { let attemptId: String }
 
     private struct SubmitBody: Encodable, Sendable {
+        let attemptId: String
         let sessionId: String
         let sessionType: String?
         let paymentMethod: String
@@ -125,6 +127,7 @@ final class HTTPPaymentService: PaymentService, PaymentActionProviding, @uncheck
         var secret = req.checkoutClientSecret
         if secret == nil { secret = await credentials.currentCheckoutClientSecret() }
         let body = SubmitBody(
+            attemptId: req.attemptId.uuidString,
             sessionId: req.sessionId, sessionType: req.sessionType, paymentMethod: req.paymentMethod, cardEncryptedData: cipher,
             storeCard: req.storeCard, savedCardId: req.savedCardId,
             customerAccessSecret: req.customerAccessSecret, checkoutClientSecret: secret,
@@ -145,6 +148,12 @@ final class HTTPPaymentService: PaymentService, PaymentActionProviding, @uncheck
         return try accept(wire, fallbackSessionId: sessionId)
     }
 
+    func getResult(sessionId: String, attemptId: UUID) async throws -> PaymentSnapshot {
+        let wire: ContractDecoding.ResultWire = try await client.post(
+            .paymentResult(sessionId: sessionId), body: ResultBody(attemptId: attemptId.uuidString))
+        return try accept(wire, fallbackSessionId: sessionId, queriedAttempt: true)
+    }
+
     // MARK: - PaymentActionProviding
 
     func actionForLatestRequiresAction() -> PaymentAction? {
@@ -155,7 +164,19 @@ final class HTTPPaymentService: PaymentService, PaymentActionProviding, @uncheck
 
     // MARK: - Helpers
 
-    private func accept(_ wire: ContractDecoding.ResultWire, fallbackSessionId: String) throws -> PaymentSnapshot {
+    private func accept(
+        _ wire: ContractDecoding.ResultWire, fallbackSessionId: String, queriedAttempt: Bool = false
+    ) throws -> PaymentSnapshot {
+        // An attempt was submitted and the session has since expired: the result is unknown, neither paid nor
+        // failed. Never report it as a plain expired session, or the buyer may pay twice.
+        if queriedAttempt, wire.txnStatus == nil, wire.status?.uppercased() == "EXPIRED" {
+            throw CheckoutErrors.paymentOutcomeUnknown()
+        }
+        // The attempt never reached the transaction core while the session is still payable: no transaction
+        // exists for it, so the caller may submit a new attempt.
+        if queriedAttempt, wire.txnStatus == nil, wire.status?.uppercased() == "ACTIVE" {
+            throw CheckoutErrors.attemptNotReceived()
+        }
         // No transaction to report (for example an EXPIRED session): surface the session state, not a decode error.
         if wire.txnStatus == nil, let ended = ContractDecoding.sessionEndedError(forStatus: wire.status) {
             throw ended

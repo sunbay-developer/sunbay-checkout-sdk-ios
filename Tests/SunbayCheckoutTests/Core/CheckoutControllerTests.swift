@@ -53,7 +53,8 @@ final class CheckoutControllerTests: XCTestCase {
         credentials: CredentialStore = CredentialStore(),
         actionHandler: StubActionHandler = StubActionHandler(),
         cardOnFile: CardOnFileOptions = CardOnFileOptions(),
-        reporter: DiagnosticsReporter? = nil
+        reporter: DiagnosticsReporter? = nil,
+        attempts: AttemptStore = AttemptStore()
     ) -> CheckoutController {
         CheckoutController(
             paymentService: payment,
@@ -61,7 +62,8 @@ final class CheckoutControllerTests: XCTestCase {
             credentials: credentials,
             actionHandler: actionHandler,
             cardOnFile: cardOnFile,
-            reporter: reporter
+            reporter: reporter,
+            attempts: attempts
         )
     }
 
@@ -242,30 +244,8 @@ final class CheckoutControllerTests: XCTestCase {
         XCTAssertEqual(payment.getResultCallCount, 0, "the SDK must NOT poll for the result")
     }
 
-    /// After an `I → pending`, the next confirm is a normal fresh attempt (a NEW attemptId, a new
-    /// submit): there is no cross-attempt gate holding it back. Duplicate protection is the backend's
-    /// job via attemptId/txnId, not a frozen UI.
-    func test_afterPending_nextConfirmIsFreshSubmit() async throws {
-        let payment = MockPaymentService()
-        payment.stubSession(makeSession())
-        payment.stubSubmit([PaymentSnapshot(sessionId: "sess_1", status: .initial, txnId: "txn_p")])
-
-        let controller = makeController(payment: payment)
-        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
-
-        let first = await controller.confirmSavedCard(paymentMethodId: "pm_1")
-        guard case .pending = first else { return XCTFail("precondition: expected pending, got \(first)") }
-        let firstAttemptId = try XCTUnwrap(payment.lastSubmitRequest?.attemptId)
-
-        payment.stubSubmit([terminalSucceeded(txnId: "txn_new")])
-        let second = await controller.confirmSavedCard(paymentMethodId: "pm_1")
-
-        XCTAssertEqual(second, .succeeded(txnId: "txn_new"))
-        XCTAssertEqual(payment.submitCallCount, 2, "the next confirm submits a fresh attempt")
-        XCTAssertEqual(payment.getResultCallCount, 0, "no reconciliation query gates the next confirm")
-        XCTAssertNotEqual(
-            payment.lastSubmitRequest?.attemptId, firstAttemptId, "a fresh attempt mints a new attemptId")
-    }
+    // After an `I -> pending` the next confirm queries the unsettled attempt first (never a blind resubmit):
+    // see the `test_afterPending_*` tests in the "Unsettled attempt gate" section below.
 
     // MARK: - New card: encrypt and submit
 
@@ -439,6 +419,145 @@ final class CheckoutControllerTests: XCTestCase {
 
         guard case .unknown = outcome else { return XCTFail("expected unknown, got \(outcome)") }
         XCTAssertEqual(payment.getResultCallCount, 1)
+    }
+
+    func test_submitFailure_queriesWithTheSameAttemptId() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession())
+        payment.stubSubmitError(URLError(.timedOut))
+        payment.stubGetResultError(URLError(.timedOut))
+        let controller = makeController(payment: payment)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+
+        _ = await controller.confirmSavedCard(paymentMethodId: "pm_1")
+
+        XCTAssertNotNil(payment.lastSubmitRequest)
+        XCTAssertEqual(payment.lastGetResultAttemptId, payment.lastSubmitRequest?.attemptId)
+    }
+
+    func test_retrievePayment_usesLastAttemptIdAfterConfirm_andSessionOnlyBefore() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession())
+        payment.stubGetResult([terminalSucceeded()])
+        payment.stubSubmit([PaymentSnapshot(sessionId: "sess_1", status: .initial, txnId: "txn_1")])
+        let controller = makeController(payment: payment)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+
+        _ = try await controller.retrievePayment(sessionId: "sess_1")
+        XCTAssertNil(payment.lastGetResultAttemptId, "no attempt yet: session-only query")
+
+        _ = await controller.confirmSavedCard(paymentMethodId: "pm_1")
+        _ = try await controller.retrievePayment(sessionId: "sess_1")
+        XCTAssertEqual(payment.lastGetResultAttemptId, payment.lastSubmitRequest?.attemptId)
+
+        // A different session never reuses the attempt id.
+        _ = try await controller.retrievePayment(sessionId: "other")
+        XCTAssertNil(payment.lastGetResultAttemptId, "other session is queried session-only")
+    }
+
+    // MARK: - Unsettled attempt gate (every confirm mints a new attemptId, so the backend cannot dedupe a repeat)
+
+    private func startedPendingController(
+        _ payment: MockPaymentService, store: AttemptStore = AttemptStore()
+    ) async throws -> CheckoutController {
+        payment.stubSession(makeSession())
+        payment.stubSubmit([PaymentSnapshot(sessionId: "sess_1", status: .initial, txnId: "txn_1")])
+        let controller = makeController(payment: payment, attempts: store)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+        let first = await controller.confirmSavedCard(paymentMethodId: "pm_1")
+        guard case .pending = first else { XCTFail("expected pending, got \(first)"); return controller }
+        return controller
+    }
+
+    func test_afterPending_nextConfirmQueriesByLastAttemptId_andDoesNotSubmitWhileStillPending() async throws {
+        let payment = MockPaymentService()
+        let controller = try await startedPendingController(payment)
+        let firstAttempt = payment.lastSubmitRequest?.attemptId
+        payment.stubGetResult([PaymentSnapshot(sessionId: "sess_1", status: .initial, txnId: "txn_1")])
+
+        let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
+
+        guard case .pending = outcome else { return XCTFail("expected pending, got \(outcome)") }
+        XCTAssertEqual(payment.submitCallCount, 1, "must not resubmit")
+        XCTAssertEqual(payment.lastGetResultAttemptId, firstAttempt)
+    }
+
+    func test_afterPending_querySucceeded_returnsSucceededWithoutSubmit() async throws {
+        let payment = MockPaymentService()
+        let controller = try await startedPendingController(payment)
+        payment.stubGetResult([terminalSucceeded()])
+
+        let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
+
+        XCTAssertEqual(outcome, .succeeded(txnId: "txn_1"))
+        XCTAssertEqual(payment.submitCallCount, 1)
+    }
+
+    func test_afterPending_queryFailed_submitsWithANewAttemptId() async throws {
+        let payment = MockPaymentService()
+        let controller = try await startedPendingController(payment)
+        let firstAttempt = payment.lastSubmitRequest?.attemptId
+        payment.stubGetResult([PaymentSnapshot(sessionId: "sess_1", status: .failed, txnId: "txn_1")])
+        payment.stubSubmit([terminalSucceeded(txnId: "txn_2")])
+
+        let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
+
+        XCTAssertEqual(outcome, .succeeded(txnId: "txn_2"))
+        XCTAssertEqual(payment.submitCallCount, 2)
+        XCTAssertNotEqual(payment.lastSubmitRequest?.attemptId, firstAttempt)
+    }
+
+    func test_afterPending_attemptNeverReachedTheCore_submitsAgain() async throws {
+        let payment = MockPaymentService()
+        let controller = try await startedPendingController(payment)
+        payment.stubGetResultError(CheckoutErrors.attemptNotReceived())
+        payment.stubSubmit([terminalSucceeded(txnId: "txn_2")])
+
+        let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
+
+        XCTAssertEqual(outcome, .succeeded(txnId: "txn_2"))
+        XCTAssertEqual(payment.submitCallCount, 2)
+    }
+
+    func test_afterPending_queryThrows_returnsUnknownWithoutSubmit() async throws {
+        let payment = MockPaymentService()
+        let controller = try await startedPendingController(payment)
+        payment.stubGetResultError(CheckoutErrors.paymentOutcomeUnknown())
+
+        let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
+
+        XCTAssertEqual(outcome, .unknown(sessionId: "sess_1"))
+        XCTAssertEqual(payment.submitCallCount, 1)
+    }
+
+    func test_unsettledAttempt_survivesANewController_sharingTheStore() async throws {
+        let payment = MockPaymentService()
+        let store = AttemptStore()
+        _ = try await startedPendingController(payment, store: store)
+        payment.stubGetResultError(CheckoutErrors.paymentOutcomeUnknown())
+
+        // A second presentation builds a fresh controller over the same store.
+        let second = makeController(payment: payment, attempts: store)
+        _ = try await second.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+        let outcome = await second.confirmSavedCard(paymentMethodId: "pm_1")
+
+        XCTAssertEqual(outcome, .unknown(sessionId: "sess_1"))
+        XCTAssertEqual(payment.submitCallCount, 1)
+    }
+
+    func test_afterDefiniteFailure_nextConfirmSubmitsWithoutQuery() async throws {
+        let payment = MockPaymentService()
+        payment.stubSession(makeSession())
+        payment.stubSubmit([PaymentSnapshot(sessionId: "sess_1", status: .failed, txnId: "txn_1")])
+        let controller = makeController(payment: payment)
+        _ = try await controller.start(sessionId: "sess_1", customerAccessSecret: "cas_1")
+        _ = await controller.confirmSavedCard(paymentMethodId: "pm_1")
+        payment.stubSubmit([terminalSucceeded(txnId: "txn_2")])
+
+        let outcome = await controller.confirmSavedCard(paymentMethodId: "pm_1")
+
+        XCTAssertEqual(outcome, .succeeded(txnId: "txn_2"))
+        XCTAssertEqual(payment.getResultCallCount, 0)
     }
 
     func test_submitRequest_allStringForms_hideSecrets() {
