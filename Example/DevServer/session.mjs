@@ -101,7 +101,7 @@ export async function createSession(input = {}) {
     }
     const now = Date.now();
     const payload = buildCreateSessionPayload(input, CONFIG, now);
-    const url = `${CONFIG.openApiUrl}/v1/checkout/create-session`;
+    const url = `${CONFIG.openApiUrl}/v2/checkout/session/create`;
     log('create-session -> upstream', { url, ...summarizeCreateSessionPayload(payload) });
     const started = Date.now();
 
