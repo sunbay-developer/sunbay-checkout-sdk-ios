@@ -109,7 +109,7 @@ public struct CardOnFileOptions: Sendable, Equatable {
     public init(isEnabled: Bool = true, saveByDefault: Bool = false)
 }
 
-// Note: saving a card needs a billing address (`payerBillingInfo`): collected by the sheet or passed by the host (see Address collection modes).
+// Note: the backend is dropping the billing-address (`payerBillingInfo`) requirement for saving a card (pending Dev verification, see real-api-integration-checklist.md).
 
 public final class SunbayCheckout {
     /// Builds the default HTTP services for the configured environment (the real backend).
@@ -759,7 +759,9 @@ SubmitRequest(
 )
 ```
 
-- `storeCard: true` requires `payerBillingInfo` in the body; without it the backend rejects the submit with `C01`.
+- `storeCard: true` used to require `payerBillingInfo` (without it the backend rejected the submit with `C01`).
+  The backend says it will stop requiring it (2026-11-20, pending Dev verification). The SDK does not add a
+  billing form for saving a card; it sends `payerBillingInfo` only when a form or host entry provides one.
 - Address mapping: the body carries `payerBillingInfo` and `payerShippingAddress`, each an `AddressInfo` with
   keys `country, state, city, address, address2, postalCode, firstName, lastName, phone, email`
   (`line1` -> `address`, `line2` -> `address2`; `district` is not sent). Empty or whitespace-only values are
