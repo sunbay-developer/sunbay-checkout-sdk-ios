@@ -637,8 +637,11 @@
             }
         }
 
-        /// The state-menu button's visible value text (nil when nothing is shown), for tests.
-        var stateTitleForTest: String? { stateButton?.selectedTitleForTest }
+        #if DEBUG
+            /// The state-menu button's visible value text (nil when nothing is shown), for tests.
+            /// DEBUG-only because `selectedTitleForTest` is; ungated, Release builds fail.
+            var stateTitleForTest: String? { stateButton?.selectedTitleForTest }
+        #endif
 
         /// Sets the model email directly (no field edits it), for tests.
         func setEmailForTest(_ value: String?) { model.email = value }
