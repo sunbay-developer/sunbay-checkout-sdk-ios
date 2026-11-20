@@ -158,6 +158,13 @@ Open verification items:
       visible under the effective COF rule; no SDK-side hiding or workaround). The billing-address
       requirement and the store-card channel are fixed in coordination with the backend; re-run
       `testStoreThenPayWithSavedCard` with the sandbox test card once the backend change lands.
+- [ ] Saving a card without a billing address: on 2026-11-20 a session with `supportStoreCard: true` and
+      `collectBillingAddress: false` (showcase coffee) showed "Save this card" but no billing form, so a ticked
+      save failed with the billing requirement (`C01`). Web never hit it because checkout-hosted has no save-card
+      option. The backend says `payerBillingInfo` will no longer be required for `storeCard: true`. Decision
+      (user, 2026-11-20): no SDK change for now (a billing form shown when saving was considered and put on hold).
+      Verify on Dev once the backend change lands: new card, "Save this card" ticked, no billing → not `C01`,
+      and the card shows up in `card/list`. If the requirement stays, reopen the SDK change.
 - [ ] Apple Pay real-device verification (capability, wallet sheet, token accepted by the backend).
 - [x] Dev origin accepts SDK requests (observed 2026-11-09, no WAF block).
 - [ ] WAF behavior for native clients on test and production (headers, rate limits).
