@@ -511,6 +511,17 @@
             XCTAssertEqual(spy.completenessChanges, 3)
         }
 
+        func test_savedCardDefault_isCompleteAtCreation_withoutAnInitialCompletenessCallback() async throws {
+            let (elements, _) = try await makeElements(id: "s_initial_complete", cards: [usable])
+            let card = elements.makeCardElement()
+            let spy = DelegateSpy()
+            card.delegate = spy
+            XCTAssertTrue(card.isComplete, "the default saved card is payable right away")
+            XCTAssertEqual(
+                spy.completenessChanges, 0,
+                "no callback fires for the initial value: a host must read isComplete once after setting the delegate")
+        }
+
         func test_updateAddresses_thenConfirm_inOneTurn_usesNewAddress() async throws {
             let id = "s_addr_order"
             let (elements, payment) = try await makeElements(

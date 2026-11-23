@@ -15,7 +15,8 @@
 
         /// `CardElement.isComplete` flipped (the typed card became valid / invalid, or the selection
         /// changed between a saved card and the form). Use it to enable your own Pay button. Optional;
-        /// the default does nothing.
+        /// the default does nothing. Not called for the initial value (a default saved card is complete
+        /// at creation): read `isComplete` once after setting the delegate.
         func cardElementDidChangeCompleteness(_ element: CardElement)
     }
 

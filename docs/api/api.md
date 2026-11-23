@@ -232,7 +232,7 @@ expiry timer and one outcome history. Your app owns any Pay button.
 | Member | Description |
 | --- | --- |
 | `create(checkout:sessionId:configuration:)` | Loads the session. Throws a `CheckoutError` only when the session cannot be loaded or is expired (`SESSION_LOAD_FAILED`, `CHECKOUT_EXPIRED`, `SESSION_COMPLETED`, `SESSION_CLOSED`, or an error from the backend). "No method available" or "Apple Pay unavailable" never throw: the components report `isAvailable == false` and render zero-height views. |
-| `makeExpressCheckoutElement(_:)` | Creates a quick-wallet component (Apple Pay). May be called more than once. |
+| `makeExpressCheckoutElement(_:)` | Creates a quick-wallet component (Apple Pay). May be called more than once. The group owns the returned element, so taps and `onResult` keep working even if you retain only `element.view`. The element holds the group weakly. |
 | `makeCardElement(_:)` | Creates the card component. A group has exactly one: a second call returns the same instance and ignores the new configuration. |
 | `paymentOption` | Display data for the currently selected card option, or `nil` when nothing payable is selected or the typed card is incomplete. See [`PaymentOptionDisplayData`](#paymentoptiondisplaydata). |
 | `confirm()` | Pays whatever the card element has selected. The amount always comes from the server session. See below. |
@@ -249,9 +249,10 @@ expiry timer and one outcome history. Your app owns any Pay button.
 | Payment attempted | `.succeeded` / `.failed` / `.pending` / `.unknown` |
 | Session ended or a payment already settled | The stored outcome is returned again |
 
-Keep the `CheckoutElements` instance alive while its components are on screen. If only a component is
-retained and the group is released, the group's deinit closes the session and the component stops
-being able to pay.
+Keep the `CheckoutElements` instance alive while its components are on screen. Components hold the group
+weakly. If only a component (or its view) is retained and the group is released, the group's deinit
+ends the session and the component stops being able to pay. The group itself keeps its express and
+card components alive.
 
 ### `PaymentOptionDisplayData`
 
@@ -337,7 +338,7 @@ forms). Your app places `view` in its layout and owns the Pay button; it calls
 | --- | --- |
 | `view` | Self-sizing view. Zero height while unavailable. Read `view.intrinsicContentSize` once after adding it (or let Auto Layout do it); `cardElementDidUpdateHeight` fires only for later changes. |
 | `isAvailable` | `true` when the session offers `CARD` and the `PaymentMethodFilter` does not hide it. |
-| `isComplete` | `true` when a saved card is selected or the typed card is valid. It does not cover address forms: `confirm()` validates those and returns `CARD_INPUT_INVALID` if incomplete. Use it to enable your Pay button. |
+| `isComplete` | `true` when a saved card is selected or the typed card is valid. It does not cover address forms: `confirm()` validates those and returns `CARD_INPUT_INVALID` if incomplete. Use it to enable your Pay button. No callback fires for the initial value (a default saved card is complete at creation), so read `isComplete` once after setting `delegate`. |
 | `delegate` | Receives height, selection and completeness changes. Held weakly. |
 | `clear()` | Clears the typed card values, the save-card choice and every visible address field. |
 

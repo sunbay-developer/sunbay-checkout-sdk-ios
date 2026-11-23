@@ -52,7 +52,8 @@
         /// Called with the outcome after a tap's payment completes.
         public var onResult: ((CheckoutOutcome) -> Void)?
 
-        private let group: CheckoutElements
+        /// Weak: the group owns its express elements (see `CheckoutElements.makeExpressCheckoutElement`).
+        private weak var group: CheckoutElements?
         private let container = ExpressElementContainerView()
         private var expressView: ExpressCheckoutView?
 
@@ -109,7 +110,7 @@
 
         /// Authorize → confirm inside the shared payment lock, then report the outcome.
         private func handleTap() async {
-            guard isAvailable, let merchantId = group.walletMerchantId else { return }
+            guard isAvailable, let group, let merchantId = group.walletMerchantId else { return }
             let session = group.coordinator.context.session
             let authorizer = group.walletAuthorizer
             let driver = group.driver

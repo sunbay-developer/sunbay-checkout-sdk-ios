@@ -346,6 +346,30 @@
             XCTAssertNil(after, "deinit of the group dismisses the controller even without close()")
         }
 
+        #if canImport(PassKit)
+            func test_elementStaysAlive_whenOnlyItsViewIsRetained_andATapStillReportsTheResult() async throws {
+                let id = "sess_view_only"
+                let (controller, _) = makeController(session(id: id), submit: [succeeded(id)])
+                let elements = try await makeElements(
+                    controller, sessionId: id, wallet: MockWalletAuthorizer(canMake: true, outcome: .success(Data([1]))))
+                var outcome: CheckoutOutcome?
+                let reported = expectation(description: "onResult")
+                var element: ExpressCheckoutElement? = elements.makeExpressCheckoutElement()
+                element?.onResult = {
+                    outcome = $0
+                    reported.fulfill()
+                }
+                let view = try XCTUnwrap(element?.view)
+                weak var weakElement = element
+                element = nil  // the host keeps only the view (like a SwiftUI representable)
+                let button = try XCTUnwrap(view.subviews.compactMap { $0 as? ExpressCheckoutView }.first)
+                XCTAssertNotNil(weakElement, "the group keeps the element alive while the group is alive")
+                button.onApplePayTapped?()
+                await fulfillment(of: [reported], timeout: 5)
+                XCTAssertEqual(outcome, .succeeded(txnId: "txn_ok"))
+            }
+        #endif
+
         // MARK: - Button overrides
 
         #if canImport(PassKit)
