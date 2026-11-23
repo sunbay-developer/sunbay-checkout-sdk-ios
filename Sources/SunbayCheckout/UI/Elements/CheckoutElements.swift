@@ -16,7 +16,8 @@
     /// Nothing sensitive crosses this API: no card values, wallet tokens, secrets or ciphertext. `close()`
     /// and deinit end the session (clearing the credential held in memory). If only a `CardElement` is
     /// retained and the group is released, the group's deinit closes the session but that element is not
-    /// locked (no pay path exists); keep the group alive while its components are on screen.
+    /// locked (no pay path exists); keep the group alive while its components are on screen. The group owns its express and card
+    /// components; they hold the group weakly.
     @MainActor
     public final class CheckoutElements {
         /// Per-session inputs, like `PaymentSheet`'s initializer.
@@ -46,7 +47,7 @@
         let addressService: any AddressMetadataService
         let cardRulesService: any CardRulesService
 
-        private var expressElements: [WeakBox<ExpressCheckoutElement>] = []
+        private var expressElements: [ExpressCheckoutElement] = []
         /// The group's single card component (created on first `makeCardElement`).
         private var cardElement: CardElement?
 
@@ -147,12 +148,14 @@
         // MARK: - Components
 
         /// Creates an Express Checkout component (quick wallets).
+        ///
+        /// The group owns the returned element (like the card element), so a tap and `onResult` keep
+        /// working even when the host retains only `element.view`. The element holds the group weakly.
         public func makeExpressCheckoutElement(
             _ configuration: ExpressCheckoutElement.Configuration = ExpressCheckoutElement.Configuration()
         ) -> ExpressCheckoutElement {
             let element = ExpressCheckoutElement(group: self, configuration: configuration)
-            expressElements.removeAll { $0.value == nil }
-            expressElements.append(WeakBox(element))
+            expressElements.append(element)
             return element
         }
 
@@ -175,6 +178,21 @@
         /// brand image for a saved card, the brand name alone for a typed card (never any digit). `nil`
         /// when there is no card component, nothing payable is selected, or the typed card is incomplete.
         public var paymentOption: PaymentOptionDisplayData? { cardElement?.paymentOption }
+
+        /// The session's payment methods split into quick wallets (`express`, each with whether this device
+        /// can pay) and everything else (`regular`), after the host's `PaymentMethodFilter`. Known as soon
+        /// as the group exists; use it to decide what to render, for example whether to show an express label.
+        public var paymentMethods: PaymentMethodsView {
+            let context = coordinator.context
+            let visibleByFilter = context.visibleEntries.contains {
+                PaymentMethodModel.logicalKey($0) == "APPLE_PAY"
+            }
+            let applePay = ApplePayAvailability.evaluate(
+                session: context.session, hiddenByFilter: !visibleByFilter,
+                authorizer: walletAuthorizer, merchantId: walletMerchantId
+            ).available && appearance.expressPosition != .off
+            return PaymentMethodsView.make(entries: context.visibleEntries, applePayAvailable: applePay)
+        }
 
         /// Pays the card component's selection. The amount always comes from the server session.
         ///
@@ -225,14 +243,9 @@
         }
 
         private func stateDidChange(_ state: ElementsCoordinator.State) {
-            expressElements.removeAll { $0.value == nil }
-            for box in expressElements { box.value?.applyLock(state) }
+            for element in expressElements { element.applyLock(state) }
             cardElement?.applyLock(state)
         }
     }
 
-    private struct WeakBox<T: AnyObject> {
-        weak var value: T?
-        init(_ value: T) { self.value = value }
-    }
 #endif

@@ -138,12 +138,17 @@ express.onResult = { outcome in /* handle */ }
 let card = elements.makeCardElement()
 card.delegate = self
 
+// Decide what to render before you build the layout (known as soon as `elements` exists):
+let methods = elements.paymentMethods
+let showExpressLabel = methods.express.contains { $0.isAvailable }
+
 // Add express.view and card.view to your layout. Each is zero-height when unavailable.
 // Wire your own Pay button:
 let outcome = await elements.confirm()
 ```
 
-Keep a strong reference to `elements` for as long as its components are on screen.
+Keep a strong reference to `elements` for as long as its components are on screen. Components hold the
+group weakly, and the group keeps them alive.
 
 ---
 
@@ -295,6 +300,8 @@ final class CheckoutViewController: UIViewController, CardElementDelegate {
             card.delegate = self
 
             // Stack express.view and card.view in your layout, then your Pay button.
+            // No callback fires for the initial value (a default saved card is already complete),
+            // so read it once here.
             payButton.isEnabled = card.isComplete
         } catch let error as CheckoutError {
             showError(error)       // the session could not be loaded

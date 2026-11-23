@@ -112,6 +112,50 @@
             XCTAssertFalse(elements.makeExpressCheckoutElement(none).isAvailable)
         }
 
+        // MARK: - paymentMethods (express / regular split)
+
+        func test_paymentMethods_splitsWalletsFromTheRest_withDeviceAvailability() async throws {
+            let id = "sess_pm_split"
+            let (controller, _) = makeController(session(id: id))
+            let elements = try await makeElements(
+                controller, sessionId: id, wallet: MockWalletAuthorizer(canMake: true, outcome: .success(Data([1]))))
+            let view = elements.paymentMethods
+            XCTAssertEqual(view.express.map(\.method), ["APPLE_PAY"])
+            XCTAssertEqual(view.express.map(\.isAvailable), [true])
+            XCTAssertEqual(view.regular.map(\.method), ["CARD"])
+        }
+
+        func test_paymentMethods_listsApplePayAsUnavailable_whenTheDeviceCannotPay() async throws {
+            let id = "sess_pm_nodevice"
+            let (controller, _) = makeController(session(id: id))
+            let elements = try await makeElements(
+                controller, sessionId: id, wallet: MockWalletAuthorizer(canMake: false, outcome: .success(Data([1]))))
+            XCTAssertEqual(elements.paymentMethods.express.map(\.method), ["APPLE_PAY"])
+            XCTAssertEqual(elements.paymentMethods.express.map(\.isAvailable), [false])
+        }
+
+        func test_paymentMethods_omitsWhatTheFilterHides_andMatchesTheElement() async throws {
+            let id = "sess_pm_hidden"
+            let (controller, _) = makeController(session(id: id))
+            let elements = try await makeElements(
+                controller, sessionId: id, wallet: MockWalletAuthorizer(canMake: true, outcome: .success(Data([1]))),
+                filter: PaymentMethodFilter(hide: ["APPLE_PAY"]))
+            XCTAssertTrue(elements.paymentMethods.express.isEmpty)
+            XCTAssertEqual(elements.paymentMethods.regular.map(\.method), ["CARD"])
+            XCTAssertFalse(elements.makeExpressCheckoutElement().isAvailable)
+        }
+
+        func test_paymentMethods_expressPositionOff_marksWalletsUnavailable() async throws {
+            let id = "sess_pm_off"
+            let (controller, _) = makeController(session(id: id))
+            var appearance = Appearance()
+            appearance.expressPosition = .off
+            let elements = try await makeElements(
+                controller, sessionId: id, wallet: MockWalletAuthorizer(canMake: true, outcome: .success(Data([1]))),
+                appearance: appearance)
+            XCTAssertEqual(elements.paymentMethods.express.map(\.isAvailable), [false])
+        }
+
         func test_noApplePayAvailable_isUnavailable_andViewHasZeroHeight() async throws {
             let id = "sess_apple_nodevice"
             let (controller, _) = makeController(session(id: id))
@@ -345,6 +389,30 @@
             let after = await credentials.current()
             XCTAssertNil(after, "deinit of the group dismisses the controller even without close()")
         }
+
+        #if canImport(PassKit)
+            func test_elementStaysAlive_whenOnlyItsViewIsRetained_andATapStillReportsTheResult() async throws {
+                let id = "sess_view_only"
+                let (controller, _) = makeController(session(id: id), submit: [succeeded(id)])
+                let elements = try await makeElements(
+                    controller, sessionId: id, wallet: MockWalletAuthorizer(canMake: true, outcome: .success(Data([1]))))
+                var outcome: CheckoutOutcome?
+                let reported = expectation(description: "onResult")
+                var element: ExpressCheckoutElement? = elements.makeExpressCheckoutElement()
+                element?.onResult = {
+                    outcome = $0
+                    reported.fulfill()
+                }
+                let view = try XCTUnwrap(element?.view)
+                weak var weakElement = element
+                element = nil  // the host keeps only the view (like a SwiftUI representable)
+                let button = try XCTUnwrap(view.subviews.compactMap { $0 as? ExpressCheckoutView }.first)
+                XCTAssertNotNil(weakElement, "the group keeps the element alive while the group is alive")
+                button.onApplePayTapped?()
+                await fulfillment(of: [reported], timeout: 5)
+                XCTAssertEqual(outcome, .succeeded(txnId: "txn_ok"))
+            }
+        #endif
 
         // MARK: - Button overrides
 
