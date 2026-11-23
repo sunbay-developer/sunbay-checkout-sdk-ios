@@ -127,8 +127,10 @@ Open verification items:
       (Manage mode, confirmation, remove-on-success, failure notice) is built against it. Wire the real call,
       then map its error codes. Until then every delete attempt fails with the "Couldn't delete" notice, so
       decide before release whether to hide the Manage action (release blocker).
-- [ ] `card/list` returns `logoUrl` per card: confirm the field name, URL format (http(s), image type/size) and
-      CDN reachability from the app. Until then rows show the text brand name.
+- [x] `card/list` returns the brand logo as `cardBrandLogoUrl` (https URL, null when the brand dictionary has no
+      logo); the SDK decodes that key (it previously read `logoUrl`, so rows always showed the text brand name).
+- [ ] Verify on a real device with a live dev session that the `cardBrandLogoUrl` host is reachable and the image
+      renders in the saved-card rows (image type/size). A missing or failed logo still falls back to the text name.
 - [ ] Does a `storeCard: true` new-card submit also need `customerAccessSecret` to bind the card to the
       customer? The `C01` requirement is resolved by sending `payerBillingInfo` (the SDK now does). Whether
       `customerAccessSecret` is needed on store-card submit is still unanswered until a store-card channel exists.

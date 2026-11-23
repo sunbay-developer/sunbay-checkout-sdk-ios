@@ -8,7 +8,7 @@ struct CardItemWire: Decodable, Sendable {
     let cardBrand: String?
     let expiryMonth: String?
     let expiryYear: String?
-    let logoUrl: String?
+    let cardBrandLogoUrl: String?
 }
 
 /// Wire shape of the `card/list` `data` object. A missing `cards` decodes as an empty list.
@@ -80,7 +80,7 @@ struct HTTPCofService: CofService {
         default: return nil
         }
         return SavedCard(id: id, brand: brand.lowercased(), last4: last4, expMonth: month, expYear: year,
-                         logoUrl: logoURL(item.logoUrl))
+                         logoUrl: logoURL(item.cardBrandLogoUrl))
     }
 
     /// Parses a logo URL; anything that is not a valid http(s) URL is nil (a bad logo never drops the card).

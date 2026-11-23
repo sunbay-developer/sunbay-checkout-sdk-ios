@@ -52,10 +52,11 @@ final class HTTPCofServiceTests: XCTestCase {
 
     private func item(
         id: String? = "sc_1", masked: String = "**** **** **** 4242", brand: String = "VISA",
-        month: String = "07", year: String = "29"
+        month: String = "07", year: String = "29", logo: String? = nil
     ) -> String {
         let idPart = id.map { #""savedCardId":"\#($0)","# } ?? ""
-        return #"{\#(idPart)"maskedCardNumber":"\#(masked)","cardBrand":"\#(brand)","expiryMonth":"\#(month)","expiryYear":"\#(year)","cardholderName":"A B"}"#
+        let logoPart = logo.map { #""cardBrandLogoUrl":"\#($0)","# } ?? ""
+        return #"{\#(idPart)\#(logoPart)"maskedCardNumber":"\#(masked)","cardBrand":"\#(brand)","expiryMonth":"\#(month)","expiryYear":"\#(year)","cardholderName":"A B"}"#
     }
 
     private func envelope(cards: [String]) -> String {
@@ -75,6 +76,21 @@ final class HTTPCofServiceTests: XCTestCase {
         stub(envelope(cards: [item()]))
         let cards = try await makeService().listPaymentMethods(customerAccessSecret: "cas_x", sessionId: "s1")
         XCTAssertEqual(cards, [SavedCard(id: "sc_1", brand: "visa", last4: "4242", expMonth: 7, expYear: 2029)])
+    }
+
+    func testMapsCardBrandLogoUrl() async throws {
+        stub(envelope(cards: [item(logo: "https://res.sunbay-dev.com/brand/visa.png")]))
+        let cards = try await makeService().listPaymentMethods(customerAccessSecret: "cas_x", sessionId: "s1")
+        XCTAssertEqual(cards.first?.logoUrl?.absoluteString, "https://res.sunbay-dev.com/brand/visa.png")
+    }
+
+    func testMissingOrInvalidLogoKeepsTheCardWithoutLogo() async throws {
+        for logo in [nil, "", "not a url", "ftp://res.sunbay-dev.com/visa.png"] as [String?] {
+            stub(envelope(cards: [item(logo: logo)]))
+            let cards = try await makeService().listPaymentMethods(customerAccessSecret: "cas_x", sessionId: "s1")
+            XCTAssertEqual(cards.map(\.id), ["sc_1"], logo ?? "nil")
+            XCTAssertNil(cards.first?.logoUrl, logo ?? "nil")
+        }
     }
 
     func testFourDigitYearIsKept() async throws {

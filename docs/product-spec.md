@@ -817,8 +817,8 @@ Field mapping to `SavedCard`: `savedCardId` -> `id` (the value passed to `confir
 `expMonth`, `expiryYear` (two digits expanded to four) -> `expYear`. `cardholderName` is not displayed.
 An item with an invalid required field is skipped. `data: {}` and `cards: []` both mean no saved cards.
 
-`logoUrl` (optional, not yet returned by the backend) -> `SavedCard.logoUrl`: only a valid http(s) URL is kept; an
-invalid or missing value never drops the card.
+`cardBrandLogoUrl` (optional; null when the backend brand dictionary has no logo) -> `SavedCard.logoUrl`: only a valid
+http(s) URL is kept; an invalid or missing value never drops the card.
 
 Saved-card UI: each row shows the brand logo (loaded with an in-memory-only loader; the text brand name is the
 fallback when there is no logo or it fails to load). The home summary always offers "More" (one or more cards), which
