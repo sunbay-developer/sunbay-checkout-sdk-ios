@@ -179,6 +179,21 @@
         /// when there is no card component, nothing payable is selected, or the typed card is incomplete.
         public var paymentOption: PaymentOptionDisplayData? { cardElement?.paymentOption }
 
+        /// The session's payment methods split into quick wallets (`express`, each with whether this device
+        /// can pay) and everything else (`regular`), after the host's `PaymentMethodFilter`. Known as soon
+        /// as the group exists; use it to decide what to render, for example whether to show an express label.
+        public var paymentMethods: PaymentMethodsView {
+            let context = coordinator.context
+            let visibleByFilter = context.visibleEntries.contains {
+                PaymentMethodModel.logicalKey($0) == "APPLE_PAY"
+            }
+            let applePay = ApplePayAvailability.evaluate(
+                session: context.session, hiddenByFilter: !visibleByFilter,
+                authorizer: walletAuthorizer, merchantId: walletMerchantId
+            ).available && appearance.expressPosition != .off
+            return PaymentMethodsView.make(entries: context.visibleEntries, applePayAvailable: applePay)
+        }
+
         /// Pays the card component's selection. The amount always comes from the server session.
         ///
         /// Returns `.failed(NO_PAYMENT_OPTION_SELECTED)` when there is no card component or nothing is

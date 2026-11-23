@@ -41,7 +41,7 @@ Requirements: iOS 15+, Swift 5.9+, Swift Package Manager. `import SunbayCheckout
 | --- | --- |
 | Entry point | `SunbayCheckout`, `CheckoutConfiguration`, `sunbayCheckoutVersion` |
 | L1 sheet | `PaymentSheet`, `CheckoutPresentationState` |
-| L2 elements | `CheckoutElements`, `ExpressCheckoutElement`, `CardElement`, `CardElementDelegate`, `PaymentOptionDisplayData` |
+| L2 elements | `CheckoutElements`, `ExpressCheckoutElement`, `CardElement`, `CardElementDelegate`, `PaymentOptionDisplayData`, `PaymentMethodsView`, `ExpressMethodItem`, `PaymentMethodItem` |
 | Configuration | `Appearance`, `CardOnFileOptions`, `PaymentMethodFilter`, `PaymentMethodID`, `ApplePayButtonType` |
 | Input data | `AddressInput` |
 | Results and errors | `CheckoutOutcome`, `PaymentSnapshot`, `TxnStatus`, `CheckoutError`, `CheckoutDiagnostic`, `CheckoutWarning` |
@@ -219,6 +219,7 @@ expiry timer and one outcome history. Your app owns any Pay button.
     ) -> CardElement
 
     public var paymentOption: PaymentOptionDisplayData? { get }
+    public var paymentMethods: PaymentMethodsView { get }
 
     public func confirm() async -> CheckoutOutcome
     public func retrievePayment() async throws -> PaymentSnapshot
@@ -235,6 +236,7 @@ expiry timer and one outcome history. Your app owns any Pay button.
 | `makeExpressCheckoutElement(_:)` | Creates a quick-wallet component (Apple Pay). May be called more than once. The group owns the returned element, so taps and `onResult` keep working even if you retain only `element.view`. The element holds the group weakly. |
 | `makeCardElement(_:)` | Creates the card component. A group has exactly one: a second call returns the same instance and ignores the new configuration. |
 | `paymentOption` | Display data for the currently selected card option, or `nil` when nothing payable is selected or the typed card is incomplete. See [`PaymentOptionDisplayData`](#paymentoptiondisplaydata). |
+| `paymentMethods` | The session's methods split into `express` (wallets, each with `isAvailable` for this device) and `regular` (card brands and other methods), after the host's `PaymentMethodFilter`. Known as soon as the group exists. See [`PaymentMethodsView`](#paymentmethodsview). |
 | `confirm()` | Pays whatever the card element has selected. The amount always comes from the server session. See below. |
 | `retrievePayment()` | Same as `PaymentSheet.retrievePayment()`. |
 | `updateAddresses(billing:shipping:)` | Replaces the host addresses used by later payments. |
@@ -253,6 +255,36 @@ Keep the `CheckoutElements` instance alive while its components are on screen. C
 weakly. If only a component (or its view) is retained and the group is released, the group's deinit
 ends the session and the component stops being able to pay. The group itself keeps its express and
 card components alive.
+
+### `PaymentMethodsView`
+
+```swift
+public struct PaymentMethodsView: Sendable, Equatable {
+    public let express: [ExpressMethodItem]   // APPLE_PAY, GOOGLE_PAY offered by the session
+    public let regular: [PaymentMethodItem]   // card brands and other methods
+}
+
+public struct ExpressMethodItem: Sendable, Equatable {
+    public let method: String      // e.g. "APPLE_PAY"
+    public let type: String        // e.g. "E_WALLET"
+    public let name: String        // may be empty
+    public let logoURL: String?
+    public let isAvailable: Bool
+}
+
+public struct PaymentMethodItem: Sendable, Equatable {
+    public let method: String      // e.g. "VISA"
+    public let type: String        // e.g. "CARD"
+    public let name: String        // may be empty
+    public let logoURL: String?
+}
+```
+
+Both lists keep the backend order. A method hidden by `PaymentMethodFilter` is absent.
+`ExpressMethodItem.isAvailable` is `true` when an `ExpressCheckoutElement` would show the wallet: the
+device can pay, a merchant id and the wallet parameters are present, and `Appearance.expressPosition` is
+not `.off`. A wallet the session offers but this device cannot use is listed with `isAvailable == false`.
+Only Apple Pay can be available on iOS. The value is read on each access; no event reports changes.
 
 ### `PaymentOptionDisplayData`
 
