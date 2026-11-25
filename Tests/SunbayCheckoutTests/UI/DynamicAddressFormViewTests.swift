@@ -424,4 +424,178 @@
             return AddressCountryConfig(code: countryCode, fields: fields, layout: layout, subdivisions: subs)
         }
     }
+
+    /// Loading states: skeleton on the initial load, and below the country row on a slow country change.
+    extension DynamicAddressFormViewTests {
+        private func spin(_ seconds: TimeInterval) {
+            RunLoop.main.run(until: Date().addingTimeInterval(seconds))
+        }
+
+        func test_initialLoad_showsSkeleton() {
+            let v = DynamicAddressFormView(
+                appearance: .resolve(.default), localize: { $0 },
+                service: DelayedAddressService(delays: ["US": 0.5]), locale: "en-US")
+            XCTAssertTrue(v.isSkeletonVisibleForTest)
+            v.waitForLoadForTest()
+            XCTAssertFalse(v.isSkeletonVisibleForTest)
+        }
+
+        func test_countryChange_slowLoad_keepsCountryRowAndShowsSkeleton() {
+            let v = DynamicAddressFormView(
+                appearance: .resolve(.default), localize: { $0 },
+                service: DelayedAddressService(delays: ["CA": 0.5]), locale: "en-US", skeletonDelay: 0)
+            v.waitForLoadForTest()
+            v.selectCountryForTest("CA")
+            spin(0.1)
+            XCTAssertTrue(v.isSkeletonVisibleForTest)
+            XCTAssertTrue(v.isCountryRowVisibleForTest)
+            v.waitForLoadForTest()
+            XCTAssertFalse(v.isSkeletonVisibleForTest)
+            XCTAssertTrue(v.isCountryRowVisibleForTest)
+            XCTAssertEqual(v.addressInput.country, "CA")
+        }
+
+        func test_countryChange_fastLoad_neverShowsSkeleton() {
+            let v = DynamicAddressFormView(
+                appearance: .resolve(.default), localize: { $0 },
+                service: DelayedAddressService(delays: [:]), locale: "en-US", skeletonDelay: 10)
+            v.waitForLoadForTest()
+            v.selectCountryForTest("CA")
+            v.waitForLoadForTest()
+            XCTAssertFalse(v.didShowCountrySkeletonForTest)
+            XCTAssertTrue(v.renderedFieldTypesForTest.contains(.postalCode))
+        }
+
+        func test_countryChange_preservesTypedValues() {
+            let v = DynamicAddressFormView(
+                appearance: .resolve(.default), localize: { $0 },
+                service: DelayedAddressService(delays: ["CA": 0.3]), locale: "en-US", skeletonDelay: 0)
+            v.waitForLoadForTest()
+            v.setTextForTest(.line1, "1 Main St")
+            v.setTextForTest(.city, "Toronto")
+            v.selectCountryForTest("CA")
+            spin(0.1)
+            XCTAssertTrue(v.isSkeletonVisibleForTest)
+            v.waitForLoadForTest()
+            XCTAssertEqual(v.addressInput.line1, "1 Main St")
+            XCTAssertEqual(v.addressInput.city, "Toronto")
+        }
+
+        func test_staleCountryResponse_isIgnored() {
+            let v = DynamicAddressFormView(
+                appearance: .resolve(.default), localize: { $0 },
+                service: DelayedAddressService(delays: ["CA": 0.4]), locale: "en-US", skeletonDelay: 0)
+            v.waitForLoadForTest()
+            v.selectCountryForTest("CA")
+            v.selectCountryForTest("HK")
+            v.waitForLoadForTest()
+            // HK has no postal field; CA's late response must not rebuild the form with one.
+            spin(0.6)
+            XCTAssertEqual(v.addressInput.country, "HK")
+            XCTAssertFalse(v.renderedFieldTypesForTest.contains(.postalCode))
+            XCTAssertFalse(v.isSkeletonVisibleForTest)
+        }
+
+        func test_countryChangeFailure_showsError() {
+            let v = DynamicAddressFormView(
+                appearance: .resolve(.default), localize: { $0 },
+                service: DelayedAddressService(delays: [:], failing: ["CA"]), locale: "en-US", skeletonDelay: 0)
+            v.waitForLoadForTest()
+            v.selectCountryForTest("CA")
+            v.waitForLoadForTest()
+            XCTAssertFalse(v.isSkeletonVisibleForTest)
+            XCTAssertTrue(v.isErrorVisibleForTest)
+        }
+
+        func test_validate_returnsFalseDuringCountryReload() {
+            let v = DynamicAddressFormView(
+                appearance: .resolve(.default), localize: { $0 },
+                service: DelayedAddressService(delays: ["CA": 0.5]), locale: "en-US", skeletonDelay: 0)
+            v.waitForLoadForTest()
+            v.selectCountryForTest("CA")
+            XCTAssertFalse(v.validate())
+            v.waitForLoadForTest()
+        }
+    }
+
+    /// Wraps `PostalMockService` with a per-country config delay and optional per-country failure.
+    private struct DelayedAddressService: AddressMetadataService {
+        struct Failure: Error {}
+        let delays: [String: TimeInterval]
+        var failing: Set<String> = []
+
+        func countries(locale: String?) async throws -> AddressCountryList {
+            try await PostalMockService().countries(locale: locale)
+        }
+
+        func countryConfig(countryCode: String, locale: String?) async throws -> AddressCountryConfig {
+            if let delay = delays[countryCode] {
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            }
+            if failing.contains(countryCode) { throw Failure() }
+            return try await PostalMockService().countryConfig(countryCode: countryCode, locale: locale)
+        }
+    }
+
+    /// Regression: the hidden loading skeleton must not constrain the loaded form's height. A form with more
+    /// rows than the skeleton used to be squeezed to the skeleton's height, compressing the fields.
+    extension DynamicAddressFormViewTests {
+        private func fieldBoxes(in root: UIView) -> [FieldContainerView] {
+            var found: [FieldContainerView] = []
+            func walk(_ view: UIView) {
+                if let box = view as? FieldContainerView, !box.isHidden { found.append(box) }
+                view.subviews.forEach(walk)
+            }
+            walk(root)
+            return found
+        }
+
+        @discardableResult
+        private func layOut(_ v: DynamicAddressFormView) -> UIView {
+            // A real window, as in the app: constraint updates for rebuilt rows run in its layout pass.
+            let host = UIWindow(frame: CGRect(x: 0, y: 0, width: 358, height: 2000))
+            host.isHidden = false
+            v.translatesAutoresizingMaskIntoConstraints = false
+            host.addSubview(v)
+            NSLayoutConstraint.activate([
+                v.topAnchor.constraint(equalTo: host.topAnchor),
+                v.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+                v.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            ])
+            host.layoutIfNeeded()
+            return host
+        }
+
+        private func assertFieldsNotCompressed(_ v: DynamicAddressFormView, file: StaticString = #filePath, line: UInt = #line) {
+            let boxes = fieldBoxes(in: v)
+            XCTAssertGreaterThan(boxes.count, 4, file: file, line: line)
+            for box in boxes {
+                XCTAssertGreaterThanOrEqual(
+                    box.frame.height, FloatingLabelMetrics.minFieldHeight - 0.5,
+                    "field box compressed to \(box.frame.height)", file: file, line: line)
+            }
+        }
+
+        func test_loadedFormTallerThanSkeleton_fieldsAreNotCompressed() {
+            let v = DynamicAddressFormView(
+                appearance: .resolve(.default), localize: { $0 }, service: PostalMockService(),
+                locale: "en-US", options: .shipping)
+            v.waitForLoadForTest()
+            layOut(v)
+            assertFieldsNotCompressed(v)
+        }
+
+        func test_countryChange_toTallerForm_fieldsAreNotCompressed() {
+            let v = DynamicAddressFormView(
+                appearance: .resolve(.default), localize: { $0 },
+                service: DelayedAddressService(delays: ["CA": 0.3]), locale: "en-US", options: .shipping,
+                skeletonDelay: 0)
+            v.waitForLoadForTest()
+            let host = layOut(v)
+            v.selectCountryForTest("CA")
+            v.waitForLoadForTest()
+            host.layoutIfNeeded()
+            assertFieldsNotCompressed(v)
+        }
+    }
 #endif

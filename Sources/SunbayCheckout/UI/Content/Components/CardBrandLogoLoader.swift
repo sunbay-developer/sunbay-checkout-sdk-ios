@@ -13,6 +13,10 @@
         private let cache = NSCache<NSURL, UIImage>()
         private var waiting: [URL: [(UIImage?) -> Void]] = [:]
 
+        /// The process-wide loader used by the checkout UI, so a logo fetched once is reused by every sheet
+        /// and element for the rest of the app session (memory only).
+        static let shared = CardBrandLogoLoader()
+
         /// - Parameter fetch: Downloads the bytes for a logo URL (replaceable in tests).
         init(fetch: @escaping Fetch = CardBrandLogoLoader.defaultFetch) {
             self.fetch = fetch
@@ -42,11 +46,24 @@
             }
         }
 
+        /// Starts loading `urls` ahead of display; duplicates and already-cached URLs cost nothing.
+        func prefetch(_ urls: [URL]) {
+            for url in Set(urls) { image(for: url) { _ in } }
+        }
+
+        #if DEBUG
+            /// Test readout: whether `url` is in the in-memory cache.
+            func isCachedForTest(_ url: URL) -> Bool { cache.object(forKey: url as NSURL) != nil }
+        #endif
+
         private func finish(url: URL, image: UIImage?) {
             if let image { cache.setObject(image, forKey: url as NSURL) }
             let completions = waiting.removeValue(forKey: url) ?? []
             for completion in completions { completion(image) }
         }
+
+        /// Largest logo download accepted (2 MiB). Real logos are a few KB; the cap only stops a runaway response.
+        static let maxLogoBytes = 2 * 1024 * 1024
 
         /// Ephemeral session (no cookies, credentials or disk cache) with a short timeout.
         static let defaultFetch: Fetch = { url in
@@ -55,9 +72,15 @@
             configuration.urlCache = nil
             configuration.httpCookieStorage = nil
             configuration.urlCredentialStorage = nil
-            let (data, response) = try await URLSession(configuration: configuration).data(from: url)
+            let (bytes, response) = try await URLSession(configuration: configuration).bytes(from: url)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 throw URLError(.badServerResponse)
+            }
+            if http.expectedContentLength > Int64(CardBrandLogoLoader.maxLogoBytes) { throw URLError(.dataLengthExceedsMaximum) }
+            var data = Data()
+            for try await byte in bytes {
+                data.append(byte)
+                if data.count > CardBrandLogoLoader.maxLogoBytes { throw URLError(.dataLengthExceedsMaximum) }
             }
             return data
         }

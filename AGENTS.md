@@ -40,7 +40,7 @@ Full design: `docs/product-spec.md`. Security/PCI: `docs/security-and-pci.md`.
 3. **Card values, wallet tokens, COF secrets, and the RSA-encrypted payload must never** be written
    to logs, analytics, crash reports, or any public callback/return value.
 4. **Sensitive data boundary is cohesive.** Only `CardEncryptor` touches plaintext card data; only
-   `CredentialStore` holds secrets. Plaintext is zeroed immediately after encryption. Nothing
+   `CredentialStore` holds secrets. Plaintext is held only in transient values and released right after encryption (not guaranteed erased from memory; never claim "erased"). Nothing
    sensitive is persisted (no UserDefaults / file / Keychain / UIPasteboard).
 5. **Payment truth = server-confirmed terminal state; the SDK does not poll for it.** Wallet
    authorization success only means a token was obtained, not that the transaction succeeded. The

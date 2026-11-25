@@ -332,6 +332,36 @@ final class ContractCodableTests: XCTestCase {
         XCTAssertEqual(envelope.action, .redirect(url: URL(string: "https://x.test/p")!))
     }
 
+    func test_decodeResult_redirectWithUnsafeURL_downgradesToUnknown() throws {
+        let unsafe = [
+            "http://psp.example.com/p",
+            "javascript:alert(1)",
+            "file:///etc/passwd",
+            "myapp://pay",
+            "https://",
+            "https:///path",
+            "/relative/path",
+            "",
+        ]
+        for raw in unsafe {
+            let json = """
+                {"txnStatus":"R","sessionId":"sess_1",
+                 "action":{"type":"redirect","redirectUrl":"\(raw)"}}
+                """
+            let envelope = try ContractDecoding.decodeResult(from: Data(json.utf8), fallbackSessionId: "s1")
+            XCTAssertEqual(envelope.action, .unknown, "expected \(raw) to be rejected")
+        }
+    }
+
+    func test_decodeResult_redirectWithUppercaseHTTPS_mapsRedirect() throws {
+        let json = """
+            {"txnStatus":"R","sessionId":"sess_1",
+             "action":{"type":"redirect","redirectUrl":"HTTPS://psp.example.com/p"}}
+            """
+        let envelope = try ContractDecoding.decodeResult(from: Data(json.utf8), fallbackSessionId: "s1")
+        XCTAssertEqual(envelope.action, .redirect(url: URL(string: "HTTPS://psp.example.com/p")!))
+    }
+
     func test_decodeResult_requiresAction_redirect() throws {
         let json = """
             {

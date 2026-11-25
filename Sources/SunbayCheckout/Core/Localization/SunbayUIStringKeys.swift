@@ -28,6 +28,7 @@ enum SunbayUIStringKeys {
         "sunbay.card.expiry",
         "sunbay.card.cvc",
         "sunbay.card.cvc.titleFormat",
+        "sunbay.card.captureHidden",
         "sunbay.card.invalid",
         "sunbay.card.error.numberEmpty",
         "sunbay.card.error.numberIncomplete",

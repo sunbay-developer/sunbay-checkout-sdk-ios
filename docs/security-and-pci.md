@@ -56,7 +56,7 @@
 
 ## 3. SDK 侧强制控制项(代码级硬约束)
 
-1. **边界内聚**:明文卡仅存在于卡输入控件 + CardEncryptor 加密前瞬时变量,加密后立即清零;全库仅此处
+1. **边界内聚**:明文卡仅存在于卡输入控件 + CardEncryptor 加密前瞬时变量,加密后立即释放引用(Swift String/Data 无法保证内存被擦除,不声称"已擦除");全库仅此处
    接触明文。
 2. **键盘/系统缓存防护**:PAN/CVV/有效期关 autocorrection + spellChecking + smart 系列;
    **CVV 不设 textContentType**(不进自动填充);PAN 可用系统扫卡/自动填充(Apple 官方安全通道)。
@@ -64,8 +64,11 @@
    UserDefaults/文件/Keychain/剪贴板;只内存持有;仅在支付成功、dismiss、session 过期时清除(失败/unknown 不清,以便宿主可见的重试,ruling R7)。
 4. **零日志泄漏**:敏感字段绝不进 print/os_log/埋点/崩溃上报;CheckoutError 只带 code/message/traceId。
 5. **TLS**:所有后端/PSP 请求强制 HTTPS;SSL pinning 后期可选。
-6. **防截屏**(后期可选):**仅银行卡信息输入页**(iOS secure 层技巧 / Android FLAG_SECURE),不做全页
-   防截屏(体验权衡,PCI 不强制)。
+6. **防录屏 / 后台快照**(iOS 已实现,`ScreenCaptureShield`):仅覆盖银行卡输入区域,不做全页。录屏、镜像或
+   AirPlay(`UIScreen.isCaptured`)时用不透明遮罩盖住卡字段并收起键盘;App 非活跃(App Switcher 快照)时同样遮罩。
+   用户主动截屏无公开 API 可阻止,不做。Android 等价实现为 FLAG_SECURE。
+   CVC 字段禁用复制/剪切,防止进入系统剪贴板。第三方 redirect 页用 ephemeral 浏览器会话(不共享 Safari cookie)。
+   品牌 logo 下载上限 2 MiB,超出即丢弃该 logo。
 7. **凭证纪律**:customerAccessSecret 短 TTL(建议 5–10 分钟且不晚于 session)+ 内存 + 成功/dismiss/过期即撤(失败/unknown 不清)。
 
 > 以上为 Native **统一安全要求**(iOS/Android 一致),各平台以等价 API 实现。要求相同,实现按平台。
@@ -84,7 +87,7 @@
 
 | 资产 | 位置 | 生命周期 | 控制 |
 |---|---|---|---|
-| 明文 PAN/有效期/CVV | 卡输入控件 + CardEncryptor 加密前瞬时 | 加密后立即清零 | 边界内聚:仅 CardEncryptor |
+| 明文 PAN/有效期/CVV | 卡输入控件 + CardEncryptor 加密前瞬时 | 加密后立即释放引用(不保证擦除) | 边界内聚:仅 CardEncryptor |
 | 卡密文 cardEncryptedData | 提交请求体 | 单次 | HTTPS 直传,不落盘不记日志 |
 | 钱包 token | PassKit 回调 → 提交 | 单次 | 不解密、不留存、不回传宿主 |
 | customerAccessSecret | CredentialStore(内存) | 短 TTL,成功/dismiss/过期即清 | 绝不进 URL/持久化/日志/崩溃/公开返回 |
@@ -103,9 +106,13 @@
   `GET /api/card/rules` (no card data, no session id; only an `If-None-Match` ETag) and caches it in the
   OS cache directory (`Caches`, purgeable). **No BIN (first 6–9 digits) is sent anywhere**: BIN recognition
   is not wired on iOS (decision 2026-11-13).
-- `PrivacyInfo.xcprivacy` ships in the SDK resources: no tracking, no tracking domains. The collected-data
-  declaration (payment info and device info sent to the backend) is OPEN and must be decided before an
-  App Store release; the manifest content is not final.
+- `PrivacyInfo.xcprivacy` ships in the SDK resources. It declares no tracking and no tracking domains. It declares
+  these collected data types, all linked to the user, not used for tracking, purpose `AppFunctionality`: payment
+  info (card data, sent only as RSA ciphertext or a wallet token), name, email address, phone number and physical
+  address (billing details, sent only when the form or the merchant supplies them). Device information
+  (`userDeviceInfo`) holds no identifier (no IDFA, no IDFV), so it is not declared as Device ID. The SDK uses no
+  required-reason API (no `UserDefaults`, file timestamp, disk space, system boot time or active keyboard API), so
+  `NSPrivacyAccessedAPITypes` is empty. Re-check both lists whenever a new data field or system API is added.
 
 ---
 
@@ -145,7 +152,7 @@
 | D6 | RSA **padding/算法**与后端解密一致 | 写 CardEncryptor 前必须定 | 后端 | P0 |
 | D7 | 钱包 token **提交字段格式** | 复用 cardEncryptedData 还是单列 | 后端 | P1 |
 | D8 | 后期 step-up(3DS/CVC)**触发策略与时间表** | 协议已预留 | 后端/产品 | P2 |
-| D9 | SSL pinning / 越狱检测 / 防截屏 **是否纳入及何时** | 首期可选 | 产品/安全 | P2 |
+| D9 | SSL pinning / 越狱检测 **是否纳入及何时**(防录屏/后台快照 iOS 已实现) | 首期可选;公钥随短 TTL session 下发,依赖 TLS,暂不做 pinning | 产品/安全 | P2 |
 | D10 | 目标市场**地区性合规**(数据驻留等) | 按市场 | 合规/商务 | P2 |
 
 ---
@@ -154,11 +161,11 @@
 
 | 风险 | 兜底 | 归属 | 状态 |
 |---|---|---|---|
-| 明文卡在 App 进程内存(加密前) | 边界内聚 + 立即清零 + 不落盘不记日志;内存 dump 属 OS 级,超 SDK 可控 | SDK + OS | 可控 |
+| 明文卡在 App 进程内存(加密前) | 边界内聚 + 立即释放引用 + 不落盘不记日志;内存 dump 属 OS 级,超 SDK 可控 | SDK + OS | 可控 |
 | COF 零验证凭证被重放 | 双层临时凭证 + 幂等 + 终态即撤 + 后端风控 | 后端 + SDK | 待 D1–D3 |
 | 风控需 step-up 但首期无 UI | 预留 requires_action 路径 | 后期 | 已预留 |
 | 越狱设备 | 首期不做检测(不当安全保证) | 后期可选 | 待 D9 |
-| 截屏/录屏泄漏卡输入 | 后期仅卡输入页防截屏 | 后期可选 | 待 D9 |
+| 截屏/录屏泄漏卡输入 | 录屏/镜像/后台快照时遮罩卡字段;用户主动截屏无法阻止 | SDK | iOS 已实现 |
 
 ---
 
@@ -205,7 +212,7 @@ On each end of session the controller is dismissed and the held credential (`cus
 
 The SDK clears its fields and releases its references, but Swift `String` / UIKit text storage gives no guarantee that
 the old bytes are overwritten in memory. The honest claim is *released and cleared*, not *erased*. Plaintext handling in
-`CardEncryptor` is unchanged (zeroed immediately after encryption).
+`CardEncryptor` follows the same rule: the plaintext is a transient local value whose references are released right after encryption. It is not overwritten in memory.
 
 ### 9.4 RELEASE GATE: QSA / acquirer confirmation
 

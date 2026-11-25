@@ -50,6 +50,7 @@
 "sunbay.card.number.placeholder" = "4242 4242 4242 4242";
 "sunbay.card.expiry.placeholder" = "08 / 28";
 "sunbay.card.cvc.placeholder" = "123";
+"sunbay.card.captureHidden" = "屏幕录制期间，银行卡信息已隐藏。";
 "sunbay.cof.newPaymentMethod" = "新卡";
 "sunbay.cof.viewMore" = "查看更多";
 "sunbay.cof.expired" = "已过期";

@@ -303,8 +303,10 @@ enum ContractDecoding {
         guard let action else { return .unknown }
         switch action.type {
         case "redirect":
-            // redirect requires a valid URL; if missing or invalid, a redirect is impossible, so downgrade to unknown.
-            if let raw = action.redirectUrl, let url = URL(string: raw) {
+            // A redirect needs an absolute https URL with a host. Anything else (missing, malformed, http,
+            // javascript:, file:, custom scheme) is never opened, so it downgrades to unknown.
+            if let raw = action.redirectUrl, let url = URL(string: raw),
+               url.scheme?.lowercased() == "https", let host = url.host, !host.isEmpty {
                 return .redirect(url: url)
             }
             return .unknown

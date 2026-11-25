@@ -286,6 +286,9 @@ Two independent dimensions; the backend decides **whether** to collect, the host
     `.full` (`DynamicAddressFormView`): metadata-driven, with a per-country postal label and rule and the country
     list from `GET /api/address/country`. If metadata fails to load or is empty, it falls back to the system
     country list and a generic config (postal code required, no pattern).
+    Loading: the first load shows 4 skeleton rows (field-shaped, light shimmer, static with Reduce Motion). On a
+    country change the country row stays; if the new config takes longer than 150 ms the other rows become skeleton
+    rows (same count); a response for a country no longer selected is ignored.
   - `.full`: backend-layout-driven address form. Data comes from `AddressMetadataService`
     (Core/AddressMetadata, no UIKit); the default `SunbayCheckout(configuration:)` wires the real HPP adapter
     (`HTTPAddressMetadataService`: `GET /api/address/country` and `GET /api/address/country/{code}`).
@@ -607,6 +610,7 @@ queries once, then reports `unknown` (never `failed`). The host reconciles via `
 
 **边界澄清**:砍掉的是"嵌入式 WebView 加载 Sunbay 托管页收卡"。这里 `redirect` 是"打开第三方 APM
 支付网页",用系统安全浏览器打开,不接触卡数据,属标准做法,不违背安全大方向。
+SDK 只打开带 host 的 `https` URL;`http`、`javascript:`、`file:`、自定义 scheme、缺失或格式错误的 `redirectUrl` 一律不打开,降级为 `unknown`(`ContractDecoding.mapAction`)。
 
 **三端对齐现状**(Sunbay 产品线):`redirect` 全线实现;`qrCode`/`showContent` 全线为协议预留、运行时
 UNSUPPORTED_CAPABILITY。iOS 首版遵循同一策略,不超前实现二维码。
@@ -615,7 +619,7 @@ UNSUPPORTED_CAPABILITY。iOS 首版遵循同一策略,不超前实现二维码�
 
 ## 5. 安全约束(摘要;完整见 `docs/security-and-pci.md`)
 
-1. 明文卡只存在于卡输入控件 + CardEncryptor 加密前瞬时变量,加密后立即清零(边界内聚)。
+1. 明文卡只存在于卡输入控件 + CardEncryptor 加密前瞬时变量,加密后立即释放引用,不保留、不落盘(边界内聚;Swift String/Data 无法保证内存被擦除,对外不声称"已擦除")。
 2. PAN/CVV/有效期关 autocorrection + spellChecking + smart 系列;**CVV 不设 textContentType**;
    PAN 可用系统扫卡/自动填充(Apple 官方安全通道)。
 3. 零持久化:明文卡、钱包 token、customerAccessSecret、checkoutClientSecret、paymentMethodId 一律不写
@@ -820,8 +824,9 @@ An item with an invalid required field is skipped. `data: {}` and `cards: []` bo
 `cardBrandLogoUrl` (optional; null when the backend brand dictionary has no logo) -> `SavedCard.logoUrl`: only a valid
 http(s) URL is kept; an invalid or missing value never drops the card.
 
-Saved-card UI: each row shows the brand logo (loaded with an in-memory-only loader; the text brand name is the
-fallback when there is no logo or it fails to load). The home summary always offers "More" (one or more cards), which
+Saved-card UI: each row shows the brand logo in a fixed 30x24 slot (a light placeholder while loading, then the logo
+fades in; a drawn text badge such as `MC` / `VISA` when there is no logo or it fails to load), so the masked number never
+shifts. Logos come from one process-wide in-memory loader and are prefetched as soon as the saved cards are known. The home summary always offers "More" (one or more cards), which
 opens the full list. The full list's header has "Manage" / "Done": in manage mode every row (including expired
 ones) shows a delete button instead of the expiry and rows are not selectable. Delete asks for confirmation, then
 calls `CofService.deleteCard` (through `CheckoutController`); on success the row is removed (a deleted selected card

@@ -116,8 +116,9 @@ Open verification items:
       Re-check if the backend introduces a "processing" business code.
 - [ ] `getResult` after a lost submit may return a previous attempt's terminal state for the same session
       (confirm with the backend).
-- [ ] Release gate: the `PrivacyInfo.xcprivacy` collected-data declaration (payment info, device info sent
-      to the backend) is OPEN and must be decided before an App Store release (ruling R8).
+- [x] Release gate: the `PrivacyInfo.xcprivacy` collected-data declaration is set (payment info, name, email,
+      phone, physical address; no tracking; no required-reason APIs). Product/legal should still confirm it
+      before an App Store release (ruling R8).
 - [ ] Product/legal must confirm whether the backend requires a consent record when `storeCard` is true
       (the UI checkbox still reads as consent).
 - [x] Card list via the real adapter (`HTTPCofService`, `POST card/list`, verified 2026-11-09): a wrong

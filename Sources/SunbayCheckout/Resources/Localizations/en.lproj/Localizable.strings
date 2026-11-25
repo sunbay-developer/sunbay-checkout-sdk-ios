@@ -50,6 +50,7 @@
 "sunbay.card.number.placeholder" = "4242 4242 4242 4242";
 "sunbay.card.expiry.placeholder" = "08 / 28";
 "sunbay.card.cvc.placeholder" = "123";
+"sunbay.card.captureHidden" = "Card details are hidden while your screen is being recorded.";
 "sunbay.cof.newPaymentMethod" = "New card";
 "sunbay.cof.viewMore" = "More";
 "sunbay.cof.expired" = "Expired";
