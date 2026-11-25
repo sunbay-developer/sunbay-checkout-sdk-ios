@@ -286,6 +286,9 @@ Two independent dimensions; the backend decides **whether** to collect, the host
     `.full` (`DynamicAddressFormView`): metadata-driven, with a per-country postal label and rule and the country
     list from `GET /api/address/country`. If metadata fails to load or is empty, it falls back to the system
     country list and a generic config (postal code required, no pattern).
+    Loading: the first load shows 4 skeleton rows (field-shaped, light shimmer, static with Reduce Motion). On a
+    country change the country row stays; if the new config takes longer than 150 ms the other rows become skeleton
+    rows (same count); a response for a country no longer selected is ignored.
   - `.full`: backend-layout-driven address form. Data comes from `AddressMetadataService`
     (Core/AddressMetadata, no UIKit); the default `SunbayCheckout(configuration:)` wires the real HPP adapter
     (`HTTPAddressMetadataService`: `GET /api/address/country` and `GET /api/address/country/{code}`).
@@ -821,8 +824,9 @@ An item with an invalid required field is skipped. `data: {}` and `cards: []` bo
 `cardBrandLogoUrl` (optional; null when the backend brand dictionary has no logo) -> `SavedCard.logoUrl`: only a valid
 http(s) URL is kept; an invalid or missing value never drops the card.
 
-Saved-card UI: each row shows the brand logo (loaded with an in-memory-only loader; the text brand name is the
-fallback when there is no logo or it fails to load). The home summary always offers "More" (one or more cards), which
+Saved-card UI: each row shows the brand logo in a fixed 30x24 slot (a light placeholder while loading, then the logo
+fades in; a drawn text badge such as `MC` / `VISA` when there is no logo or it fails to load), so the masked number never
+shifts. Logos come from one process-wide in-memory loader and are prefetched as soon as the saved cards are known. The home summary always offers "More" (one or more cards), which
 opens the full list. The full list's header has "Manage" / "Done": in manage mode every row (including expired
 ones) shows a delete button instead of the expiry and rows are not selectable. Delete asks for confirmation, then
 calls `CofService.deleteCard` (through `CheckoutController`); on success the row is removed (a deleted selected card

@@ -51,7 +51,7 @@
         /// Cards with a delete request in flight (a second request for the same card is ignored).
         private var deletingCardIds: Set<String> { selection.deletingIds }
         /// Shared brand-logo loader (in-memory cache) for saved-card rows.
-        private let logoLoader = CardBrandLogoLoader()
+        private let logoLoader = CardBrandLogoLoader.shared
         #if DEBUG
             /// The card id staged by the test seam for `confirmDeleteForTest()`.
             private var pendingDeleteCardId: String?
@@ -253,6 +253,8 @@
             self.addressService = addressService
             self.homeTitle = homeTitle
             super.init(nibName: nil, bundle: nil)
+            // Start the saved-card logos now so they are usually cached when the rows appear.
+            logoLoader.prefetch(selection.cards.compactMap(\.logoUrl))
         }
 
         @available(*, unavailable)

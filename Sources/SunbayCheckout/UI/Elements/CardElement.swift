@@ -125,7 +125,7 @@
         private let appearance: ResolvedAppearance
         private let localize: (String) -> String
         private let ruleSet = CardRulesProvider.activeRuleSet()
-        private let logoLoader = CardBrandLogoLoader()
+        private let logoLoader = CardBrandLogoLoader.shared
         private let brandItems: [CardBrandItem]
         private var logos: [URL: UIImage] = [:]
 

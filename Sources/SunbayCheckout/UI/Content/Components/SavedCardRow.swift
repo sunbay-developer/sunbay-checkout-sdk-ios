@@ -29,8 +29,21 @@
         private let appearance: ResolvedAppearance
         private var isSelectedRow = false
 
-        private let brandBadge = UILabel()
+        /// What the fixed 30x24 brand slot currently shows.
+        enum LogoSlotState: Equatable {
+            /// The logo is still loading (light rounded placeholder).
+            case placeholder
+            /// The brand logo.
+            case logo
+            /// A drawn text badge (no logo URL, no loader, or the load failed).
+            case badge
+        }
+
+        /// The fixed-size brand slot: its size never changes, so the masked number never shifts.
         private let logoView = UIImageView()
+        private var logoSlotState: LogoSlotState = .placeholder
+        private var brand = ""
+        private var didAnimateLogo = false
         private let deleteButton = ExpandedHitButton(type: .system)
         private let logoLoader: CardBrandLogoLoader?
         private let deleteLabel: String
@@ -56,7 +69,7 @@
         ///   - card: The saved card to display.
         ///   - expiredText: The localized "Expired" label when the card is expired; nil for a usable card.
         ///     An expired row is dimmed, shows this label instead of the expiry, and ignores taps.
-        ///   - logoLoader: Loads `card.logoUrl`; nil keeps the text badge.
+        ///   - logoLoader: Loads `card.logoUrl`; nil shows the text badge.
         ///   - deleteLabel: The accessibility label of the manage-mode delete button.
         init(
             appearance: ResolvedAppearance, card: SavedCard, expiredText: String? = nil,
@@ -91,12 +104,7 @@
             backgroundColor = appearance.componentBackground
             layer.cornerRadius = appearance.cornerRadius
 
-            brandBadge.text = card.brand.uppercased()
-            brandBadge.font = UIFont.preferredFont(forTextStyle: .caption1)
-            brandBadge.textColor = appearance.text
-            brandBadge.textAlignment = .center
-            brandBadge.setContentHuggingPriority(.required, for: .horizontal)
-            brandBadge.translatesAutoresizingMaskIntoConstraints = false
+            brand = card.brand
 
             numberLabel.text = "•••• \(card.last4)"
             numberLabel.font = appearance.cardFieldFont
@@ -110,11 +118,15 @@
             expiryLabel.translatesAutoresizingMaskIntoConstraints = false
 
             logoView.contentMode = .scaleAspectFit
-            logoView.isHidden = true
+            logoView.layer.cornerRadius = 3
+            logoView.clipsToBounds = true
+            logoView.isAccessibilityElement = false
+            logoView.setContentHuggingPriority(.required, for: .horizontal)
+            logoView.setContentCompressionResistancePriority(.required, for: .horizontal)
             logoView.translatesAutoresizingMaskIntoConstraints = false
             NSLayoutConstraint.activate([
-                logoView.widthAnchor.constraint(equalToConstant: 30),
-                logoView.heightAnchor.constraint(equalToConstant: 24),
+                logoView.widthAnchor.constraint(equalToConstant: CardBrandBadge.size.width),
+                logoView.heightAnchor.constraint(equalToConstant: CardBrandBadge.size.height),
             ])
             loadLogo(card.logoUrl)
 
@@ -133,7 +145,6 @@
             ])
 
             contentStack.addArrangedSubview(logoView)
-            contentStack.addArrangedSubview(brandBadge)
             contentStack.addArrangedSubview(numberLabel)
             contentStack.addArrangedSubview(expiryLabel)
             contentStack.addArrangedSubview(deleteButton)
@@ -155,7 +166,6 @@
             accessibilityLabel = "\(card.brand) \(card.last4)"
             if let expiredText {
                 // Expired: dimmed, announced as not enabled, and no tap gesture at all.
-                brandBadge.alpha = 0.5
                 logoView.alpha = 0.5
                 numberLabel.alpha = 0.5
                 accessibilityTraits = [.button, .notEnabled]
@@ -168,14 +178,47 @@
             refreshBorder()
         }
 
-        /// Loads the brand logo; on success it replaces the text badge, on any failure the badge stays.
+        /// Fills the brand slot: a placeholder while loading, then the logo (faded in unless it came from
+        /// the cache or Reduce Motion is on), or a drawn badge when there is no logo or it fails to load.
         private func loadLogo(_ url: URL?) {
-            guard let url, let logoLoader else { return }
+            guard let url, let logoLoader else {
+                showSlot(.badge)
+                return
+            }
+            showSlot(.placeholder)
+            var isSynchronous = true
             logoLoader.image(for: url) { [weak self] image in
-                guard let self, let image else { return }
-                self.logoView.image = image
-                self.logoView.isHidden = false
-                self.brandBadge.isHidden = true
+                guard let self else { return }
+                if let image {
+                    self.showSlot(.logo, image: image, animated: !isSynchronous)
+                } else {
+                    self.showSlot(.badge)
+                }
+            }
+            isSynchronous = false
+        }
+
+        private func showSlot(_ state: LogoSlotState, image: UIImage? = nil, animated: Bool = false) {
+            logoSlotState = state
+            let apply = { [self] in
+                switch state {
+                case .placeholder:
+                    logoView.image = nil
+                    logoView.backgroundColor = appearance.border.withAlphaComponent(0.35)
+                case .logo:
+                    logoView.image = image
+                    logoView.backgroundColor = .clear
+                case .badge:
+                    logoView.image = CardBrandBadge.image(
+                        brand: brand, appearance: appearance, traits: traitCollection)
+                    logoView.backgroundColor = .clear
+                }
+            }
+            if animated, !UIAccessibility.isReduceMotionEnabled {
+                didAnimateLogo = true
+                UIView.transition(with: logoView, duration: 0.15, options: .transitionCrossDissolve, animations: apply)
+            } else {
+                apply()
             }
         }
 
@@ -261,6 +304,8 @@
         override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
             super.traitCollectionDidChange(previousTraitCollection)
             refreshBorder()
+            // The badge is a pre-rendered image; redraw it for the new light/dark colors.
+            if logoSlotState == .badge { showSlot(.badge) }
         }
 
         private func refreshBorder() {
@@ -284,6 +329,16 @@
         #if DEBUG
             /// Test readout: the trailing expiry text (`MM/YY`, or the expired label).
             var expiryTextForTest: String? { expiryLabel.text }
+            /// Test readout: what the brand slot shows.
+            var logoSlotStateForTest: LogoSlotState { logoSlotState }
+            /// Test readout: the brand slot's frame in the row.
+            var logoSlotFrameForTest: CGRect { logoView.convert(logoView.bounds, to: self) }
+            /// Test readout: the masked number's frame in the row.
+            var numberLabelFrameForTest: CGRect { numberLabel.convert(numberLabel.bounds, to: self) }
+            /// Test readout: whether the logo was faded in.
+            var didAnimateLogoForTest: Bool { didAnimateLogo }
+            /// Test readout: the brand slot's alpha (dimmed for an expired card).
+            var logoSlotAlphaForTest: CGFloat { logoView.alpha }
         #endif
     }
 #endif

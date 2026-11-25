@@ -51,13 +51,31 @@
         // UI state.
         private enum LoadState {
             case loading
+            /// A country change is fetching the new country's config; the country row stays visible.
+            case reloadingCountry
             case loaded
             case failed
         }
         private var loadState: LoadState = .loading
 
         private let contentStack = UIStackView()
-        private let skeletonView = UIView()
+        private lazy var skeletonView = AddressSkeletonView(appearance: appearance, rowCount: expectedRowCount)
+        /// Best guess of the loaded row count, so the first skeleton is about as tall as the form: the
+        /// restricted (simple) form shows country, line1 and postal code, plus one row for names.
+        private var expectedRowCount: Int {
+            guard let visibleFields else { return 4 }
+            let names = options.collectName && visibleFields.contains(.firstName) ? 1 : 0
+            return 3 + names
+        }
+        /// Skeleton shown below the country row during a slow country change (added to `contentStack`).
+        private lazy var countrySkeleton = AddressSkeletonView(appearance: appearance, rowCount: 1)
+        /// How long a country change may take before the skeleton replaces the old rows.
+        private let skeletonDelay: TimeInterval
+        /// Pending reveal of `countrySkeleton`; cancelled when the config arrives first.
+        private var countrySkeletonWork: DispatchWorkItem?
+        /// Bumped on every metadata request; a result from an older request is dropped.
+        private var requestGeneration = 0
+        private var didShowCountrySkeleton = false
         private let errorContainer = UIView()
         private let errorLabel = UILabel()
         private let retryButton = UIButton(type: .system)
@@ -86,14 +104,18 @@
         ///   - options: Per-form switches (for example whether names are collected); defaults to billing.
         ///   - visibleFields: When non-nil, restricts the rendered rows to these field types (the country
         ///     row is always rendered); nil renders every field the country config lays out.
+        ///   - skeletonDelay: How long a country change may take before skeleton rows replace the old
+        ///     rows (a faster response rebuilds directly, without a skeleton flash).
         init(
             appearance: ResolvedAppearance,
             localize: @escaping (String) -> String,
             service: any AddressMetadataService,
             locale: String?,
             options: AddressFormOptions = .billing,
-            visibleFields: Set<AddressFieldType>? = nil
+            visibleFields: Set<AddressFieldType>? = nil,
+            skeletonDelay: TimeInterval = 0.15
         ) {
+            self.skeletonDelay = skeletonDelay
             self.options = options
             self.visibleFields = visibleFields
             self.appearance = appearance
@@ -127,7 +149,7 @@
         ///   shown and the Pay tap is simply ignored), or when a rendered field is required-but-empty or the
         ///   postal code does not match the country pattern. Returns `true` after a load failure (exemption).
         func validate() -> Bool {
-            if loadState == .loading { return false }
+            if loadState == .loading || loadState == .reloadingCountry { return false }
             guard loadState == .loaded, let config else {
                 clearErrors()
                 return true
@@ -242,6 +264,9 @@
         // MARK: - Loading
 
         private func load() {
+            cancelCountrySkeleton()
+            requestGeneration += 1
+            let generation = requestGeneration
             loadState = .loading
             renderState()
 
@@ -253,16 +278,19 @@
                 guard let self else { return }
                 do {
                     let list = try await service.countries(locale: locale)
+                    guard generation == self.requestGeneration else { return }
                     let selected = countryCode ?? list.detectedCountry ?? list.countries.first?.code
                     var loadedConfig: AddressCountryConfig?
                     if let selected {
                         loadedConfig = try await service.countryConfig(countryCode: selected, locale: locale)
                     }
+                    guard generation == self.requestGeneration else { return }
                     self.countries = list.countries
                     if self.model.country == nil { self.model.country = selected }
                     self.config = loadedConfig
                     self.loadState = .loaded
                 } catch {
+                    guard generation == self.requestGeneration else { return }
                     self.loadState = .failed
                 }
                 self.renderState()
@@ -290,8 +318,16 @@
         /// Reloads just the selected country's config (on a country change), preserving other values.
         private func reloadCountryConfig() {
             captureFieldValues()
-            loadState = .loading
-            renderState()
+            cancelCountrySkeleton()
+            requestGeneration += 1
+            let generation = requestGeneration
+            loadState = .reloadingCountry
+            didShowCountrySkeleton = false
+            // The old rows stay in place but can't be edited; they belong to the previous country.
+            for row in contentStack.arrangedSubviews.dropFirst() { row.isUserInteractionEnabled = false }
+            let work = DispatchWorkItem { [weak self] in self?.showCountrySkeleton() }
+            countrySkeletonWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + skeletonDelay, execute: work)
 
             let locale = self.locale
             let service = self.service
@@ -299,10 +335,19 @@
 
             Task { @MainActor [weak self] in
                 guard let self, let countryCode else { return }
+                let result: AddressCountryConfig?
                 do {
-                    self.config = try await service.countryConfig(countryCode: countryCode, locale: locale)
-                    self.loadState = .loaded
+                    result = try await service.countryConfig(countryCode: countryCode, locale: locale)
                 } catch {
+                    result = nil
+                }
+                // The user picked another country meanwhile: that request owns the form now.
+                guard generation == self.requestGeneration else { return }
+                self.cancelCountrySkeleton()
+                if let result {
+                    self.config = result
+                    self.loadState = .loaded
+                } else {
                     self.loadState = .failed
                 }
                 self.renderState()
@@ -314,10 +359,50 @@
 
         // MARK: - Rendering
 
+        /// Replaces the rows below the country row with skeleton rows (same count) while a country
+        /// change is still loading.
+        private func showCountrySkeleton() {
+            guard loadState == .reloadingCountry else { return }
+            let oldRows = contentStack.arrangedSubviews.dropFirst().filter { $0 !== countrySkeleton }
+            oldRows.forEach { $0.isHidden = true }
+            countrySkeleton.rowCount = max(1, oldRows.count)
+            if countrySkeleton.superview !== contentStack { contentStack.addArrangedSubview(countrySkeleton) }
+            countrySkeleton.isHidden = false
+            didShowCountrySkeleton = true
+            invalidateIntrinsicContentSize()
+            onContentSizeChange?()
+        }
+
+        private func cancelCountrySkeleton() {
+            countrySkeletonWork?.cancel()
+            countrySkeletonWork = nil
+            if countrySkeleton.superview != nil {
+                contentStack.removeArrangedSubview(countrySkeleton)
+                countrySkeleton.removeFromSuperview()
+            }
+        }
+
+        /// Puts the full-form skeleton in the hierarchy only while loading. Its rows have fixed heights, so
+        /// a merely hidden skeleton would still pin the form to its height and squeeze the loaded fields.
+        private func setSkeletonInstalled(_ installed: Bool) {
+            if installed {
+                guard skeletonView.superview == nil else { return }
+                addSubview(skeletonView)
+                NSLayoutConstraint.activate([
+                    skeletonView.topAnchor.constraint(equalTo: topAnchor),
+                    skeletonView.leadingAnchor.constraint(equalTo: leadingAnchor),
+                    skeletonView.trailingAnchor.constraint(equalTo: trailingAnchor),
+                    skeletonView.bottomAnchor.constraint(equalTo: bottomAnchor),
+                ])
+            } else {
+                skeletonView.removeFromSuperview()
+            }
+        }
+
         private func renderState() {
-            skeletonView.isHidden = loadState != .loading
+            setSkeletonInstalled(loadState == .loading)
             errorContainer.isHidden = loadState != .failed
-            contentStack.isHidden = loadState != .loaded
+            contentStack.isHidden = loadState != .loaded && loadState != .reloadingCountry
 
             if loadState == .loaded { rebuildFields() }
             invalidateIntrinsicContentSize()
@@ -510,16 +595,13 @@
             contentStack.translatesAutoresizingMaskIntoConstraints = false
             addSubview(contentStack)
 
-            skeletonView.backgroundColor = appearance.componentBackground
-            skeletonView.layer.cornerRadius = appearance.cornerRadius
             skeletonView.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(skeletonView)
 
             configureErrorContainer()
             errorContainer.translatesAutoresizingMaskIntoConstraints = false
             addSubview(errorContainer)
 
-            for view in [contentStack, skeletonView, errorContainer] {
+            for view in [contentStack, errorContainer] {
                 NSLayoutConstraint.activate([
                     view.topAnchor.constraint(equalTo: topAnchor),
                     view.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -527,7 +609,6 @@
                     view.bottomAnchor.constraint(equalTo: bottomAnchor),
                 ])
             }
-            skeletonView.heightAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
         }
 
         private func configureErrorContainer() {
@@ -574,6 +655,23 @@
                 RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
             }
         }
+
+        /// Whether a skeleton is visible (initial load, or below the country row on a country change).
+        var isSkeletonVisibleForTest: Bool {
+            (loadState == .loading && skeletonView.superview != nil)
+                || (countrySkeleton.superview != nil && !countrySkeleton.isHidden)
+        }
+
+        /// Whether the country row is on screen (it stays visible during a country change).
+        var isCountryRowVisibleForTest: Bool {
+            !contentStack.isHidden && contentStack.arrangedSubviews.first.map { !$0.isHidden } == true
+        }
+
+        /// Whether the last country change showed the skeleton at any point.
+        var didShowCountrySkeletonForTest: Bool { didShowCountrySkeleton }
+
+        /// Whether the load-error state (message + retry) is visible.
+        var isErrorVisibleForTest: Bool { !errorContainer.isHidden }
 
         /// The text-field types currently rendered (names appear only when the options collect them).
         var renderedFieldTypesForTest: Set<AddressFieldType> { Set(textFields.keys) }

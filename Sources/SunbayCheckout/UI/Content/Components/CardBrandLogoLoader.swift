@@ -13,6 +13,10 @@
         private let cache = NSCache<NSURL, UIImage>()
         private var waiting: [URL: [(UIImage?) -> Void]] = [:]
 
+        /// The process-wide loader used by the checkout UI, so a logo fetched once is reused by every sheet
+        /// and element for the rest of the app session (memory only).
+        static let shared = CardBrandLogoLoader()
+
         /// - Parameter fetch: Downloads the bytes for a logo URL (replaceable in tests).
         init(fetch: @escaping Fetch = CardBrandLogoLoader.defaultFetch) {
             self.fetch = fetch
@@ -41,6 +45,16 @@
                 self?.finish(url: url, image: image)
             }
         }
+
+        /// Starts loading `urls` ahead of display; duplicates and already-cached URLs cost nothing.
+        func prefetch(_ urls: [URL]) {
+            for url in Set(urls) { image(for: url) { _ in } }
+        }
+
+        #if DEBUG
+            /// Test readout: whether `url` is in the in-memory cache.
+            func isCachedForTest(_ url: URL) -> Bool { cache.object(forKey: url as NSURL) != nil }
+        #endif
 
         private func finish(url: URL, image: UIImage?) {
             if let image { cache.setObject(image, forKey: url as NSURL) }

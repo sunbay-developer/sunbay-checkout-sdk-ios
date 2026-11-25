@@ -99,7 +99,9 @@
             ).height
             let boxes = fieldContainers(in: view)
             XCTAssertEqual(pin.constant, fitting, accuracy: 1, "host height must follow the loaded content")
-            XCTAssertGreaterThan(host.updates, 0, "the delegate must hear about the growth")
+            // No separate "delegate fired" check: the loading skeleton is sized like the loaded form, so the
+            // height may not change at all. If it does change, a missed delegate call leaves `pin` stale and
+            // the equality above fails.
             let heights = Set(boxes.map { Int($0.frame.height.rounded()) })
             XCTAssertGreaterThan(boxes.count, 2)
             XCTAssertEqual(heights.count, 1, "every field box has the same height, got \(heights)")
