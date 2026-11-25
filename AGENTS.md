@@ -87,6 +87,9 @@ guide). They are part of the product and must never drift from the code.
 **Review gate.** Before reporting a task done, run a self-check: list every `public` symbol touched by the diff
 (`git diff -U0 -- Sources | grep -E '^[+-].*\bpublic\b'`) and confirm each is reflected in `docs/api/api.md`. A change to the public
 surface without a matching docs change is incomplete.
+The grep only catches signature changes. Also check behavior changes that touch no `public` line: new or changed
+error codes (`grep -rhoE '"[A-Z][A-Z0-9_]{5,}"' Sources` against `api.md`), outcome mapping, retry or duplicate-submit rules,
+accepted inputs (for example the redirect URL scheme check) and security behavior. Document each in `api.md` or `guide.md`.
 
 **Doc rules.** English only. Document behavior and defaults as the code has them, not as intended. Never put card values, secrets or real
 credentials in examples. Keep `api.md` structured as: signature block, then a table or list of semantics.
