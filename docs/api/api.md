@@ -388,6 +388,13 @@ field validation errors. While a payment is in flight all inputs are disabled. A
 and selection stay so a retry works. On every terminal state (`.succeeded`, `.pending`, `.unknown`,
 `close()`, an ended session) the typed values are cleared and the element stays disabled.
 
+Capture protection (same in `PaymentSheet`): while the screen is recorded, mirrored or sent over AirPlay
+(`UIScreen.isCaptured`), the card fields are covered with an opaque panel that says the details are
+hidden, and the keyboard is dismissed. While the app is inactive (App Switcher, Control Center, an
+incoming call) the fields are covered without text, so the system snapshot shows no card data. A user
+screenshot cannot be blocked with public iOS API. Copy and cut are disabled on the CVC field. Third-party
+redirect pages open in a private browser session that does not share Safari cookies.
+
 ---
 
 ## `Appearance`

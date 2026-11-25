@@ -48,6 +48,9 @@
             for completion in completions { completion(image) }
         }
 
+        /// Largest logo download accepted (2 MiB). Real logos are a few KB; the cap only stops a runaway response.
+        static let maxLogoBytes = 2 * 1024 * 1024
+
         /// Ephemeral session (no cookies, credentials or disk cache) with a short timeout.
         static let defaultFetch: Fetch = { url in
             let configuration = URLSessionConfiguration.ephemeral
@@ -55,9 +58,15 @@
             configuration.urlCache = nil
             configuration.httpCookieStorage = nil
             configuration.urlCredentialStorage = nil
-            let (data, response) = try await URLSession(configuration: configuration).data(from: url)
+            let (bytes, response) = try await URLSession(configuration: configuration).bytes(from: url)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 throw URLError(.badServerResponse)
+            }
+            if http.expectedContentLength > Int64(CardBrandLogoLoader.maxLogoBytes) { throw URLError(.dataLengthExceedsMaximum) }
+            var data = Data()
+            for try await byte in bytes {
+                data.append(byte)
+                if data.count > CardBrandLogoLoader.maxLogoBytes { throw URLError(.dataLengthExceedsMaximum) }
             }
             return data
         }

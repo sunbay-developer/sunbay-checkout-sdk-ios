@@ -62,7 +62,7 @@
                         continuation.resume()
                     }
                     session.presentationContextProvider = anchorProvider
-                    session.prefersEphemeralWebBrowserSession = false
+                    session.prefersEphemeralWebBrowserSession = true
                     // Hold anchorProvider until the session ends, avoiding premature release.
                     anchorProvider.retainSession = session
                     if !session.start() {

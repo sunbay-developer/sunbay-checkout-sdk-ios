@@ -44,6 +44,7 @@
         private let errorLabel = UILabel()
 
         private let group = UIView()
+        private var captureShield: ScreenCaptureShield?
         private let rowDivider = UIView()
         private let columnDivider = UIView()
 
@@ -295,6 +296,7 @@
 
         private func configureSubviews(localize: @escaping (String) -> String) {
             CardFieldSecurity.apply(toPAN: panField, expiry: expiryField, cvv: cvvField)
+            cvvField.allowsCopyAndCut = false
 
             for field in [panField, expiryField, cvvField] {
                 field.font = FloatingLabelMetrics.fieldFont(from: appearance.cardFieldFont)
@@ -346,6 +348,15 @@
             group.addSubview(expiryField)
             group.addSubview(cvvField)
             group.addSubview(cvvIconView)
+
+            // Cover the fields while the screen is recorded or the app is in the App Switcher.
+            let shield = ScreenCaptureShield(
+                backgroundColor: appearance.componentBackground, textColor: appearance.textSecondary,
+                message: localize("sunbay.card.captureHidden"))
+            shield.layer.cornerRadius = appearance.cornerRadius
+            shield.translatesAutoresizingMaskIntoConstraints = false
+            group.addSubview(shield)
+            captureShield = shield
 
             errorLabel.font = UIFont.preferredFont(forTextStyle: .caption1)
             errorLabel.textColor = appearance.danger
@@ -400,6 +411,11 @@
                 cvvIconView.trailingAnchor.constraint(equalTo: group.trailingAnchor, constant: -12),
                 cvvIconView.widthAnchor.constraint(equalToConstant: 41),
                 cvvIconView.heightAnchor.constraint(equalToConstant: 24),
+
+                shield.topAnchor.constraint(equalTo: group.topAnchor),
+                shield.bottomAnchor.constraint(equalTo: group.bottomAnchor),
+                shield.leadingAnchor.constraint(equalTo: group.leadingAnchor),
+                shield.trailingAnchor.constraint(equalTo: group.trailingAnchor),
 
                 // Error label below the group.
                 errorLabel.topAnchor.constraint(equalTo: group.bottomAnchor, constant: 6),

@@ -16,7 +16,7 @@
 - **Distribution:** Swift Package Manager primary. No CocoaPods. XCFramework not built in first release.
 - **Small stable public API.** Internal types must not be `public`. Semantic versioning.
 - **Card values, wallet tokens, COF secrets, and the RSA-encrypted payload must never** appear in logs, analytics, crash reports, or any public callback/return value.
-- **Sensitive data boundary:** only `CardEncryptor` touches plaintext card data (zeroed immediately after encryption); only `CredentialStore` holds secrets (memory-only, cleared on terminal state). Nothing sensitive is persisted (no UserDefaults / file / Keychain / UIPasteboard).
+- **Sensitive data boundary:** only `CardEncryptor` touches plaintext card data (references released immediately after encryption; memory is not guaranteed to be erased); only `CredentialStore` holds secrets (memory-only, cleared on terminal state). Nothing sensitive is persisted (no UserDefaults / file / Keychain / UIPasteboard).
 - **Core is UI-agnostic:** `Core/` imports no UIKit/PassKit UI types; depends on protocols only.
 - **Payment truth = server-confirmed terminal state** (`S`/`F`). Wallet/COF authorization success is not a transaction result. On submit failure/timeout, query (`getResult`) before any resubmit; never blind-retry.
 - **Backend contract is a mock baseline** (product-spec §7). `PaymentService`/`CofService` are protocols; the mock is swapped for the real adapter later without touching Core/UI.

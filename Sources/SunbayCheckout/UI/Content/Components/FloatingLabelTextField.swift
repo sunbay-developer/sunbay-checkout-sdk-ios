@@ -78,6 +78,19 @@
         /// back to the previous field, as mainstream card forms do).
         var onBackspaceWhenEmpty: (() -> Void)?
 
+        /// When false, copy and cut are unavailable so the field's text cannot reach the system pasteboard.
+        var allowsCopyAndCut = true
+
+        override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+            if !allowsCopyAndCut,
+                action == #selector(UIResponderStandardEditActions.copy(_:))
+                    || action == #selector(UIResponderStandardEditActions.cut(_:))
+            {
+                return false
+            }
+            return super.canPerformAction(action, withSender: sender)
+        }
+
         override func deleteBackward() {
             let wasEmpty = (text ?? "").isEmpty
             super.deleteBackward()

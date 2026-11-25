@@ -607,6 +607,7 @@ queries once, then reports `unknown` (never `failed`). The host reconciles via `
 
 **边界澄清**:砍掉的是"嵌入式 WebView 加载 Sunbay 托管页收卡"。这里 `redirect` 是"打开第三方 APM
 支付网页",用系统安全浏览器打开,不接触卡数据,属标准做法,不违背安全大方向。
+SDK 只打开带 host 的 `https` URL;`http`、`javascript:`、`file:`、自定义 scheme、缺失或格式错误的 `redirectUrl` 一律不打开,降级为 `unknown`(`ContractDecoding.mapAction`)。
 
 **三端对齐现状**(Sunbay 产品线):`redirect` 全线实现;`qrCode`/`showContent` 全线为协议预留、运行时
 UNSUPPORTED_CAPABILITY。iOS 首版遵循同一策略,不超前实现二维码。
@@ -615,7 +616,7 @@ UNSUPPORTED_CAPABILITY。iOS 首版遵循同一策略,不超前实现二维码�
 
 ## 5. 安全约束(摘要;完整见 `docs/security-and-pci.md`)
 
-1. 明文卡只存在于卡输入控件 + CardEncryptor 加密前瞬时变量,加密后立即清零(边界内聚)。
+1. 明文卡只存在于卡输入控件 + CardEncryptor 加密前瞬时变量,加密后立即释放引用,不保留、不落盘(边界内聚;Swift String/Data 无法保证内存被擦除,对外不声称"已擦除")。
 2. PAN/CVV/有效期关 autocorrection + spellChecking + smart 系列;**CVV 不设 textContentType**;
    PAN 可用系统扫卡/自动填充(Apple 官方安全通道)。
 3. 零持久化:明文卡、钱包 token、customerAccessSecret、checkoutClientSecret、paymentMethodId 一律不写
