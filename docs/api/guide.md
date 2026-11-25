@@ -183,6 +183,12 @@ By default the session allows retry after a failure: the sheet stays open and th
 method or try again on the same session. After `.pending` / `.unknown` the sheet locks and only the
 close button works, so the user cannot pay twice while the result is unresolved.
 
+On every payment path, calling `confirm()` again (or paying again) while the last attempt is unsettled
+does not submit a second payment. The SDK first queries that attempt and returns its outcome (`.succeeded`,
+`.pending` or `.unknown`). A new payment is submitted only if the last attempt failed or never reached
+the backend. Redirect pages (3-D Secure and similar) must be `https` URLs, otherwise the payment ends as
+`.unknown`.
+
 ### Session lifetime
 
 A session expires on the server. Loading an expired session fails with `CHECKOUT_EXPIRED`;

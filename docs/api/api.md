@@ -250,6 +250,7 @@ expiry timer and one outcome history. Your app owns any Pay button.
 | New-card form or a shown address form invalid | `.failed` with `CARD_INPUT_INVALID` (nothing submitted, inline errors shown) |
 | Payment attempted | `.succeeded` / `.failed` / `.pending` / `.unknown` |
 | Session ended or a payment already settled | The stored outcome is returned again |
+| Last attempt of the session still unsettled | Outcome of that attempt (see the duplicate-charge guard under `CheckoutOutcome`); no new submit |
 
 Keep the `CheckoutElements` instance alive while its components are on screen. Components hold the group
 weakly. If only a component (or its view) is retained and the group is released, the group's deinit
@@ -556,6 +557,21 @@ public enum CheckoutOutcome: Sendable, Equatable {
 
 The SDK never reports an undetermined result as `.failed`, never client-polls the backend, and never
 blindly resubmits. Payment truth is the server-confirmed terminal state.
+
+Duplicate-charge guard: every payment submit carries a fresh `attemptId`, so the backend cannot dedupe a
+repeated tap. Before a new submit (card, saved card or Apple Pay, from the sheet or `CheckoutElements.confirm()`),
+the SDK queries the last attempt of the session if it is unsettled, once:
+
+| Last attempt | Result |
+| --- | --- |
+| Succeeded | Returned as the outcome. Nothing is submitted. |
+| Still processing or needs action | `.pending`. Nothing is submitted. |
+| The query failed or could not confirm the attempt | `.unknown`. Nothing is submitted. |
+| Failed, or never reached the transaction core | The new submit goes ahead. |
+
+Redirect actions (3-D Secure and similar): the SDK opens a backend-provided redirect only when the URL is
+an absolute `https` URL with a host. A missing, malformed, `http`, `javascript:`, `file:` or custom-scheme URL is never
+opened, and the payment ends as `.unknown`.
 
 ### `PaymentSnapshot`
 
