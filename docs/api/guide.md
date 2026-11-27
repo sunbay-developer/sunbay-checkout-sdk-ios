@@ -183,6 +183,11 @@ By default the session allows retry after a failure: the sheet stays open and th
 method or try again on the same session. After `.pending` / `.unknown` the sheet locks and only the
 close button works, so the user cannot pay twice while the result is unresolved.
 
+A session that can no longer be paid is not retryable either. If the backend rejects a submit with `C10`
+(order already paid), `C11` (session closed) or `C30` (session expired), the sheet shows the reason and locks
+(only the close button works), and closing returns `.failed` with that code. Create a new session to let the
+buyer pay again.
+
 On every payment path, calling `confirm()` again (or paying again) while the last attempt is unsettled
 does not submit a second payment. The SDK first queries that attempt and returns its outcome (`.succeeded`,
 `.pending` or `.unknown`). A new payment is submitted only if the last attempt failed or never reached

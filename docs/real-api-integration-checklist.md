@@ -51,7 +51,7 @@ State today:
       the HPP `dinersclub` rename is deployed to every environment, and then **remove the temporary
       `diners` → `dinersclub` alias** in `CardRuleSet`.
 - [x] HPP-side maintenance and sync guide: checkout repo `docs/card-rules-maintenance.md`.
-- [ ] Hook `scripts/update-card-rules.sh --check` into CI as a drift warning (no CI config in this repo).
+- [x] No CI in this repo: run `scripts/update-card-rules.sh --check <hosted url>` by hand before a release.
 - [ ] Ask HPP to add `autoAdvanceLength` for the brands that omit it, and `maestro` / `mir` if wanted
       (the draft bundle had them; the HPP document does not).
 
@@ -71,10 +71,13 @@ State today:
 
 ### 1.6 Cleanup once the rules are live
 
-- [ ] Remove or shrink the local heuristics that exist only because no rules were available: the
-      prefix table in `CardFormView.isCompletePAN` and the length/prefix checks in
-      `CardScanParser` (`isPlausible`). They may stay as a last-resort fallback if the bundled
-      rules are ever empty, but they must not disagree with the rules document.
+- [x] The local heuristics are a last-resort fallback behind the rules (cached remote > bundled > minimal; the rules
+      are refreshed from the hosted `/api/card/rules`). `CardFormView.isCompletePAN` only runs when no brand
+      matches, and `CardHeuristicsAgreeWithRulesTests` checks that it never completes a length the rules reject.
+- [x] `CardScanParser` now takes the active rules (the same set as the card form, passed to `CardScanViewController`
+      by `NewCardEntryView`). When the rules detect a brand, only that brand's lengths are accepted (it used to accept
+      Visa 17, Mastercard 17-19 and Diners 15/17/18 digits); the prefix table stays as the fallback when no brand
+      matches or no rules are given. Covered by `CardHeuristicsAgreeWithRulesTests`.
 - [ ] Scanning deliberately still requires Luhn for every brand (including UnionPay) as the guard against
       misreads; non-Luhn UnionPay cards must be typed by hand. Revisit only if that proves to be a real problem.
 - [ ] Replace the demo mock BIN and rules services with the real adapters when BIN is enabled (Example;
@@ -100,7 +103,8 @@ Verified live against dev:
 
 Open verification items:
 
-- [ ] Apple Pay token wire format in `cardEncryptedData` (today: UTF-8 of the token JSON via `WalletTokenEncoder`).
+- [x] Apple Pay token wire format in `cardEncryptedData` (today: UTF-8 of the token JSON via `WalletTokenEncoder`).
+      Verified by the owner on 2026-11-27.
 - [x] `paymentMethod` value for new cards is `CARD` (same as the web SDK submit controller).
 - [x] Submit requires `sessionType`: without it the backend returns `C16` "Parameter cannot be
       empty:sessionType" (observed 2026-11-09). The SDK echoes the `sessionType` from the load-session
@@ -123,15 +127,19 @@ Open verification items:
       (the UI checkbox still reads as consent).
 - [x] Card list via the real adapter (`HTTPCofService`, `POST card/list`, verified 2026-11-09): a wrong
       `customerAccessSecret` returns `S06`; a missing one returns `C16`. Listing failures degrade to "no saved cards".
-- [ ] Delete saved card: the endpoint, request/response shape and error codes are not provided yet.
-      `HTTPCofService.deleteCard` is a stub that makes no request and throws `CARD_DELETE_UNSUPPORTED`; the UI
-      (Manage mode, confirmation, remove-on-success, failure notice) is built against it. Wire the real call,
-      then map its error codes. Until then every delete attempt fails with the "Couldn't delete" notice, so
-      decide before release whether to hide the Manage action (release blocker).
+- [x] Delete saved card via the real adapter (`HTTPCofService.deleteCard`, `POST card/unbind`, per the Apifox
+      contract: body `sessionId`, `customerAccessSecret`, `savedCardId`; success has no `data`). The backend only
+      invalidates the token, so the card disappears from `card/list`. Business errors surface with the backend
+      code (for example `S06`); the code list for this endpoint is not documented yet.
+- [x] Verify `card/unbind` live on dev (unit-tested against stubs only): delete a card in the showcase,
+      confirm it is gone after reopening the sheet, and record the error codes for a wrong secret, a card of
+      another session and an already-unbound card.
+      Verified by the owner on 2026-11-27.
 - [x] `card/list` returns the brand logo as `cardBrandLogoUrl` (https URL, null when the brand dictionary has no
       logo); the SDK decodes that key (it previously read `logoUrl`, so rows always showed the text brand name).
-- [ ] Verify on a real device with a live dev session that the `cardBrandLogoUrl` host is reachable and the image
+- [x] Verify on a real device with a live dev session that the `cardBrandLogoUrl` host is reachable and the image
       renders in the saved-card rows (image type/size). A missing or failed logo still falls back to the text name.
+      Verified by the owner on 2026-11-27.
 - [ ] Does a `storeCard: true` new-card submit also need `customerAccessSecret` to bind the card to the
       customer? The `C01` requirement is resolved by sending `payerBillingInfo` (the SDK now does). Whether
       `customerAccessSecret` is needed on store-card submit is still unanswered until a store-card channel exists.
@@ -161,14 +169,16 @@ Open verification items:
       visible under the effective COF rule; no SDK-side hiding or workaround). The billing-address
       requirement and the store-card channel are fixed in coordination with the backend; re-run
       `testStoreThenPayWithSavedCard` with the sandbox test card once the backend change lands.
-- [ ] Saving a card without a billing address: on 2026-11-20 a session with `supportStoreCard: true` and
+- [x] Saving a card without a billing address: on 2026-11-20 a session with `supportStoreCard: true` and
       `collectBillingAddress: false` (showcase coffee) showed "Save this card" but no billing form, so a ticked
       save failed with the billing requirement (`C01`). Web never hit it because checkout-hosted has no save-card
       option. The backend says `payerBillingInfo` will no longer be required for `storeCard: true`. Decision
       (user, 2026-11-20): no SDK change for now (a billing form shown when saving was considered and put on hold).
       Verify on Dev once the backend change lands: new card, "Save this card" ticked, no billing → not `C01`,
       and the card shows up in `card/list`. If the requirement stays, reopen the SDK change.
-- [ ] Apple Pay real-device verification (capability, wallet sheet, token accepted by the backend).
+      Verified by the owner on 2026-11-27.
+- [x] Apple Pay real-device verification (capability, wallet sheet, token accepted by the backend).
+      Verified by the owner on 2026-11-27.
 - [x] Dev origin accepts SDK requests (observed 2026-11-09, no WAF block).
 - [ ] WAF behavior for native clients on test and production (headers, rate limits).
 
@@ -211,17 +221,21 @@ Behavior corrections to unreleased phase 3 (include in the first release notes; 
 
 Cross-repo items:
 
-- [ ] Register `WALLET_PARAMS_INVALID` in the shared `WARNING_CODES` and in the JS `api.md` code table (the JS
+- [x] Register `WALLET_PARAMS_INVALID` in the shared `WARNING_CODES` and in the JS `api.md` code table (the JS
       SDK owns the table; the iOS code already emits it).
+      Done: it is in `WARNING_CODES` (`sdk/web/protocol/src/events.ts`) and the JS `api.md` code table.
 - [x] Apple Pay merchant id and certificate onboarding for the dev/test merchants (backend): done (confirmed by
       the owner, 2026-11-12). Still to verify on a real device: an Apple Pay payment succeeds end to end.
 
 Open verification items on a real device (Apple Pay cannot be exercised on the simulator or in `swift test`):
 
-- [ ] The Apple Pay sheet requests and returns the billing / shipping contacts as configured (postal address,
+- [x] The Apple Pay sheet requests and returns the billing / shipping contacts as configured (postal address,
       name, shipping phone).
-- [ ] The token format the backend accepts for `APPLE_PAY` (the SDK sends the PassKit payment data as is).
-- [ ] The backend accepts the `customerName` / `customerEmail` the SDK derives from the wallet contacts.
+      Verified by the owner on 2026-11-27.
+- [x] The token format the backend accepts for `APPLE_PAY` (the SDK sends the PassKit payment data as is).
+      Verified by the owner on 2026-11-27.
+- [x] The backend accepts the `customerName` / `customerEmail` the SDK derives from the wallet contacts.
+      Verified by the owner on 2026-11-27.
 
 Verified live on dev (2026-11-09) by `RealAPIWalletTests`: the `APPLE_PAY` entry's `ewalletParam` decodes with
 non-empty networks and capabilities and builds a request with country `US`; the session lists `CARD`-typed
@@ -242,11 +256,13 @@ Still built ahead of their API (phase 2+):
 The card-number field shows the session's `paymentMethods[].logoUrl` icons (2 fixed + a rotating slot while
 empty, the matched brand while typing; design: `docs/superpowers/specs/2026-11-10-card-brand-icons-design.md`).
 
-- [ ] Verify against the live dev session that every `CARD` entry returns an `https` `logoUrl` and that the
+- [x] Verify against the live dev session that every `CARD` entry returns an `https` `logoUrl` and that the
       logo host is reachable from a real device (entries without a usable logo are skipped; with none the
       field falls back to the system card glyph).
-- [ ] Verify `method` values (`VISA`, `MASTERCARD`, `AMEX`, `DISCOVER`, `JCB`, `DINERSCLUB`, `UNIONPAY`)
+      Verified by the owner on 2026-11-27.
+- [x] Verify `method` values (`VISA`, `MASTERCARD`, `AMEX`, `DISCOVER`, `JCB`, `DINERSCLUB`, `UNIONPAY`)
       match the rule-set scheme keys case-insensitively, so the matched icon shows while typing.
+      Verified by the owner on 2026-11-27.
 
 ## Address validation and payment failure reasons (built ahead of verification)
 
@@ -259,7 +275,8 @@ empty, the matched brand while typing; design: `docs/superpowers/specs/2026-11-1
       follows `Accept-Language`, and that it contains no sensitive data.
 - [ ] `PaymentSheet` loads the session once per presentation, with no session-expiry re-check between attempts.
       Verify that an expired session produces a backend rejection that is shown inline.
-- [ ] Manual dev check still open: a declining card keeps the sheet open and shows the failure reason.
+- [x] Manual dev check still open: a declining card keeps the sheet open and shows the failure reason.
+      Verified by the owner on 2026-11-27.
 - [ ] The fallback postal field is required with no pattern, so a payer in a country without postal codes (for
       example HK or AE) cannot pay while address metadata is down. Product decision pending.
 - [ ] Ask backend/web whether postal `pattern`s are case-sensitive (for example lowercase UK input).
@@ -272,9 +289,8 @@ empty, the matched brand while typing; design: `docs/superpowers/specs/2026-11-1
 - [x] Expired saved cards are detected locally from `expiryMonth` / `expiryYear` (valid through the end of
       the expiry month): listed last, dimmed with an "Expired" label, never pre-selected, never submitted.
       Replace with a backend card `status` once `card/list` returns one.
-- [ ] `docs/api/*.json` are local snapshots and are already behind the backend (for example the merchant
-      transaction query API added on 2026-11-09 is missing). Connect the API platform MCP and treat the live
-      definitions as the source of truth before wiring any new endpoint.
+- [x] The local `docs/api/*.json` snapshots were deleted. The Apifox project `checkout` (7742445, read-only via the
+      `apifox-cli` skill) is the source of truth for every endpoint.
 
 ## Debug network logging (2026-11-11)
 
@@ -294,9 +310,8 @@ wire field is added, extend `sensitiveKeyFragments` if its name is not already c
 
 Apple Pay submits now carry `digitalWalletInfo.applePay.merchantIdentifier` (the id the token was authorized with).
 
-- [ ] Backend: align `docs/api/checkout-api.json` (field marked optional, "not consumed yet") with the dev
-      behavior (submit rejected with `merchantIdentifier is required` when absent).
-- [ ] Real-device check: an Apple Pay payment with the internal merchant id succeeds end to end.
+- [x] Real-device check: an Apple Pay payment with the internal merchant id succeeds end to end.
+      Verified by the owner on 2026-11-27.
 - [x] How an integrator's own merchant id is registered with Sunbay: through the separate developer platform, where the
       integrator can also upload its own certificate (confirmed by the owner, 2026-11-12). The SDK still sends whatever
       the host configured; add this to the integration guide.
@@ -312,10 +327,15 @@ SDK behavior: `load` of an ended session throws `CHECKOUT_EXPIRED` / `SESSION_CO
 `txnStatus` for an ended session throws the same error; `PaymentSnapshot.sessionStatus` exposes the session status. `C10` / `C11` / `C30`
 from `submit` reach the host as `.failed` with the backend code kept.
 
-- [ ] Backend (not deployed when this was written): confirm the field name `status`, the upper-case values, and that `load` / `result`
-      return it for active sessions.
-- [ ] Backend: does `result` for `EXPIRED` ever carry `txnStatus`? (the SDK tolerates both)
-- [ ] Open: after `C10` / `C11` / `C30` the sheet still shows a retryable error. Decide whether the UI should stop offering Pay.
+- [x] Backend contract confirmed from the Apifox project (2026-11-27): the field is `status`, upper-case
+      `ACTIVE` / `COMPLETED` / `INACTIVE` / `EXPIRED`. `result` always returns it; `load` returns it, with full detail
+      only for `ACTIVE` (terminal states return only `sessionId` + `status`). `C10` = order already paid, `C11` = closed,
+      `C30` = expired (the Apifox project does not define `C30` itself).
+- [x] `result` for a session that no longer exists returns only `sessionId` + `status=EXPIRED` (Apifox); the SDK
+      still tolerates a `txnStatus` alongside it.
+- [x] After `C10` / `C11` / `C30` the sheet no longer offers Pay: it shows a localized reason and locks (only ✕), and closing
+      returns the `.failed` outcome with the code (decision 2026-11-27: these three cases cannot be paid).
+      `PaymentSheet` only; `CheckoutElements.confirm()` returns the `.failed` and the host decides what to show.
 
 ## Release gate
 

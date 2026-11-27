@@ -161,6 +161,10 @@ of one presentation as a [`CheckoutOutcome`](#results).
 - The session loads once per presentation. If loading fails, the sheet is not shown and `present`
   returns `.failed` with the load error.
 - After `.failed` the sheet stays open and the user can retry on the same session (no reload).
+- Exception: when the backend rejects the submit with `C10` (order already paid), `C11` (session closed) or
+  `C30` (session expired), the session can no longer be paid. The sheet shows a localized reason and locks
+  like `.pending` (Pay hidden, inputs disabled, only the close button works). Closing returns that `.failed`
+  outcome (not `.canceled`), with the backend code in `error.code`.
 - After `.pending` / `.unknown` the sheet locks (only the close button works) and shows a neutral
   "we are confirming this payment" notice. The SDK does not poll. Closing returns that same outcome
   so the host knows to reconcile.
@@ -179,7 +183,7 @@ Observes the coarse in-sheet phase on the main actor. Informational only, for an
 | `.editing` | Choosing a method or filling the form. Also reported while the sheet is locked on an unresolved payment, even though inputs are locked. |
 | `.processing` | A confirm is in flight. |
 | `.succeeded` | Payment succeeded; the sheet is closing. |
-| `.failed` | Payment failed; the sheet stays open for retry. |
+| `.failed` | Payment failed; the sheet stays open for retry, except for `C10` / `C11` / `C30` (locked, see `PaymentSheet`). |
 
 ### `retrievePayment()`
 
@@ -550,7 +554,7 @@ public enum CheckoutOutcome: Sendable, Equatable {
 | Case | Meaning | What the host should do |
 | --- | --- | --- |
 | `.succeeded` | The server confirmed success. | Show success; still treat the webhook as the source of truth for fulfillment. |
-| `.failed` | The payment failed or could not start. `error` explains why. | Show the error; the user can usually retry. |
+| `.failed` | The payment failed or could not start. `error` explains why. | Show the error; the user can usually retry. For `C10` / `C11` / `C30` (already paid, closed, expired) the session cannot be paid again: create a new session. |
 | `.canceled` | The user cancelled. | Return to your own screen. |
 | `.pending` | The payment is processing (non-terminal). | Reconcile with `retrievePayment()` or your webhook. |
 | `.unknown` | The result could not be confirmed (for example a lost response). | Reconcile with `retrievePayment()` or your webhook using `sessionId`. |
@@ -663,7 +667,8 @@ public protocol PaymentService: Sendable {
 public protocol CofService: Sendable {
     func listPaymentMethods(customerAccessSecret: String, sessionId: String) async throws -> [SavedCard]
     func deleteCard(savedCardId: String, customerAccessSecret: String, sessionId: String) async throws
-    // deleteCard has a default implementation that throws CARD_DELETE_UNSUPPORTED
+    // deleteCard has a default implementation that throws CARD_DELETE_UNSUPPORTED.
+    // The built-in service (SunbayCheckout(configuration:)) implements it with POST card/unbind.
 }
 
 public protocol AddressMetadataService: Sendable {

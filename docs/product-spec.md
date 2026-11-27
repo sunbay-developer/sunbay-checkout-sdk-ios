@@ -831,8 +831,8 @@ opens the full list. The full list's header has "Manage" / "Done": in manage mod
 ones) shows a delete button instead of the expiry and rows are not selectable. Delete asks for confirmation, then
 calls `CofService.deleteCard` (through `CheckoutController`); on success the row is removed (a deleted selected card
 clears the selection; removing the last card returns home), on failure the card stays and a notice is shown.
-`CofService.deleteCard` has a default implementation that throws `CARD_DELETE_UNSUPPORTED`, and
-`HTTPCofService.deleteCard` is a stub until the backend endpoint exists (see the integration checklist).
+`CofService.deleteCard` has a default implementation that throws `CARD_DELETE_UNSUPPORTED` (for custom
+`CofService` types that do not implement it), and `HTTPCofService.deleteCard` calls `POST card/unbind`.
 
 Errors (HTTP 200 with a business code): a wrong secret returns `S06` (Unauthorized); a missing secret
 returns `C16`. The scope is derived from the credentials; the client never sends a customer id.
