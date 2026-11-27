@@ -235,3 +235,6 @@ Dev backend.
 No.  4012000098765439
 Exp. 12/28
 CVV. 999
+## COF customization acceptance
+
+Allow card management defaults on. Turn it off to verify the management action disappears while saved-card selection and new-card entry work. Stack card details switches the saved-card description to two lines. Colors, fonts, radius and border follow the global appearance preset. Verify both light/dark and comfortable/compact global settings. Use the same Dev customer across fresh sessions to verify saving, reuse and removal, including the selected and final card.

@@ -282,6 +282,8 @@ struct DemoSettings: Codable, Equatable {
     static func majorUnits(_ text: String) -> Double { Double(text) ?? 0 }
     /// Disable card on file (maps to `!CardOnFileOptions.isEnabled`). Off by default: follow the session.
     var disableCardOnFile: Bool = false
+    var cardManagementEnabled: Bool = true
+    var stackedCardDetails: Bool = false
     /// Pre-tick the "save card" checkbox (maps to `CardOnFileOptions.saveByDefault`). Default off.
     var preTickSaveCard: Bool = false
     /// The appearance preset (maps to an `Appearance` at Pay time).

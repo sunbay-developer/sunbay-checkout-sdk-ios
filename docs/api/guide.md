@@ -442,3 +442,19 @@ See `../security-and-pci.md` for the full model.
 - Apple Pay needs a real device with a configured wallet and your merchant id.
 - `SunbayCheckoutTestSupport` offers scriptable service doubles for the SDK's own tests. It is not a
   public contract and must not ship in an app.
+
+## COF management and layout customization
+
+```swift
+var appearance = Appearance()
+appearance.savedCards.rowSpacing = 6
+appearance.savedCards.rowPadding = 10
+appearance.savedCards.detailLayout = .stacked
+let cardOnFile = CardOnFileOptions(managementEnabled: false)
+```
+
+`CardOnFileOptions.managementEnabled` is a public mutable `Bool`, defaults to `true`, and is accepted as the final defaulted initializer parameter. Setting it to `false` hides the management action and rejects deletion with `CARD_ON_FILE_UNAVAILABLE`. It preserves other effective COF capabilities and applies to the shared Core used by PaymentSheet and Elements.
+
+`Appearance.savedCards` is a public `Appearance.SavedCards` value. It has a public default initializer, `rowSpacing: CGFloat = 8`, `rowPadding: CGFloat = 12`, and `detailLayout: Appearance.SavedCards.DetailLayout = .inline`. DetailLayout has `.inline` and `.stacked` cases. Non-finite or negative spacing/padding resolves to the corresponding default. These UIKit appearance values apply to saved-card list and summary rows. Colors, fonts, border width and radius inherit global Appearance. Existing iOS CardElement presents new-card entry; the saved-card list and its management surface belong to PaymentSheet.
+
+These are source-compatible additions. Set them when constructing CheckoutConfiguration. The Example settings expose Allow card management and Stack card details.
