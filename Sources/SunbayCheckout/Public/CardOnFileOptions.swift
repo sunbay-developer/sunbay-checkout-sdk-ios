@@ -19,13 +19,17 @@ public struct CardOnFileOptions: Sendable, Equatable {
     /// user submits. Ignored when COF is not effective.
     public var saveByDefault: Bool
 
+    /// Allow saved-card management and removal. Defaults to true.
+    public var managementEnabled: Bool
+
     /// Creates card-on-file options.
     ///
     /// - Parameters:
     ///   - isEnabled: Host switch; defaults to `true`.
     ///   - saveByDefault: Initial state of the save checkbox; defaults to `false`.
-    public init(isEnabled: Bool = true, saveByDefault: Bool = false) {
+    public init(isEnabled: Bool = true, saveByDefault: Bool = false, managementEnabled: Bool = true) {
         self.isEnabled = isEnabled
         self.saveByDefault = saveByDefault
+        self.managementEnabled = managementEnabled
     }
 }

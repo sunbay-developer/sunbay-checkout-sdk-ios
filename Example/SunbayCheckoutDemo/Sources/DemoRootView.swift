@@ -411,6 +411,8 @@ import SunbayCheckoutTestSupport
             Section {
                 Toggle("Disable card on file", isOn: $settings.disableCardOnFile)
                 Toggle("Pre-tick save card", isOn: $settings.preTickSaveCard)
+                Toggle("Allow card management", isOn: $settings.cardManagementEnabled)
+                Toggle("Stack card details", isOn: $settings.stackedCardDetails)
             } header: {
                 SectionHelp("Saved cards", "The host switch can only disable saved cards; the session must also allow them. \"Pre-tick save card\" only sets the checkbox's initial state.")
             }
@@ -633,7 +635,8 @@ import SunbayCheckoutTestSupport
                 appearance: makeAppearance(),
                 locale: settings.locale.bcp47,
                 cardOnFile: CardOnFileOptions(isEnabled: !settings.disableCardOnFile,
-                                              saveByDefault: settings.preTickSaveCard),
+                                              saveByDefault: settings.preTickSaveCard,
+                                              managementEnabled: settings.cardManagementEnabled),
                 paymentMethodFilter: methodFilter
             )
             let checkout = SunbayCheckout(configuration: config)
@@ -742,6 +745,7 @@ import SunbayCheckoutTestSupport
             appearance.shippingAddressEnabled = !settings.disableShippingAddress
             appearance.billingAddressStyle = settings.billingAddressStyle == .full ? .full : .simple
             appearance.shippingAddressStyle = settings.shippingAddressStyle == .full ? .full : .simple
+            appearance.savedCards.detailLayout = settings.stackedCardDetails ? .stacked : .inline
             return appearance
         }
 

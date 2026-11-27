@@ -12,6 +12,18 @@
     /// by `#if canImport(UIKit)` — it neither compiles nor runs; the real RED/GREEN requires building
     /// against the iOS Simulator SDK (see the task report).
     final class ResolvedAppearanceTests: XCTestCase {
+        func test_savedCardLayoutUsesGlobalThemeAndSanitizesMetrics() {
+            var appearance = Appearance()
+            appearance.savedCards.rowSpacing = .nan
+            appearance.savedCards.rowPadding = -1
+            appearance.savedCards.detailLayout = .stacked
+            let resolved = ResolvedAppearance.resolve(appearance)
+            XCTAssertEqual(resolved.savedCards.rowSpacing, 8)
+            XCTAssertEqual(resolved.savedCards.rowPadding, 12)
+            XCTAssertEqual(resolved.savedCards.detailLayout, .stacked)
+            XCTAssertEqual(resolved.cornerRadius, appearance.cornerRadius)
+        }
+
         func test_defaultsResolveToTokens() {
             let r = ResolvedAppearance.resolve(.default)
             XCTAssertEqual(r.cornerRadius, 10)
