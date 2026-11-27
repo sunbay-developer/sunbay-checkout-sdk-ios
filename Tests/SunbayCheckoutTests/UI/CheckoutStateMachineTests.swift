@@ -24,6 +24,24 @@ final class CheckoutStateMachineTests: XCTestCase {
         XCTAssertEqual(r, .showError("Insufficient funds."))
     }
 
+    func test_unpayableSessionCodesRequestATerminalLockedError() {
+        for code in ["C10", "C11", "C30"] {
+            var m = CheckoutStateMachine()
+            m.beginProcessing()
+            let err = CheckoutError(code: code, message: "x", category: .payment, traceId: nil)
+            let r = m.apply(.failed(txnId: nil, error: err), localizedFailure: { _ in "Session over." })
+            XCTAssertEqual(m.state, .sessionEnded(reason: "Session over."), code)
+            XCTAssertEqual(r, .showTerminalError("Session over."), code)
+        }
+    }
+
+    func test_otherBackendCodesStayRetryable() {
+        var m = CheckoutStateMachine()
+        m.beginProcessing()
+        let err = CheckoutError(code: "C01", message: "x", category: .payment, traceId: nil)
+        XCTAssertEqual(m.apply(.failed(txnId: nil, error: err), localizedFailure: { _ in "r" }), .showError("r"))
+    }
+
     func test_pendingEntersReconcilingWithInfoNotice() {
         var m = CheckoutStateMachine()
         m.beginProcessing()

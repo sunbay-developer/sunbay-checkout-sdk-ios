@@ -12,6 +12,8 @@ enum SunbayEndpoints {
         case paymentResult(sessionId: String)
         /// Lists the customer's saved cards.
         case cardList
+        /// Unbinds (deletes) one saved card.
+        case cardUnbind
         /// Lists the countries available for address collection.
         case addressCountries
         /// Loads the address field configuration of one country.
@@ -39,6 +41,7 @@ enum SunbayEndpoints {
         case .submitPayment: path = checkoutBase + "/payment/submit"
         case .paymentResult(let sessionId): path = checkoutBase + "/payment/result/" + encode(sessionId)
         case .cardList: path = checkoutBase + "/card/list"
+        case .cardUnbind: path = checkoutBase + "/card/unbind"
         case .addressCountries: path = origin + "/api/address/country"
         case .addressCountryConfig(let code): path = origin + "/api/address/country/" + encode(code)
         case .cardRules: path = origin + "/api/card/rules"

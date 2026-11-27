@@ -64,6 +64,16 @@ struct SunbayAPIClient: Sendable {
     func post<Body: Encodable & Sendable, Response: Decodable & Sendable>(
         _ route: SunbayEndpoints.Route, body: Body, timeout: TimeInterval = 15
     ) async throws -> Response {
+        let request = try Self.makePostRequest(
+            route, body: body, timeout: timeout, environment: environment, locale: locale)
+        return try await Self.decodeEnvelope(try await send(request))
+    }
+
+    /// Builds a JSON POST request.
+    private static func makePostRequest<Body: Encodable & Sendable>(
+        _ route: SunbayEndpoints.Route, body: Body, timeout: TimeInterval,
+        environment: CheckoutConfiguration.Environment, locale: String?
+    ) throws -> URLRequest {
         var request = URLRequest(url: SunbayEndpoints.url(for: route, environment: environment))
         request.httpMethod = "POST"
         request.timeoutInterval = timeout
@@ -76,8 +86,22 @@ struct SunbayAPIClient: Sendable {
         } catch {
             throw Self.invalidResponse()
         }
+        return request
+    }
 
-        return try await Self.decodeEnvelope(try await send(request))
+    /// Sends a JSON POST whose success envelope carries no payload (`data` is null, missing or empty).
+    ///
+    /// - Parameters:
+    ///   - route: Backend route.
+    ///   - body: Request body, encoded as JSON.
+    ///   - timeout: Request timeout in seconds.
+    /// - Throws: `CheckoutError` for every failure, including a success envelope that is not `code == "0"`.
+    func postExpectingNoData<Body: Encodable & Sendable>(
+        _ route: SunbayEndpoints.Route, body: Body, timeout: TimeInterval = 15
+    ) async throws {
+        let request = try Self.makePostRequest(
+            route, body: body, timeout: timeout, environment: environment, locale: locale)
+        _ = try Self.successData(try await send(request))
     }
 
     /// Sends a JSON GET and decodes the envelope's `data`.
@@ -169,6 +193,16 @@ struct SunbayAPIClient: Sendable {
     private static func decodeEnvelope<Response: Decodable & Sendable>(
         _ result: (Data, URLResponse)
     ) throws -> Response {
+        let data = try successData(result)
+        guard let payload = try? JSONDecoder().decode(Envelope<Response>.self, from: data).data else {
+            throw invalidResponse()
+        }
+        return payload
+    }
+
+    /// Validates a raw response and returns its body when it is a successful envelope
+    /// (2xx with `code == "0"`); every other outcome is a `CheckoutError`.
+    private static func successData(_ result: (Data, URLResponse)) throws -> Data {
         let (data, response) = result
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         let decoder = JSONDecoder()
@@ -186,11 +220,8 @@ struct SunbayAPIClient: Sendable {
                 throw CheckoutError(code: code, message: envelope.msg ?? "The payment request failed.",
                                     category: .payment, traceId: envelope.traceId)
             }
-            guard (200..<300).contains(status),
-                  let payload = try? decoder.decode(Envelope<Response>.self, from: data).data else {
-                throw invalidResponse()
-            }
-            return payload
+            guard (200..<300).contains(status) else { throw invalidResponse() }
+            return data
         }
         if !(200..<300).contains(status) {
             throw CheckoutError(code: "HTTP_\(status)", message: "The server returned an HTTP error.",

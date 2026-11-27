@@ -415,9 +415,14 @@
                 returnToEditing()
                 reportContentHeightIfChanged()
 
+            case let .showTerminalError(message):
+                notice.show(message: message, severity: .error)
+                lockSheet()
+                reportContentHeightIfChanged()
+
             case .showInfoNotice:
                 notice.show(message: localize("sunbay.notice.reconciling"), severity: .info)
-                enterReconciling()
+                lockSheet()
                 reportContentHeightIfChanged()
 
             case .stay:
@@ -678,13 +683,14 @@
             delegate?.content(self, didChangeProcessing: false)
         }
 
-        /// Enters the locked `.reconciling` presentation after `pending` / `unknown`.
+        /// Locks the sheet: Pay hidden, every input disabled, only the header ✕ available. Used after
+        /// `pending` / `unknown` (reconciling) and after a failure that makes the session unpayable.
         ///
         /// Unlike `returnToEditing`, nothing becomes interactive again: Pay is hidden and every input
         /// stays disabled (a second tap could duplicate the charge if the first attempt actually
         /// succeeded). Only the header ✕ is re-enabled so the user can leave; the sheet then returns the
         /// `.pending` / `.unknown` outcome and the host reconciles via `retrievePayment()`.
-        private func enterReconciling() {
+        private func lockSheet() {
             processingStartedAt = nil
             setInputsEnabled(false)
             // ✕ is the only affordance that can leave the locked reconciling state (back is disabled),
@@ -738,10 +744,10 @@
         /// Safe to call while the machine is `.editing` **or** `.failed` — both are editable states
         /// where the user may (re)submit. It must not clobber the CTA while a confirm is in flight
         /// (`.processing`), during the success animation (`.succeeded`), or while reconciling an unsettled
-        /// outcome (`.reconciling`: Pay must stay hidden), so those are guarded out.
+        /// outcome (`.reconciling` / `.sessionEnded`: Pay must stay hidden), so those are guarded out.
         private func refreshConfirmButtonState() {
             switch stateMachine.state {
-            case .processing, .succeeded, .reconciling:
+            case .processing, .succeeded, .reconciling, .sessionEnded:
                 return
             case .editing, .failed:
                 break

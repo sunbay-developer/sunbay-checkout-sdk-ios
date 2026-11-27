@@ -123,6 +123,60 @@ final class HTTPCofServiceTests: XCTestCase {
         XCTAssertEqual(cards, [])
     }
 
+    // MARK: - deleteCard (card/unbind)
+
+    func testDeleteRequestBodyAndPath() async throws {
+        stub(#"{"code":"0","msg":"ok","data":null}"#)
+        try await makeService().deleteCard(savedCardId: "sc_1", customerAccessSecret: "cas_x", sessionId: "s1")
+        let parsed = try JSONSerialization.jsonObject(
+            with: Data((recorder.allBodies.first ?? "").utf8)) as? [String: String]
+        XCTAssertEqual(parsed, ["sessionId": "s1", "customerAccessSecret": "cas_x", "savedCardId": "sc_1"])
+        XCTAssertEqual(recorder.allURLs, ["https://checkout.sunbay-dev.com/api/checkout/web/card/unbind"])
+    }
+
+    func testDeleteSucceedsWhenDataIsNullMissingOrEmpty() async throws {
+        for json in [
+            #"{"code":"0","msg":"ok","data":null}"#,
+            #"{"code":"0","msg":"ok"}"#,
+            #"{"code":"0","msg":"ok","data":{}}"#,
+        ] {
+            stub(json)
+            try await makeService().deleteCard(savedCardId: "sc_1", customerAccessSecret: "cas_x", sessionId: "s1")
+        }
+    }
+
+    func testDeleteBusinessErrorThrowsItsCodeAndLeaksNoSecret() async {
+        stub(#"{"code":"S06","msg":"Unauthorized","traceId":"t1"}"#)
+        do {
+            try await makeService().deleteCard(savedCardId: "sc_1", customerAccessSecret: "cas_x", sessionId: "s1")
+            XCTFail("expected throw")
+        } catch let error as CheckoutError {
+            XCTAssertEqual(error.code, "S06")
+            XCTAssertEqual(error.traceId, "t1")
+            XCTAssertFalse("\(error)".contains("cas_x"))
+        } catch {
+            XCTFail("unexpected error \(error)")
+        }
+    }
+
+    func testDeleteServerErrorAndNonEnvelopeBodyThrow() async {
+        stub(#"{"code":"0"}"#, status: 502)
+        await assertDeleteThrows("HTTP_502")
+        stub("not json")
+        await assertDeleteThrows("INVALID_RESPONSE")
+    }
+
+    private func assertDeleteThrows(_ code: String, file: StaticString = #filePath, line: UInt = #line) async {
+        do {
+            try await makeService().deleteCard(savedCardId: "sc_1", customerAccessSecret: "cas_x", sessionId: "s1")
+            XCTFail("expected throw", file: file, line: line)
+        } catch let error as CheckoutError {
+            XCTAssertEqual(error.code, code, file: file, line: line)
+        } catch {
+            XCTFail("unexpected error \(error)", file: file, line: line)
+        }
+    }
+
     func testUnauthorizedThrowsAndLeaksNoSecret() async {
         stub(#"{"code":"S06","msg":"Unauthorized"}"#)
         do {

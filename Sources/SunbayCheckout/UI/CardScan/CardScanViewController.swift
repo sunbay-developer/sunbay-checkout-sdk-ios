@@ -53,16 +53,21 @@
 
         // Touched only on `videoQueue`.
         private var stabilizer = CardScanStabilizer()
-        private var voter = CardScanDigitVoter()
+        private var voter: CardScanDigitVoter
+        private let rules: CardRuleSet
         private var isRecognizing = false
         private var finished = false
         // Region-of-interest inputs, written on `videoQueue` from the main thread's layout.
         private var roiGuide: CGRect = .zero
         private var roiViewSize: CGSize = .zero
 
-        init(appearance: ResolvedAppearance, localize: @escaping (String) -> String) {
+        /// - Parameter rules: The card-brand rules in effect for the form being filled; a scanned number must
+        ///   also have a length the rules allow for its brand.
+        init(appearance: ResolvedAppearance, localize: @escaping (String) -> String, rules: CardRuleSet) {
             self.appearance = appearance
             self.localize = localize
+            self.rules = rules
+            self.voter = CardScanDigitVoter(rules: rules)
             super.init(nibName: nil, bundle: nil)
             modalPresentationStyle = .overFullScreen  // keeps the sheet's view in place (no remove/restore glitch)
         }
@@ -286,7 +291,7 @@
             let lines = Self.readingOrderLines(from: request.results ?? [])
             DispatchQueue.main.async { [weak self] in self?.showLiveFeedback(lines: lines) }
             let voted = voter.ingest(lines: lines)  // one vote per frame
-            var candidate = CardScanParser.parse(lines: lines)
+            var candidate = CardScanParser.parse(lines: lines, rules: rules)
             if candidate == nil, let voted {
                 let expiry = CardScanParser.extractExpiry(from: lines, now: Date())
                 candidate = ScannedCard(pan: voted, expiryMonth: expiry?.month, expiryYear: expiry?.year)

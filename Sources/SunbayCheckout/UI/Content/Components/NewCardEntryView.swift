@@ -39,6 +39,8 @@
         // MARK: - Components
 
         private let cardForm: CardFormView
+        /// The card-brand rules shared with the form; the card scanner checks scanned numbers against them.
+        private let cardRuleSet: CardRuleSet
         /// Resolves the scheme from the BIN.
         private let schemeResolver: CardSchemeResolver
         /// The "Save this card" (COF consent) checkbox, present only when card-on-file is enabled.
@@ -73,6 +75,7 @@
             self.localeCode = localeCode
             self.addressService = addressService
             self.cardRulesService = cardRulesService
+            self.cardRuleSet = cardRuleSet
             self.cardOnFileEnabled = cardOnFileEnabled
             self.saveCardByDefault = saveCardByDefault
             self.scanPresenter = scanPresenter
@@ -284,7 +287,7 @@
                 // Without a presenter at tap time there is nothing to present from: do nothing.
                 guard let presenter = scanPresenter() else { return }
                 endEditing(true)
-                let scanner = CardScanViewController(appearance: appearance, localize: localize)
+                let scanner = CardScanViewController(appearance: appearance, localize: localize, rules: cardRuleSet)
                 scanner.onScanned = { [weak self] card in
                     // `applyScannedCard` reports the change through the form's `onEditingChanged`.
                     self?.cardForm.applyScannedCard(card)

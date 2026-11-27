@@ -15,7 +15,7 @@ import Foundation
 /// is the UI half of that same rule.
 ///
 /// Transitions: `editing → processing → (succeeded | failed | reconciling)`; `failed` can return to
-/// `editing` for retry; `reconciling` stays locked (only closing the sheet leaves it) until a NEW
+/// `editing` for retry; `sessionEnded` (`C10` / `C11` / `C30`) and `reconciling` stay locked (only closing the sheet leaves it) until a NEW
 /// outcome is applied; `succeeded` is terminal and triggers auto-close.
 enum CheckoutViewState: Sendable, Equatable {
     /// Choosing method / filling the form; fully interactive.
@@ -29,6 +29,9 @@ enum CheckoutViewState: Sendable, Equatable {
     /// Outcome `pending` / `unknown`: payment not settled. Pay hidden, inputs locked, info notice shown;
     /// only the header ✕ stays available so the user can leave (the host then calls `retrievePayment()`).
     case reconciling
+    /// Failure `C10` / `C11` / `C30`: the session can no longer be paid. Pay hidden, inputs locked, the
+    /// reason shown as an error; only the header ✕ stays available. The host then gets the `.failed`.
+    case sessionEnded(reason: String)
 }
 
 extension CheckoutViewState {
@@ -36,7 +39,7 @@ extension CheckoutViewState {
     /// or its outcome is unsettled and being reconciled (`.reconciling`).
     var isLockedAgainstNewConfirm: Bool {
         switch self {
-        case .processing, .reconciling: return true
+        case .processing, .reconciling, .sessionEnded: return true
         case .editing, .succeeded, .failed: return false
         }
     }
