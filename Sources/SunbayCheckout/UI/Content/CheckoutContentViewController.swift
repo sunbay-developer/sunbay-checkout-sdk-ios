@@ -125,6 +125,7 @@
         private var newCardEntryRow: UIView?
 
         /// The effective card-on-file decision (session allows it, host option on, secret held).
+        private let cardManagementEnabled: Bool
         private let cardOnFileEnabled: Bool
         /// Initial state of the save-card checkbox; the user can still change it before paying.
         private let saveCardByDefault: Bool
@@ -217,6 +218,7 @@
             walletContacts: (@Sendable (Bool, Bool) async -> WalletContactRequest)? = nil,
             onWalletParamsInvalid: (@Sendable ([String]) -> Void)? = nil,
             cardOnFileEnabled: Bool = false,
+            cardManagementEnabled: Bool = true,
             saveCardByDefault: Bool = false,
             cardBinService: any CardBinService = EmptyCardBinService(),
             cardRulesService: any CardRulesService = EmptyCardRulesService(),
@@ -231,6 +233,7 @@
             self.cardBrandItems = CardBrandItem.items(from: entries)
             self.applePayVisible = entries.contains { PaymentMethodModel.logicalKey($0) == "APPLE_PAY" }
             self.cardOnFileEnabled = cardOnFileEnabled
+            self.cardManagementEnabled = cardManagementEnabled
             self.saveCardByDefault = saveCardByDefault
             self.cardBinService = cardBinService
             self.cardRulesService = cardRulesService
@@ -1300,7 +1303,7 @@
                 self.header.setBackVisible(true)
                 self.header.setCloseVisible(false)
                 self.header.setTitle(self.localize("sunbay.sheet.savedCards"))
-                self.header.setActionTitle(self.localize("sunbay.cof.manage"))
+                self.header.setActionTitle(self.cardManagementEnabled ? self.localize("sunbay.cof.manage") : nil)
             }
             notice.hide()
             refreshConfirmButtonState()
@@ -1333,7 +1336,7 @@
 
         /// Toggles manage mode on the full saved-card list page ("Manage" <-> "Done").
         private func toggleManageMode() {
-            guard isShowingAllSavedCards, !stateMachine.state.isLockedAgainstNewConfirm else { return }
+            guard cardManagementEnabled, isShowingAllSavedCards, !stateMachine.state.isLockedAgainstNewConfirm else { return }
             isManagingSavedCards.toggle()
             savedCardList?.setManaging(isManagingSavedCards)
             header.setActionTitle(localize(isManagingSavedCards ? "sunbay.cof.done" : "sunbay.cof.manage"))
@@ -1347,7 +1350,7 @@
 
         /// Asks the user to confirm deleting a saved card.
         private func confirmDelete(_ id: String) {
-            guard !stateMachine.state.isLockedAgainstNewConfirm, !deletingCardIds.contains(id),
+            guard cardManagementEnabled, !stateMachine.state.isLockedAgainstNewConfirm, !deletingCardIds.contains(id),
                   presentedViewController == nil,
                   let card = savedCards.first(where: { $0.id == id }) else { return }
             let description = "\(card.brand.uppercased()) •••• \(card.last4)"

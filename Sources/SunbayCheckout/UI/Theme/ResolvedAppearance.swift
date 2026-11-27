@@ -69,6 +69,7 @@
         let shadow: Appearance.Shadow
         /// Vertical rhythm / spacing density.
         let density: Appearance.Density
+        var savedCards: Appearance.SavedCards = .init()
         /// Placement of the express-checkout (wallet) row.
         let expressPosition: Appearance.ExpressPosition
         /// Wording on the Apple Pay button.
@@ -136,6 +137,9 @@
             let primaryButtonCornerRadius =
                 appearance.primaryButton.cornerRadius ?? appearance.cornerRadius
 
+            var savedCards = appearance.savedCards
+            if !savedCards.rowSpacing.isFinite || savedCards.rowSpacing < 0 { savedCards.rowSpacing = 8 }
+            if !savedCards.rowPadding.isFinite || savedCards.rowPadding < 0 { savedCards.rowPadding = 12 }
             return ResolvedAppearance(
                 primary: primary,
                 background: colors.background ?? AppearanceDefaults.background,
@@ -156,6 +160,7 @@
                 borderWidth: appearance.borderWidth,
                 shadow: appearance.shadow,
                 density: appearance.density,
+                savedCards: savedCards,
                 expressPosition: appearance.expressPosition,
                 applePayButtonType: appearance.applePayButtonType,
                 applePayButtonStyle: appearance.applePayButtonStyle,

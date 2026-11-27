@@ -1163,6 +1163,17 @@ final class CheckoutControllerTests: XCTestCase {
         return CofRig(controller: controller, payment: payment, cof: cof)
     }
 
+    func test_managementDisabled_keepsListingButRejectsDelete() async throws {
+        let rig = try await makeCofRig(sessionCof: true, options: CardOnFileOptions(managementEnabled: false))
+        _ = await rig.controller.listSavedCards()
+        XCTAssertEqual(rig.cof.listCallCount, 1)
+        let result = await rig.controller.deleteSavedCard(id: "sc_test")
+        guard case .failure(let error) = result else { return XCTFail("Expected rejection") }
+        XCTAssertEqual(error.code, "CARD_ON_FILE_UNAVAILABLE")
+        XCTAssertEqual(rig.cof.deleteCallCount, 0)
+        XCTAssertTrue(CardOnFileOptions().managementEnabled)
+    }
+
     func test_effectiveCof_sessionAndOptionsAndSecret_enabled() async throws {
         let rig = try await makeCofRig(sessionCof: true)
         let enabled = await rig.controller.isCardOnFileEnabled

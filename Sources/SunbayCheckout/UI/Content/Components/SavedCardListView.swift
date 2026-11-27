@@ -54,7 +54,7 @@
 
         private func configureSubviews(cards: [SavedCard], expiredText: (SavedCard) -> String?) {
             stack.axis = .vertical
-            stack.spacing = 8
+            stack.spacing = appearance.savedCards.rowSpacing
             stack.translatesAutoresizingMaskIntoConstraints = false
             addSubview(stack)
 

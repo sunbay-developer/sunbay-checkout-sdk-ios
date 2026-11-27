@@ -145,8 +145,10 @@
             ])
 
             contentStack.addArrangedSubview(logoView)
-            contentStack.addArrangedSubview(numberLabel)
-            contentStack.addArrangedSubview(expiryLabel)
+            let details = UIStackView(arrangedSubviews: [numberLabel, expiryLabel])
+            details.axis = appearance.savedCards.detailLayout == .stacked ? .vertical : .horizontal
+            details.spacing = appearance.savedCards.detailLayout == .stacked ? 4 : 12
+            contentStack.addArrangedSubview(details)
             contentStack.addArrangedSubview(deleteButton)
             contentStack.axis = .horizontal
             contentStack.alignment = .center
@@ -155,10 +157,10 @@
             addSubview(contentStack)
 
             NSLayoutConstraint.activate([
-                contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-                contentStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-                contentStack.topAnchor.constraint(equalTo: topAnchor, constant: 12),
-                contentStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
+                contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: appearance.savedCards.rowPadding),
+                contentStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -appearance.savedCards.rowPadding),
+                contentStack.topAnchor.constraint(equalTo: topAnchor, constant: appearance.savedCards.rowPadding),
+                contentStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -appearance.savedCards.rowPadding),
                 heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
             ])
 

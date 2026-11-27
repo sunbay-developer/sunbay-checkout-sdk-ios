@@ -513,6 +513,7 @@
                 walletContacts: walletContacts,
                 onWalletParamsInvalid: onWalletParamsInvalid,
                 cardOnFileEnabled: context.cardOnFileEnabled,
+                cardManagementEnabled: context.cardManagementEnabled,
                 saveCardByDefault: context.saveCardByDefault,
                 cardRulesService: cardRulesService,
                 billingEntryUsable: context.billingEntryUsable,

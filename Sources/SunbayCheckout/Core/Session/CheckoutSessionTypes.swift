@@ -34,6 +34,7 @@ struct CheckoutSessionContext: Sendable {
     /// The listed saved cards; empty when COF is unavailable (no secret / off).
     let savedCards: [SavedCard]
     /// The effective card-on-file decision (session && host option && secret).
+    var cardManagementEnabled: Bool = true
     let cardOnFileEnabled: Bool
     /// Whether the save-card checkbox starts ticked.
     let saveCardByDefault: Bool

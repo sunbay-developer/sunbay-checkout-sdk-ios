@@ -146,6 +146,7 @@ final class CheckoutSessionDriver: Sendable {
 
         return .ready(CheckoutSessionContext(
             session: session, savedCards: savedCards,
+            cardManagementEnabled: await controller.cardManagementEnabled,
             cardOnFileEnabled: cardOnFileEnabled, saveCardByDefault: saveCardByDefault,
             billingEntryUsable: billingEntryUsable, shippingEntryUsable: shippingEntryUsable,
             visibleEntries: filtered.entries))

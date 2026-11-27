@@ -36,6 +36,20 @@
         public var colorScheme: ColorScheme = .automatic
         /// Vertical rhythm / spacing density.
         public var density: Density = .comfortable
+        /// COF-specific spacing and detail layout. Colors and radii inherit global appearance.
+        public var savedCards: SavedCards = .init()
+
+        /// Layout overrides for saved-card rows.
+        public struct SavedCards: Sendable, Equatable {
+            public var rowSpacing: CGFloat = 8
+            public var rowPadding: CGFloat = 12
+            public var detailLayout: DetailLayout = .inline
+            public init() {}
+            public enum DetailLayout: Sendable, Equatable {
+                case inline
+                case stacked
+            }
+        }
         /// Where the express-checkout (wallet) row is placed on the home page (top / bottom / off).
         public var expressPosition: ExpressPosition = .top
         /// The wording on the Apple Pay button in the express row (default `.plain`, the logo only).

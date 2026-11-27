@@ -240,6 +240,8 @@ actor CheckoutController {
     var isCardOnFileEnabled: Bool { cofEffective }
 
     /// Whether the save-card checkbox starts ticked (`false` unless COF is effective).
+    var cardManagementEnabled: Bool { cofEffective && cardOnFile.managementEnabled }
+
     var cardOnFileSaveByDefault: Bool { cofEffective && cardOnFile.saveByDefault }
 
     // MARK: - Lifecycle
@@ -329,7 +331,7 @@ actor CheckoutController {
     /// Requires an effective COF decision and a held credential, otherwise fails with
     /// `CARD_ON_FILE_UNAVAILABLE`. Failures are reported (no secret) and returned; this never throws.
     func deleteSavedCard(id: String) async -> Result<Void, CheckoutError> {
-        guard let session, cofEffective, let secret = await credentials.current() else {
+        guard let session, cofEffective, cardOnFile.managementEnabled, let secret = await credentials.current() else {
             return .failure(CheckoutErrors.cardOnFileUnavailable())
         }
         do {
