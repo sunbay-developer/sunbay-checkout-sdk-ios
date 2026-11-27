@@ -9,6 +9,9 @@
 "sunbay.error.network_unavailable" = "The network is unavailable.";
 "sunbay.error.checkout_expired" = "The checkout session has expired.";
 "sunbay.error.payment_failed" = "The payment failed.";
+"sunbay.error.c10" = "This order has already been paid.";
+"sunbay.error.c11" = "This checkout session has been closed.";
+"sunbay.error.c30" = "This checkout session has expired.";
 "sunbay.error.card_encryption_failed" = "Failed to prepare card data.";
 "sunbay.sheet.payTitle" = "Payment";
 "sunbay.sheet.payAmount" = "Pay %@";

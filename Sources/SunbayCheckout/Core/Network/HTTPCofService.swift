@@ -56,10 +56,20 @@ struct HTTPCofService: CofService {
         return wire.cards.compactMap(Self.map)
     }
 
-    /// Deleting a saved card is not available yet: the backend endpoint has not been provided.
-    /// Makes no request. Tracked in `docs/real-api-integration-checklist.md`.
+    private struct UnbindBody: Encodable, Sendable {
+        let sessionId: String
+        let customerAccessSecret: String
+        let savedCardId: String
+    }
+
+    /// Unbinds a saved card (`POST card/unbind`). The backend only invalidates the token, so the card
+    /// stops appearing in `card/list` and cannot be used for token payments. A success envelope has no `data`.
+    /// Whatever `SunbayAPIClient` throws is rethrown unchanged (it never contains the secret or any body).
     func deleteCard(savedCardId: String, customerAccessSecret: String, sessionId: String) async throws {
-        throw CheckoutErrors.cardDeleteUnsupported()
+        try await client.postExpectingNoData(
+            .cardUnbind,
+            body: UnbindBody(sessionId: sessionId, customerAccessSecret: customerAccessSecret,
+                             savedCardId: savedCardId))
     }
 
     /// Maps a wire item to a `SavedCard`, or nil when any required field is invalid.

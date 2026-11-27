@@ -184,6 +184,13 @@
             XCTAssertEqual(
                 PaymentSheet.outcomeOnClose(lastKnown: .failed(txnId: nil, error: CheckoutErrors.paymentFailed())),
                 .canceled, "a confirmed failure on close is a genuine cancel")
+            for code in ["C10", "C11", "C30"] {
+                let failed = CheckoutOutcome.failed(
+                    txnId: nil, error: CheckoutError(code: code, message: "x", category: .payment, traceId: nil))
+                XCTAssertEqual(
+                    PaymentSheet.outcomeOnClose(lastKnown: failed), failed,
+                    "\(code): the session cannot be paid, so the host must see the failure, not a cancel")
+            }
             XCTAssertEqual(
                 PaymentSheet.outcomeOnClose(lastKnown: .canceled), .canceled,
                 "no attempt at all (the user never confirmed) stays a genuine cancel")

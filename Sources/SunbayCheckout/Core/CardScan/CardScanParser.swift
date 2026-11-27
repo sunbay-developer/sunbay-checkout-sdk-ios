@@ -19,8 +19,10 @@ enum CardScanParser {
     /// - Parameters:
     ///   - lines: Recognized text lines for one frame.
     ///   - now: Reference date used to reject already-expired dates (injectable for tests).
-    static func parse(lines: [String], now: Date = Date()) -> ScannedCard? {
-        guard let pan = extractPAN(from: lines) else { return nil }
+    ///   - rules: The card-brand rules in effect. When a brand is detected, only that brand's lengths are
+    ///     accepted; without rules (or without a matching brand) the local heuristics apply.
+    static func parse(lines: [String], now: Date = Date(), rules: CardRuleSet? = nil) -> ScannedCard? {
+        guard let pan = extractPAN(from: lines, rules: rules) else { return nil }
         let expiry = extractExpiry(from: lines, now: now)
         return ScannedCard(pan: pan, expiryMonth: expiry?.month, expiryYear: expiry?.year)
     }
@@ -31,7 +33,7 @@ enum CardScanParser {
     /// swallow neighbouring digits): most common first.
     private static let preferredLengths = [16, 15, 19, 14, 18, 17, 13]
 
-    static func extractPAN(from lines: [String]) -> String? {
+    static func extractPAN(from lines: [String], rules: CardRuleSet? = nil) -> String? {
         // Joining with spaces lets 4-digit groups that OCR split across lines re-assemble. Lines that
         // are mostly digits get look-alike letters (O/I/S/B…) mapped to digits first.
         let joined = lines.map(normalizeDigitLookalikes).joined(separator: " ")
@@ -39,7 +41,7 @@ enum CardScanParser {
         let ns = joined as NSString
         for match in regex.matches(in: joined, range: NSRange(location: 0, length: ns.length)) {
             let digits = ns.substring(with: match.range).filter(\.isNumber)
-            if let pan = firstValidPAN(in: digits) { return pan }
+            if let pan = firstValidPAN(in: digits, rules: rules) { return pan }
         }
         return nil
     }
@@ -55,23 +57,27 @@ enum CardScanParser {
         return String(line.map { map[$0] ?? $0 })
     }
 
-    private static func firstValidPAN(in digits: String) -> String? {
+    private static func firstValidPAN(in digits: String, rules: CardRuleSet?) -> String? {
         guard digits.first != "0" else { return nil }
         // A run that fits in a PAN must be valid as a whole: truncating a short run would turn a
         // misread number into a different, accidentally Luhn-valid one. Only an over-long run (OCR
         // swallowed neighbouring digits) is trimmed.
         if digits.count <= 19 {
-            return isPlausible(digits) ? digits : nil
+            return isPlausible(digits, rules: rules) ? digits : nil
         }
         for length in preferredLengths where digits.count >= length {
             let candidate = String(digits.prefix(length))
-            if isPlausible(candidate) { return candidate }
+            if isPlausible(candidate, rules: rules) { return candidate }
         }
         return nil
     }
 
     /// Luhn-valid and a length that fits the card brand's prefix (Amex 15, Diners 14–19, others 16–19).
-    static func isPlausiblePAN(_ digits: String) -> Bool { isPlausible(digits) }
+    ///
+    /// With `rules`, a PAN whose brand the rules detect must also have one of that brand's lengths.
+    static func isPlausiblePAN(_ digits: String, rules: CardRuleSet? = nil) -> Bool {
+        isPlausible(digits, rules: rules)
+    }
 
     /// Digit runs (13–19 digits, after look-alike normalisation) that may still contain misreads.
     static func digitRuns(from lines: [String]) -> [String] {
@@ -83,8 +89,15 @@ enum CardScanParser {
             .filter { (13...19).contains($0.count) }
     }
 
-    private static func isPlausible(_ digits: String) -> Bool {
+    private static func isPlausible(_ digits: String, rules: CardRuleSet?) -> Bool {
         guard (13...19).contains(digits.count), luhnValid(digits) else { return false }
+        // The rules are authoritative for a brand they recognize; the prefix table below is only the
+        // fallback for numbers no brand matches (or when no rules are supplied).
+        if let rules, let scheme = rules.detectScheme(digits: digits),
+            let brand = rules.brands.first(where: { $0.scheme == scheme })
+        {
+            return brand.lengths.contains(digits.count)
+        }
         let prefix2 = String(digits.prefix(2))
         switch prefix2 {
         case "34", "37": return digits.count == 15
@@ -197,14 +210,17 @@ struct CardScanStabilizer {
 struct CardScanDigitVoter {
     private let window: Int
     private let minSamples: Int
+    private let rules: CardRuleSet?
     private var samples: [Int: [String]] = [:]  // digit count -> recent runs of that length
 
     /// - Parameters:
     ///   - window: How many recent runs of each length to keep.
     ///   - minSamples: Runs of one length required before a vote is taken.
-    init(window: Int = 12, minSamples: Int = 3) {
+    ///   - rules: The card-brand rules used to check the voted number's length; nil uses the local heuristics.
+    init(window: Int = 12, minSamples: Int = 3, rules: CardRuleSet? = nil) {
         self.window = window
         self.minSamples = minSamples
+        self.rules = rules
     }
 
     /// Adds this frame's candidate digit runs and returns a Luhn-valid voted PAN, if one emerges.
@@ -223,7 +239,7 @@ struct CardScanDigitVoter {
                 guard let winner = counts.max(by: { $0.value < $1.value })?.key else { break }
                 voted.append(winner)
             }
-            if CardScanParser.isPlausiblePAN(voted) { return voted }
+            if CardScanParser.isPlausiblePAN(voted, rules: rules) { return voted }
         }
         return nil
     }

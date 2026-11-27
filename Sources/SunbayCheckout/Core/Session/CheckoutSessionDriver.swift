@@ -206,10 +206,14 @@ final class CheckoutSessionDriver: Sendable {
     ///
     /// - Parameter lastKnown: The outcome of the most recent attempt (`.canceled` if none was made).
     /// - Returns: `lastKnown` when it is `.pending` / `.unknown` (an unsettled payment the host must
-    ///   reconcile with `retrievePayment()`); otherwise `.canceled`.
+    ///   reconcile with `retrievePayment()`) or a `.failed` with an unpayable-session code
+    ///   (`C10` / `C11` / `C30`); otherwise `.canceled`.
     static func outcomeOnClose(lastKnown: CheckoutOutcome) -> CheckoutOutcome {
         switch lastKnown {
         case .pending, .unknown:
+            return lastKnown
+        case let .failed(_, error) where CheckoutErrors.isUnpayableSession(error):
+            // The session cannot be paid any more (`C10` / `C11` / `C30`): the host must see why.
             return lastKnown
         case .succeeded, .failed, .canceled:
             return .canceled

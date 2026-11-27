@@ -13,6 +13,9 @@ struct CheckoutStateMachine {
         case autoClose(CheckoutOutcome)
         /// Show an inline error block with this localized reason; stay open for retry.
         case showError(String)
+        /// The session can no longer be paid (`C10` / `C11` / `C30`): show this localized reason and LOCK
+        /// the sheet like `.reconciling` (no Pay, no inputs, only ✕), because a retry cannot succeed.
+        case showTerminalError(String)
         /// Show a neutral "confirming your payment" notice (`pending` / `unknown`) and stay LOCKED in
         /// `.reconciling` (no Pay, no inputs); no auto-close.
         case showInfoNotice
@@ -49,6 +52,10 @@ struct CheckoutStateMachine {
 
         case let .failed(_, error):
             let reason = localizedFailure(error)
+            if CheckoutErrors.isUnpayableSession(error) {
+                state = .sessionEnded(reason: reason)
+                return .showTerminalError(reason)
+            }
             state = .failed(reason: reason)
             return .showError(reason)
 
@@ -68,7 +75,7 @@ struct CheckoutStateMachine {
         case .editing: return .editing
         case .processing: return .processing
         case .succeeded: return .succeeded
-        case .failed: return .failed
+        case .failed, .sessionEnded: return .failed
         // No new public case (additive-only API): hosts keep seeing `.editing` for pending/unknown.
         case .reconciling: return .editing
         }

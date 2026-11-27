@@ -67,6 +67,15 @@ enum CheckoutErrors {
         )
     }
 
+    /// Backend codes that mean the session can no longer be paid: `C10` (order already paid), `C11`
+    /// (session closed) and `C30` (session expired). Retrying with the same session cannot succeed.
+    static let unpayableSessionCodes: Set<String> = ["C10", "C11", "C30"]
+
+    /// Whether `error` means the session can no longer be paid (see `unpayableSessionCodes`).
+    static func isUnpayableSession(_ error: CheckoutError) -> Bool {
+        unpayableSessionCodes.contains(error.code)
+    }
+
     /// Deleting a saved card is not supported by this `CofService`.
     static func cardDeleteUnsupported() -> CheckoutError {
         CheckoutError(

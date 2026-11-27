@@ -9,6 +9,9 @@
 "sunbay.error.network_unavailable" = "网络不可用";
 "sunbay.error.checkout_expired" = "结账会话已过期。";
 "sunbay.error.payment_failed" = "支付失败";
+"sunbay.error.c10" = "该订单已支付。";
+"sunbay.error.c11" = "该结账会话已关闭。";
+"sunbay.error.c30" = "该结账会话已过期。";
 "sunbay.error.card_encryption_failed" = "无法准备卡数据。";
 "sunbay.sheet.payTitle" = "支付";
 "sunbay.sheet.payAmount" = "支付 %@";

@@ -893,6 +893,36 @@
             }
         }
 
+        /// `C10` / `C11` / `C30` make the session unpayable: the sheet shows the localized reason and locks
+        /// like reconciling (no Pay, no inputs), keeping only ✕.
+        func test_unpayableSessionCodes_lockTheSheetAndShowTheReason() {
+            let expected = [
+                "C10": "This order has already been paid.",
+                "C11": "This checkout session has been closed.",
+                "C30": "This checkout session has expired.",
+            ]
+            for (code, text) in expected {
+                let vc = makeVC(savedCards: sampleSavedCards())
+                vc.loadViewIfNeeded()
+                let delegate = MockContentDelegate()
+                vc.delegate = delegate
+                vc.tapSavedCardRowForTest("pm_1")
+                vc.simulateTapPay()
+                delegate.lastRequestedAction = nil
+
+                vc.applyOutcome(.failed(
+                    txnId: nil, error: CheckoutError(code: code, message: "raw", category: .payment, traceId: nil)))
+                waitUntil { vc.isNoticeVisibleForTest }
+
+                XCTAssertEqual(vc.noticeMessageForTest, text, code)
+                XCTAssertFalse(vc.isConfirmButtonVisibleForTest, "Pay must be hidden after \(code).")
+                XCTAssertFalse(vc.isHomeInteractiveForTest, "Home must stay locked after \(code).")
+                XCTAssertTrue(vc.isCloseInteractiveForTest, "✕ must stay available after \(code).")
+                vc.simulateTapPay()
+                XCTAssertNil(delegate.lastRequestedAction, "No confirm may be emitted after \(code).")
+            }
+        }
+
         /// New-card subpage: after `.unknown` the card form is non-interactive and Pay is hidden (the
         /// subpage normally always shows Pay), and a programmatic Pay tap / re-trigger emits NOTHING.
         func test_unknown_onNewCardSubpage_lockedAndNoSecondRequest() {

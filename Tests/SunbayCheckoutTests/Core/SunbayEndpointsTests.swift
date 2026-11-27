@@ -22,6 +22,11 @@ final class SunbayEndpointsTests: XCTestCase {
         XCTAssertEqual(url.absoluteString, "https://checkout.sunbay-dev.com/api/checkout/web/card/list")
     }
 
+    func testCardUnbindOnDev() {
+        let url = SunbayEndpoints.url(for: .cardUnbind, environment: .dev)
+        XCTAssertEqual(url.absoluteString, "https://checkout.sunbay-dev.com/api/checkout/web/card/unbind")
+    }
+
     func testAddressCountriesOnDev() {
         let url = SunbayEndpoints.url(for: .addressCountries, environment: .dev)
         XCTAssertEqual(url.absoluteString, "https://checkout.sunbay-dev.com/api/address/country")
